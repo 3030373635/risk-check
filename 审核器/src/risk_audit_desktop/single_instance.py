@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Signal
+from hashlib import sha256
+from pathlib import Path
+from tempfile import gettempdir
+
+from PySide6.QtCore import QLockFile, QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 
 APP_SERVER_NAME = "openai.risk-audit-desktop.v2"
 
 
+def _lock_path_for_server(server_name: str) -> Path:
+    """生成稳定的进程锁路径；server_name 为本地服务标识。"""
+    server_digest = sha256(server_name.encode("utf-8")).hexdigest()[:16]
+    return Path(gettempdir()) / f"risk-audit-{server_digest}.lock"
+
+
 class SingleInstanceCoordinator(QObject):
-    """监听稳定应用标识，并将重复启动转为激活信号。"""
+    """使用进程锁保证唯一性，并将重复启动转为激活信号。"""
 
     activated = Signal()
 
@@ -20,19 +30,23 @@ class SingleInstanceCoordinator(QObject):
         self.server_name = server_name
         self.server = QLocalServer(self)
         self.server.newConnection.connect(self._accept_connections)
+        self.instance_lock = QLockFile(str(_lock_path_for_server(server_name)))
+        # 应用整个生命周期持有锁，不能按默认 30 秒误判为陈旧锁。
+        self.instance_lock.setStaleLockTime(0)
 
     def acquire(self) -> bool:
         """尝试成为主实例；返回是否监听成功。"""
+        # Windows 允许多个 QLocalServer 监听同名管道，必须先用进程锁判定唯一性。
+        if not self.instance_lock.tryLock(0):
+            return False
         if self.server.listen(self.server_name):
             return True
-        probe = QLocalSocket()
-        probe.connectToServer(self.server_name)
-        if probe.waitForConnected(250):
-            probe.disconnectFromServer()
-            return False
-        # 只有无法连接现有服务时才清理陈旧 endpoint。
+        # 已持有独占锁，首次监听失败只可能是崩溃后遗留的 Unix 端点或系统错误。
         QLocalServer.removeServer(self.server_name)
-        return self.server.listen(self.server_name)
+        if self.server.listen(self.server_name):
+            return True
+        self.instance_lock.unlock()
+        return False
 
     def notify_existing(self) -> bool:
         """向已运行实例发送激活命令；返回是否成功写入。"""
@@ -75,7 +89,8 @@ class SingleInstanceCoordinator(QObject):
         window.activateWindow()
 
     def close(self) -> None:
-        """关闭监听并清理当前 endpoint；无参数。"""
+        """关闭监听、清理当前 endpoint 并释放进程锁；无参数。"""
         if self.server.isListening():
             self.server.close()
             QLocalServer.removeServer(self.server_name)
+        self.instance_lock.unlock()

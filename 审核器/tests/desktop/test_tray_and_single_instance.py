@@ -1,5 +1,6 @@
 """验证系统托盘和单实例激活行为。"""
 
+import sys
 from uuid import uuid4
 
 
@@ -76,22 +77,43 @@ def test_tray_updates_tooltip_restores_window_and_notifies_completion(qapp) -> N
 
 
 def test_single_instance_second_client_activates_first(qtbot) -> None:
-    """第二个实例必须发送 activate，由第一个恢复窗口。"""
+    """真实第二进程必须抢锁失败并激活第一个实例。"""
+    from PySide6.QtCore import QProcess
     from risk_audit_desktop.single_instance import SingleInstanceCoordinator
 
-    # macOS 的 Unix domain socket 路径长度有上限，测试标识保持短且唯一。
+    # macOS 的 Unix domain socket 路径长度有上限，跨进程测试标识保持短且唯一。
     server_name = f"rat-{uuid4().hex[:8]}"
     window = FakeWindow()
     first = SingleInstanceCoordinator(server_name)
-    second = SingleInstanceCoordinator(server_name)
     assert first.acquire()
     first.activated.connect(lambda: first.activate_window(window))
 
-    with qtbot.waitSignal(first.activated, timeout=2000):
-        assert second.notify_existing()
+    child_code = (
+        "import sys; "
+        "from risk_audit_desktop.single_instance import SingleInstanceCoordinator; "
+        "coordinator = SingleInstanceCoordinator(sys.argv[1]); "
+        "acquired = coordinator.acquire(); "
+        "raise SystemExit(2 if acquired else (0 if coordinator.notify_existing() else 3))"
+    )
+    process = QProcess()
+    process.setProgram(sys.executable)
+    process.setArguments(["-c", child_code, server_name])
+
+    try:
+        with qtbot.waitSignal(first.activated, timeout=5000):
+            # QProcess 异步启动，保持主进程 Qt 事件循环可处理命名管道。
+            process.start()
+
+        assert process.waitForFinished(5000)
+        assert process.exitStatus() == QProcess.ExitStatus.NormalExit
+        assert process.exitCode() == 0
+    finally:
+        if process.state() != QProcess.ProcessState.NotRunning:
+            process.kill()
+            process.waitForFinished(1000)
+        first.close()
 
     assert window.calls == ["show", "raise", "activate"]
-    first.close()
 
 
 def test_single_instance_uses_stable_application_server_name() -> None:
