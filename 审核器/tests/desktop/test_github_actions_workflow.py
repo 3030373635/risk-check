@@ -32,6 +32,8 @@ def test_windows_build_workflow_pins_and_verifies_libreoffice() -> None:
     assert "Get-FileHash" in workflow
     assert "msiexec.exe" in workflow
     assert "program\\soffice.exe" in workflow
+    assert 'Join-Path $libreOfficeRoot "readmes\\readme_en-US.txt"' in workflow
+    assert 'Join-Path $libreOfficeRoot "LICENSE"' not in workflow
 
 
 def test_windows_build_workflow_builds_verifies_and_uploads_zip() -> None:

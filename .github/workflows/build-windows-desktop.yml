@@ -81,8 +81,8 @@ jobs:
             throw "LibreOffice 运行文件缺失：$sofficePath"
           }
 
-          # LibreOffice 官方安装包在安装根目录提供完整许可文本。
-          $licenseSource = Join-Path $libreOfficeRoot "LICENSE"
+          # Windows 安装集把英文许可说明放在 readmes 目录，不在安装根目录。
+          $licenseSource = Join-Path $libreOfficeRoot "readmes\readme_en-US.txt"
           if (-not (Test-Path -LiteralPath $licenseSource -PathType Leaf)) {
             throw "LibreOffice 许可文件缺失：$licenseSource"
           }
