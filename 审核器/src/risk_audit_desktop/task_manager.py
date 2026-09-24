@@ -75,6 +75,29 @@ class TaskManager:
         """返回按任务编号索引的有效记录；无参数。"""
         return {record.task_id: record for record in self.store.list_tasks().records}
 
+    def _wait_for_process_exit(
+        self,
+        task_id: str,
+        pid: int,
+        timeout_seconds: float = 5.0,
+    ) -> bool:
+        """等待 Worker 退出；task_id/pid 为任务及进程号，timeout_seconds 为最长秒数。"""
+        process = self._processes.get(task_id)
+        if process is not None:
+            try:
+                process.wait(timeout=max(0.0, timeout_seconds))
+            except subprocess.TimeoutExpired:
+                return False
+            return True
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while self.process_alive(pid):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            # 无 Popen 句柄时按实际 PID 存活条件等待，避免固定时延猜测。
+            time.sleep(min(0.05, remaining))
+        return True
+
     def start_task(self, record: TaskRecord) -> int:
         """立即启动独立 Worker；record 为已持久化任务，返回子进程 PID。"""
         request_path = Path(record.output_root) / "_task/request.json"
@@ -89,16 +112,7 @@ class TaskManager:
             options["creationflags"] = subprocess.CREATE_NO_WINDOW
         process = self.popen_factory(arguments, **options)
         self._processes[record.task_id] = process
-        state = self.store.read_state(record)
-        now = datetime.now().astimezone().isoformat(timespec="seconds")
-        self.store.write_state(Path(record.state_path), state.with_updates(
-            status="running",
-            stage="startup",
-            worker_pid=process.pid,
-            started_at=state.started_at or now,
-            heartbeat_at=now,
-            message="审核任务已启动",
-        ))
+        # 进程启动后由 Worker 独占运行状态写入，Manager 只保留进程句柄。
         return int(process.pid)
 
     def poll_once(self) -> None:
@@ -108,17 +122,25 @@ class TaskManager:
             try:
                 state = self.store.read_state(record)
                 process = self._processes.get(record.task_id)
-                if (
-                    process is not None
-                    and process.poll() is not None
-                    and state.status in {"running", "cancelling"}
-                ):
-                    state = self.store.mark_interrupted(
-                        record, state, "任务进程已中断，可重新创建任务",
+                exit_code = process.poll() if process is not None else None
+                if exit_code is not None and state.status in {"running", "cancelling"}:
+                    # 退出后状态已稳定，必须重读以保留 Worker 在退出前发布的终态。
+                    state = self.store.read_state(record)
+                    if state.status in {"running", "cancelling"}:
+                        state = self.store.mark_interrupted(
+                            record, state, "任务进程已中断，可重新创建任务",
+                        )
+                display_state = state
+                cancel_path = Path(record.output_root) / "_task/cancel.requested"
+                if state.status == "running" and cancel_path.is_file():
+                    # 界面立即展示停止中，但不与 Worker 争写持久化状态。
+                    display_state = state.with_updates(
+                        status="cancelling",
+                        message="正在安全停止，请等待当前工作单元完成",
                     )
-                if state.status in {"running", "cancelling"}:
+                if display_state.status in {"running", "cancelling"}:
                     running_count += 1
-                self.task_updated.emit(record.task_id, state)
+                self.task_updated.emit(record.task_id, display_state)
             except (OSError, json.JSONDecodeError, ValueError, TypeError) as error:
                 self.task_error.emit(record.task_id, str(error))
         self.running_count_changed.emit(running_count)
@@ -128,16 +150,24 @@ class TaskManager:
         record = self._records().get(task_id)
         if record is None:
             return False
+        task_dir = Path(record.output_root) / "_task"
+        cancel_path = task_dir / "cancel.requested"
+        if cancel_path.is_file():
+            # 重复请求只读取 Worker 状态，不进行跨进程读改写。
+            state = self.store.read_state(record)
+            if state.status in {"running", "cancelling"}:
+                return True
+            cancel_path.unlink(missing_ok=True)
+            return False
         state = self.store.read_state(record)
         if state.status not in {"running", "cancelling"}:
             return False
-        task_dir = Path(record.output_root) / "_task"
-        (task_dir / "cancel.requested").touch(exist_ok=True)
-        cancelling = state.with_updates(
-            status="cancelling",
-            message="正在安全停止，请等待当前工作单元完成",
-        )
-        self.store.write_state(Path(record.state_path), cancelling)
+        # 只发布权威取消标记，Manager 全程不写运行状态。
+        cancel_path.touch(exist_ok=True)
+        latest_state = self.store.read_state(record)
+        if latest_state.status not in {"running", "cancelling"}:
+            # 任务可能在请求期间恰好结束，清理未被 Worker 移除的标记。
+            cancel_path.unlink(missing_ok=True)
         self.store.append_event(task_dir / "events.jsonl", TaskEvent(
             SCHEMA_VERSION, task_id, "cancel_requested",
             datetime.now().astimezone().isoformat(timespec="seconds"), {},
@@ -163,7 +193,15 @@ class TaskManager:
             return False
         if not self.process_terminator(expected_pid):
             return False
-        stopped = state.with_updates(
+        if not self._wait_for_process_exit(task_id, expected_pid):
+            return False
+        # 确认退出后重读稳定状态，保留 Worker 已经发布的任何终态。
+        latest_state = self.store.read_state(record)
+        if latest_state.status not in {"running", "cancelling"}:
+            return True
+        if latest_state.worker_pid not in {expected_pid, None}:
+            return False
+        stopped = latest_state.with_updates(
             status="cancelled",
             stage="cancelled",
             worker_pid=None,

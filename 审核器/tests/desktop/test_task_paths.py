@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+import re
 
 import pytest
 
@@ -112,7 +113,7 @@ def test_validate_task_paths_rejects_unwritable_parent(monkeypatch, tmp_path: Pa
     output_parent.mkdir()
     monkeypatch.setattr("risk_audit_desktop.task_paths.os.access", lambda *args: False)
 
-    with pytest.raises(PathValidationError, match=str(output_parent)):
+    with pytest.raises(PathValidationError, match=re.escape(str(output_parent))):
         validate_task_paths(input_root, output_parent / "task")
 
 

@@ -40,8 +40,15 @@ class SingleInstanceCoordinator(QObject):
         socket.connectToServer(self.server_name)
         if not socket.waitForConnected(1000):
             return False
-        socket.write(b"activate\n")
-        success = socket.waitForBytesWritten(1000)
+        payload = b"activate\n"
+        if socket.write(payload) != len(payload):
+            socket.disconnectFromServer()
+            return False
+        if socket.bytesToWrite() > 0:
+            socket.waitForBytesWritten(1000)
+        # Windows 命名管道的对端收到命令后会立即断开，此时 waitForBytesWritten
+        # 可能返回 False；写缓冲已清空才是本次短消息已交付的判据。
+        success = socket.bytesToWrite() == 0
         socket.disconnectFromServer()
         return success
 
