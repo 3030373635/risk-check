@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import zipfile
 
 import pytest
@@ -21,6 +22,7 @@ def make_sources(tmp_path: Path):
 
     rulepacks = tmp_path / "source/rulepacks"
     write_file(rulepacks / "active.json", b'{"version":"2.0.0"}')
+    write_file(rulepacks / "releases/2.0.0/manifest.json", b'{"version":"2.0.0"}')
     write_file(rulepacks / "releases/2.0.0/rules/R01.json", b'{"id":"R01"}')
     config = write_file(tmp_path / "source/audit-config.json", b'{"mode":"desktop"}')
     baselines = tmp_path / "source/审核"
@@ -28,6 +30,11 @@ def make_sources(tmp_path: Path):
     entity = write_file(tmp_path / "source/会计主体清单20260907.xlsx", b"entity")
     libreoffice = tmp_path / "source/libreoffice"
     write_file(libreoffice / "program/soffice.exe", b"exe")
+    # 第三方二进制可能保留供应商构建机路径，不应按文本资源误报。
+    write_file(
+        libreoffice / "program/python-core-3.12.14/lib/pip/_vendor/distlib/t64.exe",
+        b"C:\\Users\\builder\\source",
+    )
     write_file(libreoffice / "program/fundamental.ini", b"ini")
     licenses = tmp_path / "source/licenses"
     write_file(licenses / "LibreOffice.txt", b"license")
@@ -152,16 +159,36 @@ def test_verify_distribution_rejects_development_artifacts_and_bad_zip(tmp_path:
     from tools.verify_portable_distribution import verify_distribution, verify_zip
 
     root = tmp_path / "风控矩阵审核器-v2.0.0"
-    write_file(root / "风控矩阵审核器.exe", b"exe")
+    write_file(root / "风控矩阵审核器.exe", b"C:\\Users\\developer\\build")
     write_file(root / "runtime/manifest.json", b'{"schema_version":"1.0","resources":[]}')
     write_file(root / "runtime/leak.txt", b"/Users/developer/project")
+    windows_leak = json.dumps({"path": r"C:\Users\developer\project"}).encode()
+    write_file(root / "runtime/windows-leak.json", windows_leak)
     write_file(root / "runtime/__pycache__/bad.pyc", b"cache")
     errors = verify_distribution(root)
     assert any("__pycache__" in error for error in errors)
-    assert any("开发机" in error for error in errors)
+    assert any("风控矩阵审核器.exe" in error and "开发机" in error for error in errors)
+    assert any("leak.txt" in error and "开发机" in error for error in errors)
+    assert any("windows-leak.json" in error and "开发机" in error for error in errors)
 
     archive = tmp_path / "bad.zip"
     with zipfile.ZipFile(archive, "w") as handle:
         handle.writestr("one/file.txt", "1")
         handle.writestr("two/file.txt", "2")
     assert any("顶层目录" in error for error in verify_zip(archive))
+
+
+def test_active_rulepack_json_does_not_contain_development_machine_paths() -> None:
+    """活动规则包的文本资源不得泄漏 macOS 或 Windows 开发机用户目录。"""
+    rulepacks_root = Path(__file__).resolve().parents[2] / "rulepacks"
+    active = json.loads((rulepacks_root / "active.json").read_text(encoding="utf-8"))
+    release_root = rulepacks_root / "releases" / active["version"]
+    development_path = re.compile(r"(?:/Users/[^/\s]+/|[A-Za-z]:\\+Users\\+[^\\\s]+\\+)")
+
+    leaked = [
+        path.relative_to(release_root).as_posix()
+        for path in release_root.rglob("*.json")
+        if development_path.search(path.read_text(encoding="utf-8"))
+    ]
+
+    assert leaked == []

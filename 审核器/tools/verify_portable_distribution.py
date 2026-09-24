@@ -19,7 +19,11 @@ ALLOWED_ROOT_ITEMS = {
     "outputs",
     "Windows桌面版使用说明.md",
 }
-DEVELOPMENT_PATH = re.compile(rb"(?:/Users/[^/\s]+/|[A-Za-z]:\\Users\\[^\\\s]+\\)")
+DEVELOPMENT_PATH = re.compile(rb"(?:/Users/[^/\s]+/|[A-Za-z]:\\+Users\\+[^\\\s]+\\+)")
+TRUSTED_DISTLIB_LAUNCHER = re.compile(
+    r"^runtime/libreoffice/program/python-core-[^/]+/lib/pip/_vendor/distlib/"
+    r"(?:t32|t64(?:-arm)?|w32|w64(?:-arm)?)\.exe$",
+)
 
 
 def verify_distribution(distribution_root: Path) -> list[str]:
@@ -66,7 +70,8 @@ def verify_distribution(distribution_root: Path) -> list[str]:
             except OSError as error:
                 errors.append(f"文件无法读取：{relative}；{error}")
                 continue
-            if DEVELOPMENT_PATH.search(content):
+            # distlib 官方启动器包含供应商构建路径，仅豁免已确认的六个模板文件。
+            if not TRUSTED_DISTLIB_LAUNCHER.fullmatch(relative) and DEVELOPMENT_PATH.search(content):
                 errors.append(f"文件包含开发机绝对路径：{relative}")
     return errors
 

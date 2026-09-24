@@ -86,8 +86,10 @@ def validate_sources(sources: DistributionSources) -> list[str]:
 def _manifest(runtime_root: Path) -> dict[str, object]:
     """生成 runtime 全量文件清单；runtime_root 为已收集资源根。"""
     resources = []
+    manifest_path = runtime_root / "manifest.json"
     for path in sorted(runtime_root.rglob("*"), key=lambda item: item.as_posix()):
-        if not path.is_file() or path.name == "manifest.json":
+        # 只排除即将写入的 runtime 根清单，规则包自己的 manifest 必须纳入校验。
+        if not path.is_file() or path == manifest_path:
             continue
         resources.append({
             "path": path.relative_to(runtime_root).as_posix(),

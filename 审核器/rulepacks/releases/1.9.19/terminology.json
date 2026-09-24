@@ -7,8 +7,8 @@
     "purpose": "完整名称识别；不是合格词白名单，不扩大当前措施允许载体集合，不建立主体或名称等价关系",
     "source_manifest_sha256": "b719c8493dd24aefda471ea667d4f34c15635c18a4e0a56ff524a8bd1e41ca28",
     "source_roots": [
-      "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/星通公司",
-      "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）"
+      "审核/星通公司",
+      "审核/湘西公司风控矩阵(20260911上报版）"
     ]
   },
   "schema_version": "1.0",

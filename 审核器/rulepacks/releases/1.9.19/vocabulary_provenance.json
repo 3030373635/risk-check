@@ -1,5 +1,5 @@
 {
-  "catalog_path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核器/vocabulary/20260914-102-final/catalog.json",
+  "catalog_path": "审核器/vocabulary/20260914-102-final/catalog.json",
   "catalog_sha256": "45a0a9c2039001f4a49140e8e1035e4a50476e221c4d0b36f6d47c0feada8403",
   "summary": {
     "candidate_counts": {
@@ -34,7 +34,7 @@
     "files_with_errors": 8,
     "holdout_files": 13,
     "mining_files": 187,
-    "output": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核器/vocabulary/20260914-102-final",
+    "output": "审核器/vocabulary/20260914-102-final",
     "parsed_files": 200,
     "recognition_counts": {
       "carrier": 932,
