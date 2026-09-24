@@ -10,6 +10,7 @@ from pathlib import Path
 import secrets
 import shutil
 import tempfile
+import time
 from typing import Any, Callable, Mapping
 
 from risk_audit_desktop.task_contracts import (
@@ -30,6 +31,10 @@ from risk_audit_desktop.task_paths import (
     reserve_output_path,
     validate_task_paths,
 )
+
+
+STATE_READ_ATTEMPTS = 5
+STATE_READ_RETRY_SECONDS = 0.01
 
 
 def atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -227,7 +232,16 @@ class TaskStore:
 
     def read_state(self, record: TaskRecord) -> TaskState:
         """读取任务状态；record 为索引记录。"""
-        payload = json.loads(Path(record.state_path).read_text(encoding="utf-8"))
+        state_path = Path(record.state_path)
+        for attempt in range(STATE_READ_ATTEMPTS):
+            try:
+                payload = json.loads(state_path.read_text(encoding="utf-8"))
+                break
+            except PermissionError:
+                if attempt == STATE_READ_ATTEMPTS - 1:
+                    raise
+                # Windows 原子替换目标文件时可能出现短暂的共享冲突。
+                time.sleep(STATE_READ_RETRY_SECONDS)
         if not isinstance(payload, dict):
             raise ContractError("任务状态必须是 JSON 对象")
         return TaskState.from_dict(payload)

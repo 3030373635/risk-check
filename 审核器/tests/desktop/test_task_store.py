@@ -131,6 +131,58 @@ def test_task_store_adds_reads_and_marks_interrupted(tmp_path: Path) -> None:
     assert interrupted.message == "任务进程已中断"
 
 
+def test_read_state_retries_transient_windows_permission_error(monkeypatch, tmp_path: Path) -> None:
+    """Windows 原子替换短暂拒绝读取时，状态读取必须重试后成功。"""
+    from risk_audit_desktop.task_store import TaskStore
+
+    store = TaskStore(tmp_path / "data")
+    record = make_record(tmp_path)
+    state = make_state()
+    state_path = Path(record.state_path)
+    store.write_state(state_path, state)
+    original_read_text = Path.read_text
+    attempts = 0
+
+    def transient_permission_error(path: Path, *args, **kwargs) -> str:
+        """前两次模拟 Windows 共享冲突；path 为目标，args/kwargs 透传读取参数。"""
+        nonlocal attempts
+        if path == state_path:
+            attempts += 1
+            if attempts <= 2:
+                raise PermissionError(13, "Permission denied", str(path))
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", transient_permission_error)
+
+    assert store.read_state(record) == state
+    assert attempts == 3
+
+
+def test_read_state_reraises_persistent_permission_error(monkeypatch, tmp_path: Path) -> None:
+    """Windows 持续拒绝读取时，有界重试后必须保留原异常。"""
+    from risk_audit_desktop.task_store import STATE_READ_ATTEMPTS, TaskStore
+
+    store = TaskStore(tmp_path / "data")
+    record = make_record(tmp_path)
+    state_path = Path(record.state_path)
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text("{}", encoding="utf-8")
+    attempts = 0
+
+    def persistent_permission_error(path: Path, *args, **kwargs) -> str:
+        """模拟持续的 Windows 访问拒绝；path 为目标，args/kwargs 为读取参数。"""
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(Path, "read_text", persistent_permission_error)
+
+    with pytest.raises(PermissionError, match="Permission denied") as raised:
+        store.read_state(record)
+    assert attempts == STATE_READ_ATTEMPTS
+    assert raised.value.errno == 13
+
+
 def test_append_event_writes_one_json_object_per_line(tmp_path: Path) -> None:
     """诊断事件必须追加为独立 JSON 行，不能改写历史。"""
     from risk_audit_desktop.task_contracts import TaskEvent
