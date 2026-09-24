@@ -180,7 +180,6 @@ class TaskStore:
                 rulepack=str(load_active_rulepack(paths.rulepacks).resolve()),
                 entity_file=str(paths.entity_file.resolve()),
                 baseline_root=str(paths.baseline_root.resolve()),
-                model_root=str(paths.model_root.resolve()),
                 config_file=str(paths.config_file.resolve()),
                 soffice_path=str(paths.soffice.resolve()),
                 created_at=timestamp,

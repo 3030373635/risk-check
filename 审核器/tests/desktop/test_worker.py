@@ -30,7 +30,6 @@ def create_request(tmp_path: Path):
         rulepack=str((tmp_path / "runtime/resources/rulepacks/releases/1.9.19").resolve()),
         entity_file=str((tmp_path / "runtime/resources/entities/entities.xlsx").resolve()),
         baseline_root=str((tmp_path / "runtime/resources/baselines").resolve()),
-        model_root=str((tmp_path / "runtime/resources/models/model").resolve()),
         config_file=str(config.resolve()),
         soffice_path=str(soffice.resolve()),
         created_at="2026-09-24T10:30:15+08:00",
@@ -97,7 +96,7 @@ def test_worker_maps_audit_result_to_terminal_state(
     assert Path(state.result_summary["audit_statistics_report"]).is_file()
     assert Path(state.result_summary["review_report"]).is_file()
     assert captured["runs_root"] == Path(request.output_root) / "_task/reports"
-    assert captured["model_root"] == Path(request.model_root)
+    assert "model_root" not in captured
     assert not (Path(request.output_root) / "_task/work").exists()
     assert not (Path(request.output_root) / "_task/libreoffice-profile").exists()
     assert (Path(request.output_root) / "_task/reports").is_dir()

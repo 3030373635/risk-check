@@ -18,7 +18,6 @@ def request_payload(tmp_path: Path) -> dict:
         "rulepack": str(tmp_path / "runtime/resources/rulepacks/releases/1.9.19"),
         "entity_file": str(tmp_path / "runtime/resources/entities/entities.xlsx"),
         "baseline_root": str(tmp_path / "runtime/resources/baselines"),
-        "model_root": str(tmp_path / "runtime/resources/models/model"),
         "config_file": str(tmp_path / "runtime/resources/rulepacks/audit-config.json"),
         "soffice_path": str(tmp_path / "runtime/libreoffice/program/soffice.exe"),
         "created_at": "2026-09-24T10:30:15+08:00",

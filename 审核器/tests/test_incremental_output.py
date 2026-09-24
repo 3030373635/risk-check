@@ -259,8 +259,8 @@ def test_output_state_accumulates_pending_and_unparsed_files(tmp_path):
     assert [item['file'] for item in unparsed] == ['A001.xlsx', 'B001.xlsx']
 
 
-def test_incremental_rerun_preserves_old_ownership_for_later_entities(tmp_path):
-    """tmp_path 为隔离目录；上一轮后续主体的程序意见不可因增量归属覆盖而变成人工意见。"""
+def test_incremental_rerun_clears_each_entity_old_opinions(tmp_path):
+    """增量写出逐主体清空旧意见；tmp_path 为隔离目录。"""
     from dataclasses import replace
     from test_delivery_v180 import make_file
     from risk_audit.writer import OutputState, write_outputs
@@ -276,12 +276,15 @@ def test_incremental_rerun_preserves_old_ownership_for_later_entities(tmp_path):
     state = OutputState()
     for file in [first, second]:
         write_outputs([file], [], output, output_state=state, metadata_dir=metadata)
-        # 第一主体写出后，第二主体的旧程序归属必须仍在，保证中断后可安全重跑。
-        assert str(second.relative_path) in json.loads((metadata / 'ownership.json').read_text())
+        # 尚未处理的主体仍保留归属，当前主体完成后立即移除旧归属。
+        current_ownership = json.loads((metadata / 'ownership.json').read_text())
+        if file is first:
+            assert str(second.relative_path) in current_ownership
+        assert str(file.relative_path) not in current_ownership
         book = load_workbook(output / file.relative_path)
-        assert book.active['B2'].value == '人工保留意见'
+        assert book.active['B2'].value is None
         book.close()
-    assert len(json.loads((metadata / 'ownership.json').read_text())) == 2
+    assert json.loads((metadata / 'ownership.json').read_text()) == {}
 
 
 def test_batch_path_collision_is_rejected_before_first_output(tmp_path):

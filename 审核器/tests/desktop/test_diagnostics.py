@@ -98,7 +98,6 @@ def test_portable_paths_expose_fixed_runtime_resources(tmp_path: Path) -> None:
     assert paths.rulepacks == app_root / "runtime/resources/rulepacks"
     assert paths.baseline_root == app_root / "runtime/resources/baselines"
     assert paths.entity_file == app_root / "runtime/resources/entities/会计主体清单20260907.xlsx"
-    assert paths.model_root == app_root / "runtime/resources/models/bge-small-zh-v1.5"
     assert paths.config_file == app_root / "runtime/resources/rulepacks/audit-config.json"
 
 
@@ -119,3 +118,30 @@ def test_startup_diagnostics_lists_missing_required_resource(tmp_path: Path) -> 
     assert not report.can_start
     assert any(str(paths.soffice) in item.message for item in report.items)
     assert any(str(paths.entity_file) in item.message for item in report.items)
+
+
+def test_startup_diagnostics_succeeds_without_removed_semantic_model(tmp_path: Path) -> None:
+    """本地语义模型已停用并删除时，其他运行资源完整即可创建任务。"""
+    from risk_audit_desktop.diagnostics import run_startup_diagnostics
+    from risk_audit_desktop.task_paths import PortablePaths
+
+    paths = PortablePaths.from_executable(tmp_path / "app/风控矩阵审核器.exe")
+    paths.runtime_root.mkdir(parents=True)
+    (paths.runtime_root / "manifest.json").write_text(
+        json.dumps({"schema_version": "1.0", "app_version": "2.0.0", "resources": []}),
+        encoding="utf-8",
+    )
+    paths.soffice.parent.mkdir(parents=True)
+    paths.soffice.write_bytes(b"exe")
+    release_root = paths.rulepacks / "releases/2.0.0"
+    release_root.mkdir(parents=True)
+    (paths.rulepacks / "active.json").write_text('{"version":"2.0.0"}', encoding="utf-8")
+    paths.config_file.write_text('{"mode":"desktop"}', encoding="utf-8")
+    paths.entity_file.parent.mkdir(parents=True)
+    paths.entity_file.write_bytes(b"entity")
+    paths.baseline_root.mkdir(parents=True)
+
+    report = run_startup_diagnostics(paths)
+
+    assert report.can_start
+    assert all("bge-small-zh-v1.5" not in item.relative_path for item in report.items)

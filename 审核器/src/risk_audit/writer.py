@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-from copy import deepcopy
 import json
 import math
 import os
@@ -31,7 +30,7 @@ NS = {"m": MAIN, "r": REL}
 
 @dataclass
 class OutputState:
-    """增量状态；ownership 为本批归属，pending/unparsed 为累计诊断，previous_ownership 为运行前归属。"""
+    """增量状态；ownership 为本轮归属，pending/unparsed 为累计诊断，previous_ownership 用于变更检测。"""
     ownership: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     pending: list[dict[str, Any]] = field(default_factory=list)
     unparsed: list[dict[str, Any]] = field(default_factory=list)
@@ -260,102 +259,23 @@ def compare_ooxml_preservation(source: Path, destination: Path, operations: dict
     return {"passed": not differences, "differences": differences[:100], "unchanged_package_parts": unchanged_parts, "allowed_changes": "仅正式业务表新增/重建单一审核意见列、列宽及dimension"}
 
 
-def _existing_owned_state(destination: Path, ownership: dict[str, Any], relative: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not destination.exists(): return [], []
+def _detect_owned_edits(destination: Path, ownership: dict[str, Any], relative: str) -> list[dict[str, Any]]:
+    """检测旧副本中的程序意见是否被修改；参数为副本、旧归属和相对路径。"""
+    if not destination.exists():
+        return []
     wb = load_compatible_workbook(
         destination, read_only=False, data_only=False, rich_text=True,
     )
-    states = []; edits = []
-    contents = _opinion_xml(destination, {(item['sheet'], item['cell']) for item in ownership.get(relative, [])})
+    edits = []
     for item in ownership.get(relative, []):
-        if item["sheet"] not in wb.sheetnames: continue
+        if item["sheet"] not in wb.sheetnames:
+            continue
         current = str(wb[item["sheet"]][item["cell"]].value or "")
         expected = item.get("rendered_text", item.get("text", ""))
-        human = item.get("human_text", "")
         if current != expected:
-            program = item.get("program_text", item.get("text", ""))
-            human = _strip_generated_text(current, program)
-            edits.append({**item, "current": current, "human_text": human})
-        content = _strip_program(contents.get((item['sheet'], item['cell']), ''), item.get('program_text', item.get('text', '')))
-        states.append({**item, "current": current, "human_text": human, "human_content": content})
-    return states, edits
-
-
-def _opinion_xml(source: Path, targets: set[tuple[str, str]]) -> dict[tuple[str, str], str]:
-    """读取指定人工意见富文本；source 为工作簿，targets 为工作表及单元格坐标，保留原修订格式。"""
-    out = {}
-    with zipfile.ZipFile(source) as archive:
-        paths = _sheet_paths(archive)
-        strings = etree.fromstring(archive.read('xl/sharedStrings.xml')) if 'xl/sharedStrings.xml' in archive.namelist() else []
-        for title in {title for title, _ in targets}:
-            if title not in paths:
-                continue
-            root = etree.fromstring(archive.read(paths[title]))
-            for cell in root.xpath('//m:sheetData/m:row/m:c', namespaces=NS):
-                key = (title, cell.get('r'))
-                if key not in targets:
-                    continue
-                if cell.get('t') == 's':
-                    content = deepcopy(strings[int(cell.find(f'{{{MAIN}}}v').text)])
-                    content.tag = f'{{{MAIN}}}is'
-                else:
-                    content = cell.find(f'{{{MAIN}}}is')
-                if content is not None:
-                    out[key] = etree.tostring(content, encoding='unicode')
-    return out
-
-
-def _strip_program(content: str, program: str, *, whole_line: bool = False) -> str:
-    """剥离已识别意见文字；content 为 XML，program 为指定文本，whole_line 仅移除完整相同的人工行。"""
-    if not content:
-        return ''
-    root = etree.fromstring(content.encode()); nodes = root.xpath('.//m:t', namespaces=NS)
-    text = ''.join(node.text or '' for node in nodes)
-    if whole_line:
-        match = re.search(r'(?m)^' + re.escape(program) + r'$', text) if program else None
-        start = match.start() if match else -1
-    elif program and (text == program or text.endswith('\n' + program)):
-        # 仅移除末尾完整生成块，人工说明内部的相同文字绝不能按子串剥离。
-        start = len(text) - len(program)
-    else:
-        start = -1
-    if start < 0:
-        return content
-    end = start + len(program)
-    if start > 0 and text[start - 1] == '\n':
-        start -= 1
-    offset = 0
-    for node in nodes:
-        value = node.text or ''; left = max(0, start - offset); right = min(len(value), end - offset)
-        if left < right:
-            node.text = value[:left] + value[right:]
-        offset += len(value)
-    # 清除被剥离程序意见的空段，避免重复复核不断累积不可见段落。
-    for child in list(root):
-        if not ''.join(child.itertext()):
-            root.remove(child)
-    return etree.tostring(root, encoding='unicode') if ''.join(root.itertext()) else ''
-
-
-def _strip_generated_text(text: str, program: str) -> str:
-    """移除准确追加的旧程序块；text 为现有意见全文，program 为归属记录中的程序全文。"""
-    if not program:
-        return text
-    if text == program:
-        return ''
-    return text[:-(len(program) + 1)] if text.endswith('\n' + program) else text
-
-
-def _merge_content(left: str, right: str) -> str:
-    """合并不同来源的人工富文本；left/right 为去重后的 XML 段，空来源不追加换行。"""
-    if not left or not right:
-        return left or right
-    root = etree.fromstring(left.encode()); source = etree.fromstring(right.encode())
-    run = etree.SubElement(root, f'{{{MAIN}}}r'); text = etree.SubElement(run, f'{{{MAIN}}}t')
-    text.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve'); text.text = '\n'
-    for child in source:
-        root.append(deepcopy(child))
-    return etree.tostring(root, encoding='unicode')
+            edits.append({**item, "current": current})
+    wb.close()
+    return edits
 
 
 def _join_opinions(messages: list[str], order: dict[str, tuple[int, int]]) -> str:
@@ -400,9 +320,9 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
     output_state = output_state if output_state is not None else OutputState()
     ownership_path = metadata_dir / "ownership.json"
     if output_state.previous_ownership is None:
-        # 首次写出前冻结旧归属，后续主体仍须据此区分人工意见与上一轮程序意见。
+        # 首次写出前冻结旧归属，逐主体写出时据此检测旧副本中的人工改写。
         output_state.previous_ownership = json.loads(ownership_path.read_text(encoding="utf-8")) if ownership_path.exists() else {}
-        # 保留尚未处理主体的旧归属，中途失败后重跑仍可保留其人工改动。
+        # 尚未处理主体的旧归属暂存到本批状态，避免增量写出提前删除其变更检测依据。
         output_state.ownership = dict(output_state.previous_ownership)
     old_ownership = output_state.previous_ownership
     by_location: dict[tuple[str, str, int], list[str]] = defaultdict(list)
@@ -470,8 +390,8 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
             # parse_files stores converted workbook under work dir; resolve from converted_from sibling metadata set by runner.
             source = Path(getattr(file, "_converted_path", ""))
         source = Path(getattr(file, '_preprocessed_path', source))
-        states, edits = _existing_owned_state(destination, old_ownership, str(rel_out))
-        # 每次使用本次源材料业务数据；旧输出只提供需保留的人工意见，不能回滚整改。
+        edits = _detect_owned_edits(destination, old_ownership, str(rel_out))
+        # 每次使用本次源材料业务数据；旧输出只用于变更告警，不能回滚整改或继承意见。
         base = source
         if edits: warnings.extend({"type": "managed_cell_modified", "file": str(rel_out), **e} for e in edits)
         # 按实际 OOXML 内容读取，原冻结规则允许的 ET 副本不依赖扩展名。
@@ -496,72 +416,24 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
             values: dict[int, str] = {}
             for (fp, st, row), messages in by_location.items():
                 if fp == str(file.relative_path) and st == sheet.title: values[row] = _join_opinions(messages, message_order)
-            matrix_output_headers = {
-                '省公司版本责任主体（核对后删除）',
-                '岗位清单已有的控制措施编号',
-                '审核意见',
-            }
-            reset_matrix_outputs = any(
-                part.sheet_type == 'matrix' and matrix_output_headers.issubset(part.audit_columns)
-                for part in related_sheets
-            )
-            if reset_matrix_outputs:
-                # 完整三列表示输入是上一轮审核后的修正版，旧输出全部作废并按本轮结果重建。
-                first_header_row = min(opinion_header_rows)
-                for row_number in range(first_header_row + 1, source_sheet.max_row + 1):
-                    if row_number not in opinion_header_rows:
-                        values.setdefault(row_number, '')
-            sheet_states = [] if reset_matrix_outputs else [x for x in states if x["sheet"] == sheet.title]
-            source_contents = {}
-            if baselines is not None:
-                letter = get_column_letter(sheet.output_column)
-                source_contents = _opinion_xml(base, {(sheet.title, f'{letter}{row}') for row in range(max(sheet.header_rows, default=2) + 1, source_sheet.max_row + 1)})
-            if not reset_matrix_outputs and sheet.output_column in sheet.audit_columns.values():
-                owned_rows = {int(re.search(r'\d+', state['cell']).group()): state for state in sheet_states}
-                # 无程序归属记录的原意见视为人工内容，复用同用途列时禁止覆盖。
-                for source_row in source_sheet.iter_rows(min_row=max(sheet.header_rows, default=2) + 1, min_col=sheet.output_column, max_col=sheet.output_column):
-                    cell = source_row[0]
-                    if cell.value is None or cell.row in opinion_header_rows:
-                        continue
-                    source_human = str(cell.value)
-                    if cell.row in owned_rows:
-                        state = owned_rows[cell.row]
-                        program = state.get('program_text', state.get('text', ''))
-                        source_human = _strip_generated_text(source_human, program)
-                        human = state.get('human_text', '')
-                        # 本次源与旧副本人工意见都保留，按完整行去重并报告实际来源差异。
-                        old_lines = human.splitlines()
-                        new_lines = source_human.splitlines()
-                        if human and source_human and any(line not in old_lines for line in new_lines):
-                            warnings.append({'type': 'human_opinion_sources_differ', 'file': str(rel_out), 'sheet': sheet.title, 'cell': cell.coordinate, 'message': '现行源与已有副本的人工意见不同，已合并保留两者，请复核。'})
-                        state['human_text'] = '\n'.join(dict.fromkeys(old_lines + new_lines))
-                        if baselines is not None:
-                            source_content = _strip_program(source_contents.get((sheet.title, cell.coordinate), ''), program)
-                            old_content = state.get('human_content', '')
-                            if not human:
-                                state['human_content'] = source_content
-                            elif source_human and any(line not in old_lines for line in new_lines):
-                                # 只追加新来源的人工文字段，已有格式段保持原样。
-                                for line in old_lines:
-                                    source_content = _strip_program(source_content, line, whole_line=True)
-                                state['human_content'] = _merge_content(old_content, source_content)
-                    else:
-                        sheet_states.append({'sheet': sheet.title, 'cell': cell.coordinate, 'human_text': source_human,
-                                             'human_content': source_contents.get((sheet.title, cell.coordinate), '')})
-            for state in sheet_states:
-                row = int(re.search(r"\d+", state["cell"]).group())
-                human = state.get("human_text", "")
-                generated = values.get(row, "")
-                values[row] = human + (("\n" + generated) if human and generated else generated)
+            # 重新审核必须重建整列结果：旧审核意见无论来源和归属都不得进入本轮输出。
+            first_header_row = min(opinion_header_rows)
+            for row_number in range(first_header_row + 1, source_sheet.max_row + 1):
+                if row_number not in opinion_header_rows:
+                    values.setdefault(row_number, '')
             ops[sheet.title] = {"column": sheet.output_column, "header_row": opinion_header_rows[0], "header_rows": opinion_header_rows, "values": values}
             if baselines is not None:
-                ops[sheet.title]['rich_values'] = {int(re.search(r'\d+', item['cell'])[0]): item['human_content'] for item in sheet_states if item.get('human_content')}
                 ops[sheet.title]['program_values'] = {row: _join_opinions(by_location.get((str(file.relative_path), sheet.title, row), []), message_order) for row in values}
             letter = get_column_letter(sheet.output_column)
             for row, text in values.items():
-                human = next((x.get("human_text", "") for x in sheet_states if int(re.search(r"\d+", x["cell"]).group()) == row), "")
                 program = _join_opinions(by_location.get((str(file.relative_path), sheet.title, row), []), message_order)
-                if human or program: ownership.setdefault(str(rel_out), []).append({"sheet": sheet.title, "cell": f"{letter}{row}", "rendered_text": text, "human_text": human, "program_text": program})
+                if program:
+                    ownership.setdefault(str(rel_out), []).append({
+                        "sheet": sheet.title,
+                        "cell": f"{letter}{row}",
+                        "rendered_text": text,
+                        "program_text": program,
+                    })
         source_book.close()
         patch_ooxml(base, destination, ops)
         report = compare_ooxml_preservation(base, destination, ops)

@@ -138,7 +138,6 @@ def run_startup_diagnostics(paths: PortablePaths) -> DiagnosticReport:
         _required_path_item(paths.config_file),
         _required_path_item(paths.entity_file),
         _required_path_item(paths.baseline_root, expect_directory=True),
-        _required_path_item(paths.model_root, expect_directory=True),
     ]
     return DiagnosticReport([*manifest_report.items, *required])
 

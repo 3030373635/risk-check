@@ -61,7 +61,6 @@ class TaskRequest:
     rulepack: str
     entity_file: str
     baseline_root: str
-    model_root: str
     config_file: str | None
     soffice_path: str
     created_at: str
@@ -73,7 +72,7 @@ class TaskRequest:
         _validate_schema(str(known["schema_version"]))
         _validate_absolute_paths(known, (
             "input_root", "output_root", "rulepack", "entity_file",
-            "baseline_root", "model_root", "config_file", "soffice_path",
+            "baseline_root", "config_file", "soffice_path",
         ))
         return cls(**known)
 

@@ -157,7 +157,6 @@ def create_portable_resources(tmp_path: Path):
     paths.entity_file.parent.mkdir(parents=True)
     paths.entity_file.write_bytes(b"xlsx")
     paths.baseline_root.mkdir(parents=True)
-    paths.model_root.mkdir(parents=True)
     release = paths.rulepacks / "releases/1.9.19"
     release.mkdir(parents=True)
     (paths.rulepacks / "active.json").write_text('{"version":"1.9.19"}', encoding="utf-8")
@@ -197,6 +196,7 @@ def test_create_task_writes_request_state_and_index(tmp_path: Path) -> None:
     assert record.task_id == "20260924-103015-a1b2"
     assert record.display_name == "第一批审核"
     assert request.input_root == str(input_root.resolve())
+    assert "model_root" not in request.to_dict()
     assert state.status == "running" and state.worker_pid is None
     assert store.list_tasks().records == [record]
 

@@ -147,8 +147,8 @@ def test_missing_matrix_fields_are_public_material_review(has_record):
     assert result['location_policy'] == 'material'
 
 
-def test_reused_audit_column_preserves_human_opinion(tmp_path):
-    """复用审核意见列时保留人工意见；tmp_path 为测试目录。"""
+def test_reused_audit_column_rebuilds_current_opinion_only(tmp_path):
+    """复用审核意见列时只保留本轮意见；tmp_path 为测试目录。"""
     from risk_audit.writer import write_outputs
     file = make_file(tmp_path, '信通公司06矩阵.xlsx', ['matrix'])
     finding = Finding('k', 'id', 'r', 'c', 'R05', 1, 'violation', '205H', '信通公司', '06', 'default', file.relative_path.as_posix(), '业务表', 2, '请补充姓名。', {}, 'row')
@@ -157,14 +157,14 @@ def test_reused_audit_column_preserves_human_opinion(tmp_path):
     write_outputs([file], [finding], output, metadata_dir=metadata)
     book = load_workbook(output / file.relative_path)
     assert book.active.max_column == 2
-    assert book.active['B2'].value == '人工保留意见\n请补充姓名。'
-    # 对同一输出重跑，已确认归属的程序意见必须更新，人工内容保留。
+    assert book.active['B2'].value == '请补充姓名。'
+    # 本轮没有意见时必须清空旧内容，不能把任何历史审核结果带入新副本。
     write_outputs([file], [], output, metadata_dir=metadata)
-    assert load_workbook(output / file.relative_path).active['B2'].value == '人工保留意见'
+    assert load_workbook(output / file.relative_path).active['B2'].value is None
 
 
 def test_rerun_uses_corrected_source_business_data(tmp_path):
-    """tmp_path 为隔离目录；有人工意见时重跑也必须使用已整改的现行源业务数据。"""
+    """重跑使用整改后的业务数据并清空旧意见；tmp_path 为隔离目录。"""
     from risk_audit.writer import write_outputs
     file = make_file(tmp_path, '信通公司06矩阵.xlsx', ['matrix'])
     output = tmp_path / 'output'
@@ -177,11 +177,11 @@ def test_rerun_uses_corrected_source_business_data(tmp_path):
     write_outputs([file], [], output, metadata_dir=metadata)
     result = load_workbook(output / file.relative_path)
     assert result.active['A2'].value == '整改后措施'
-    assert result.active['B2'].value == '人工保留意见'
+    assert result.active['B2'].value is None
 
 
-def test_rerun_preserves_new_source_and_output_human_opinions(tmp_path):
-    """tmp_path 为隔离目录；源文件与已有副本的人工意见同时保留，不得静默覆盖。"""
+def test_rerun_clears_source_and_output_old_opinions(tmp_path):
+    """源件和旧副本意见均不带入重跑结果；tmp_path 为隔离目录。"""
     from risk_audit.writer import write_outputs
     file = make_file(tmp_path, '信通公司06矩阵.xlsx', ['matrix'])
     output = tmp_path / 'output'
@@ -193,9 +193,8 @@ def test_rerun_preserves_new_source_and_output_human_opinions(tmp_path):
     file.sha256 = sha256_file(file.source)
     warnings, _ = write_outputs([file], [], output, metadata_dir=metadata)
     value = load_workbook(output / file.relative_path).active['B2'].value
-    assert '人工保留意见' in value
-    assert '本次源材料新增人工意见' in value
-    assert any(warning['type'] == 'human_opinion_sources_differ' for warning in warnings)
+    assert value is None
+    assert not any(warning['type'] == 'human_opinion_sources_differ' for warning in warnings)
 
 
 def test_material_opinion_keeps_rule_number_without_material_marker(tmp_path):
@@ -260,7 +259,7 @@ def test_missing_unit_material_is_carried_only_by_its_reporting_group(tmp_path):
     output = tmp_path / 'output'
     metadata = tmp_path / 'metadata'
     warnings, _ = write_outputs([file], [finding], output, entities=entities, metadata_dir=metadata)
-    assert load_workbook(output / file.relative_path).active['B2'].value == '人工保留意见'
+    assert load_workbook(output / file.relative_path).active['B2'].value is None
     assert json.loads((metadata / '待回填资料级意见.json').read_text())[0]['entity_code'] == 'child'
     assert any(warning['type'] == 'no_writable_sheet' for warning in warnings)
     entities['205H'] = Entity('205H', '长沙公司本部', '长沙公司')

@@ -59,11 +59,6 @@ class PortablePaths:
         return self.runtime_root / "resources/entities/会计主体清单20260907.xlsx"
 
     @property
-    def model_root(self) -> Path:
-        """返回本地语义模型目录；无参数。"""
-        return self.runtime_root / "resources/models/bge-small-zh-v1.5"
-
-    @property
     def config_file(self) -> Path:
         """返回桌面审核运行配置路径；无参数。"""
         return self.rulepacks / "audit-config.json"

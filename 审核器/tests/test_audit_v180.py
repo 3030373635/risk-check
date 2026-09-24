@@ -42,8 +42,8 @@ def create_sample(root):
     return path
 
 
-def test_confirmed_pack_full_audit_preserves_inputs_and_human_opinions(tmp_path):
-    """tmp_path 为隔离目录；验证新规则意见、适用范围、原始哈希及人工意见保留。"""
+def test_confirmed_pack_full_audit_rebuilds_opinions(tmp_path):
+    """验证本轮意见、适用范围和源文件哈希；tmp_path 为隔离目录。"""
     from run_audit import configure_soffice
     configure_soffice()
     input_root = tmp_path / 'input'
@@ -62,7 +62,7 @@ def test_confirmed_pack_full_audit_preserves_inputs_and_human_opinions(tmp_path)
     assert '控制目标' in output['风控矩阵']['G2'].value
     assert output['风控矩阵']['G2'].value.index('【第3条】') < output['风控矩阵']['G2'].value.index('【第14条】')
     assert '【第14条】请核实适用性匹配情况。' in output['风控矩阵']['G2'].value
-    assert '人工样例意见' in output['岗位内控责任清单']['I2'].value
+    assert '人工样例意见' not in output['岗位内控责任清单']['I2'].value
     assert '【第13条】' in output['岗位内控责任清单']['I2'].value
     assert '【第8条】' in output['岗位内控责任清单']['I3'].value
     assert '【第11条】经办对应主体责任、审核对应审核责任、审批对应审批责任。' in output['岗位内控责任清单']['I4'].value

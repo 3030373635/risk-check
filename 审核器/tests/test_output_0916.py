@@ -787,8 +787,8 @@ def test_missing_incompatible_sheet_is_still_reported(tmp_path, registry, hidden
     assert findings[0].message == '【第6条】未找到“不相容岗位清单”，请核实是否漏报。'
 
 
-def test_new_pack_audit_and_repeat_preserve_human_opinions(tmp_path):
-    """tmp_path 为测试目录；审核统计表放在输出根目录，辅助资料按运行归档。"""
+def test_new_pack_audit_and_repeat_rebuild_opinions(tmp_path):
+    """重跑重建意见且统计表按约定归档；tmp_path 为测试目录。"""
     import json
     from test_audit_v180 import create_sample
     from run_audit import configure_soffice
@@ -815,7 +815,7 @@ def test_new_pack_audit_and_repeat_preserve_human_opinions(tmp_path):
     output = load_workbook(tmp_path / 'output' / source.name, rich_text=True)
     assert list(output['风控矩阵'].values)[0][-3:] == ('省公司版本责任主体（核对后删除）', '岗位清单已有的控制措施编号', '审核意见')
     assert [output['岗位内控责任清单'].cell(row, 1).value for row in (2, 3, 4)] == ['M1', 'M10', 'M10']
-    assert '人工样例意见' in output['岗位内控责任清单']['I3'].value
+    assert '人工样例意见' not in (output['岗位内控责任清单']['I3'].value or '')
     assert 'feedback_report' not in result
     assert 'feedback_html_report' not in result
     assert 'audit_summary_report' not in result
@@ -856,13 +856,13 @@ def test_new_pack_audit_and_repeat_preserve_human_opinions(tmp_path):
     second = audit(source.parent, tmp_path / 'output', active_pack, ROOT / '审核/会计主体清单20260907.xlsx', ROOT, tmp_path / 'runs', scope_file=scope)
     assert second['write_completed']
     repeated = load_workbook(tmp_path / 'output' / source.name)
-    assert repeated['岗位内控责任清单']['I3'].value.count('人工样例意见') == 1
+    assert '人工样例意见' not in (repeated['岗位内控责任清单']['I3'].value or '')
     assert repeated['风控矩阵'].max_column == output['风控矩阵'].max_column
     assert sha256_file(source) == before
 
 
-def test_interrupted_run_ownership_preserves_manual_edit_on_retry(tmp_path, monkeypatch):
-    """tmp_path/monkeypatch 为测试工具；汇总阶段中断后的人工修改在重跑时仍须保留。"""
+def test_interrupted_run_ownership_replaces_manual_edit_on_retry(tmp_path, monkeypatch):
+    """汇总中断后的旧意见在重跑时被替换；参数为测试目录和替换工具。"""
     from test_audit_v180 import create_sample
     from run_audit import configure_soffice
     from risk_audit import runner as audit_runner
@@ -900,7 +900,7 @@ def test_interrupted_run_ownership_preserves_manual_edit_on_retry(tmp_path, monk
                                 ROOT / '审核/会计主体清单20260907.xlsx', ROOT, tmp_path / 'runs', scope_file=scope)
 
     repeated = load_workbook(output_path)
-    assert '中断后人工意见' in repeated[owned_cell['sheet']][owned_cell['cell']].value
+    assert '中断后人工意见' not in (repeated[owned_cell['sheet']][owned_cell['cell']].value or '')
     assert Path(result['audit_metadata_dir']).parent == Path(result['run_dir'])
 
 
@@ -964,8 +964,8 @@ def test_natural_sort_extracts_numbers_from_actual_nonstandard_measure_ids(tmp_p
     ]
 
 
-def test_complete_writeback_preserves_rich_human_opinion(tmp_path):
-    """tmp_path 为测试目录；程序意见追加后保留人工删除线红字，并在重复运行时保持一次。"""
+def test_complete_writeback_replaces_rich_old_opinion(tmp_path):
+    """程序意见替换旧富文本且重复运行不累积；tmp_path 为测试目录。"""
     from risk_audit.writer import write_outputs
     path = tmp_path / '09信通公司三清单.xlsx'; book = Workbook(); ws = book.active; ws.title = '岗位内控责任清单'
     ws.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色', '审核意见'])
@@ -976,13 +976,11 @@ def test_complete_writeback_preserves_rich_human_opinion(tmp_path):
     for _ in range(2):
         write_outputs([file], [finding], tmp_path / 'output', baselines={}, metadata_dir=tmp_path / 'metadata')
         cell = load_workbook(tmp_path / 'output' / path.name, rich_text=True).active['G2']
-        assert isinstance(cell.value, CellRichText) and cell.value[0].font.strike
-        assert cell.value[0].font.color.rgb == '00FF0000'
-        assert str(cell.value).count('现行人工意见') == str(cell.value).count('程序意见') == 1
+        assert str(cell.value) == '【第5条】程序意见'
 
 
-def test_changed_human_opinion_does_not_lose_shared_prefix(tmp_path):
-    """tmp_path 为测试目录；新意见包含旧意见前缀时保留两条完整的人工意见及格式。"""
+def test_changed_old_opinion_is_cleared_without_current_finding(tmp_path):
+    """没有本轮问题时清空所有旧意见；tmp_path 为测试目录。"""
     from risk_audit.writer import write_outputs
     path = tmp_path / '09信通公司三清单.xlsx'; book = Workbook(); ws = book.active; ws.title = '岗位内控责任清单'
     ws.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色', '审核意见'])
@@ -991,12 +989,11 @@ def test_changed_human_opinion_does_not_lose_shared_prefix(tmp_path):
         ws['G2'] = CellRichText([TextBlock(InlineFont(color='FF0000'), text)]); book.save(path)
         file, _ = file_record(path); write_outputs([file], [], tmp_path / 'output', baselines={}, metadata_dir=tmp_path / 'metadata')
     value = load_workbook(tmp_path / 'output' / path.name, rich_text=True).active['G2'].value
-    assert str(value) == '请核实\n请核实并补充材料'
-    assert value[0].font.color.rgb == value[-1].font.color.rgb == '00FF0000'
+    assert value is None
 
 
-def test_human_quote_of_program_text_remains_intact_on_repeat(tmp_path):
-    """tmp_path 为测试目录；人工说明内引用程序提示时不能被当成生成内容删除。"""
+def test_old_opinion_quoting_program_text_is_replaced_on_repeat(tmp_path):
+    """旧意见即使引用程序文字也由本轮结果替换；tmp_path 为测试目录。"""
     from risk_audit.writer import write_outputs
     path = tmp_path / '09信通公司三清单.xlsx'; book = Workbook(); ws = book.active; ws.title = '岗位内控责任清单'
     ws.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色', '审核意见'])
@@ -1008,4 +1005,4 @@ def test_human_quote_of_program_text_remains_intact_on_repeat(tmp_path):
     for _ in range(2):
         write_outputs([file], [finding], tmp_path / 'output', baselines={}, metadata_dir=tmp_path / 'metadata')
         value = load_workbook(tmp_path / 'output' / path.name, rich_text=True).active['G2'].value
-        assert str(value) == human + '\n【第5条】程序意见'
+        assert str(value) == '【第5条】程序意见'

@@ -194,7 +194,6 @@ def run_worker(
                 config_file=Path(request.config_file) if request.config_file else None,
                 progress_callback=report_progress,
                 cancel_check=lambda: is_cancel_requested(task_dir),
-                model_root=Path(request.model_root),
             )
             terminal_status = "completed" if result.get("write_completed") else "partial"
             terminal_message = "审核已完成" if terminal_status == "completed" else "审核已结束，存在未完成项"

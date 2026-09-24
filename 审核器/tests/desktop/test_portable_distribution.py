@@ -26,8 +26,6 @@ def make_sources(tmp_path: Path):
     baselines = tmp_path / "source/审核"
     write_file(baselines / "基准.xlsx", b"baseline")
     entity = write_file(tmp_path / "source/会计主体清单20260907.xlsx", b"entity")
-    model = tmp_path / "source/model"
-    write_file(model / "config.json", b"model")
     libreoffice = tmp_path / "source/libreoffice"
     write_file(libreoffice / "program/soffice.exe", b"exe")
     write_file(libreoffice / "program/fundamental.ini", b"ini")
@@ -38,7 +36,6 @@ def make_sources(tmp_path: Path):
         config_file=config,
         baselines_root=baselines,
         entity_file=entity,
-        model_root=model,
         libreoffice_root=libreoffice,
         licenses_root=licenses,
     )
@@ -60,7 +57,7 @@ def test_collect_runtime_copies_only_active_release_and_writes_exact_manifest(tm
     assert (runtime / "resources/rulepacks/audit-config.json").read_bytes() == b'{"mode":"desktop"}'
     assert (runtime / "resources/baselines/审核/基准.xlsx").is_file()
     assert (runtime / "resources/entities/会计主体清单20260907.xlsx").is_file()
-    assert (runtime / "resources/models/bge-small-zh-v1.5/config.json").is_file()
+    assert not (runtime / "resources/models").exists()
     assert not (runtime / "resources/rulepacks/drafts").exists()
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -72,6 +69,19 @@ def test_collect_runtime_copies_only_active_release_and_writes_exact_manifest(tm
         assert entries[relative]["size"] == path.stat().st_size
         assert entries[relative]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
         assert "\\" not in relative
+
+
+def test_collect_runtime_succeeds_without_removed_semantic_model(tmp_path: Path) -> None:
+    """本地语义模型已停用并删除时，runtime 收集仍必须成功。"""
+    from tools.build_windows_desktop import collect_runtime
+
+    sources = make_sources(tmp_path)
+    distribution_root = tmp_path / "dist/风控矩阵审核器-v2.0.0"
+
+    manifest_path = collect_runtime(sources, distribution_root)
+
+    assert manifest_path.is_file()
+    assert not (distribution_root / "runtime/resources/models").exists()
 
 
 @pytest.mark.parametrize("missing", ["libreoffice", "licenses"])

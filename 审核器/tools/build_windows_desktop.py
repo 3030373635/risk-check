@@ -30,7 +30,6 @@ class DistributionSources:
     config_file: Path
     baselines_root: Path
     entity_file: Path
-    model_root: Path
     libreoffice_root: Path
     licenses_root: Path
 
@@ -68,7 +67,6 @@ def validate_sources(sources: DistributionSources) -> list[str]:
     ]
     required_directories = [
         sources.baselines_root,
-        sources.model_root,
         sources.libreoffice_root,
         sources.licenses_root,
     ]
@@ -119,7 +117,7 @@ def collect_runtime(sources: DistributionSources, distribution_root: Path) -> Pa
     entity_target = runtime_root / "resources/entities" / sources.entity_file.name
     entity_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(sources.entity_file, entity_target)
-    _copy_tree(sources.model_root, runtime_root / "resources/models/bge-small-zh-v1.5")
+    # 本地语义模型已停用，发布包不再携带模型资源。
     _copy_tree(sources.licenses_root, runtime_root / "licenses")
     manifest_path = runtime_root / "manifest.json"
     manifest_path.write_text(
@@ -193,7 +191,6 @@ def _default_sources(project_root: Path, libreoffice_root: Path, licenses_root: 
         config_file=project_root / "audit-config.json",
         baselines_root=project_root / "审核",
         entity_file=project_root / "审核/会计主体清单20260907.xlsx",
-        model_root=auditor_root / "models/bge-small-zh-v1.5",
         libreoffice_root=libreoffice_root,
         licenses_root=licenses_root,
     )

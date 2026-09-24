@@ -103,7 +103,8 @@ def test_material_opinion_keeps_rule_number_without_scope_prefix(tmp_path, pack)
     assert value == '【第1条】缺少三清单。'
 
 
-def test_manual_edit_of_owned_opinion_is_preserved_and_warned(tmp_path, pack):
+def test_manual_edit_of_owned_opinion_is_replaced_and_warned(tmp_path, pack):
+    """重跑替换旧副本中的人工改写并报告变更；参数为隔离目录和规则包。"""
     source = tmp_path / "source.xlsx"; matrix(source)
     f = FileRecord(source, Path("06/source.xlsx"), sha256_file(source), "xlsx", "205H", [], False, "06", "default", "matrix")
     f.sheets = parse_workbook(f, source, pack["field_aliases"])
@@ -112,7 +113,7 @@ def test_manual_edit_of_owned_opinion_is_preserved_and_warned(tmp_path, pack):
     wb = load_workbook(out / "06/source.xlsx"); wb["设备管理"]["H3"] = "人工改写"; wb.save(out / "06/source.xlsx")
     warnings, _ = write_outputs([f], [finding], out, metadata_dir=tmp_path / 'metadata')
     assert any(x["type"] == "managed_cell_modified" for x in warnings)
-    assert "人工改写" in load_workbook(out / "06/source.xlsx")["设备管理"]["H3"].value
+    assert load_workbook(out / "06/source.xlsx")["设备管理"]["H3"].value == "程序意见"
 
 
 def test_unparsed_workbook_is_preserved_without_claiming_audit(tmp_path):
