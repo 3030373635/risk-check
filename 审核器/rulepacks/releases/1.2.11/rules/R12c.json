@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "check_id": "incompatible_measure_order",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第12条）",
+        "violation": "{advice_v2}（第12条）"
+      },
+      "on_unavailable": "review",
+      "operator": "ordered_records",
+      "operator_version": 1,
+      "params": {
+        "field": "measure_id"
+      }
+    }
+  ],
+  "display_code": "R12",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "lists.order_incompatible",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "incompatible_position"
+  },
+  "source_reference": "审核规则第12条",
+  "title": "不相容岗位清单排序"
+}

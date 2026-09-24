@@ -1,0 +1,56 @@
+{
+  "checks": [
+    {
+      "check_id": "broad_responsibility_pattern",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第10条）",
+        "violation": "{advice_v2}（第10条）"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_phrase",
+      "operator_version": 5,
+      "params": {
+        "attributes": [
+          "准确性",
+          "一致性",
+          "真实性",
+          "完整性",
+          "合法性",
+          "合规性",
+          "及时性",
+          "有效性",
+          "合理性",
+          "规范性",
+          "经济性",
+          "必要性",
+          "匹配性",
+          "唯一性",
+          "重复性"
+        ]
+      }
+    }
+  ],
+  "display_code": "R10",
+  "enabled": true,
+  "revision": 8,
+  "rule_id": "duties.responsibility_phrase",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "v2第10条及原表复核：至少一项明确责任属性；兼容“对明确对象的属性负责”句式；排除否定、岗位名称与“负责审核”等动作句式，不使用人工意见；20260914确认优化：解析字段与动作、制度依据、当前措施明确载体名称结构，保留不确定项。；20260914原文复核：对象、责任属性及具有/有责任等肯定表述均可，不强制句首为对；缺少属性及否定责任仍不合格。；v1.6.0：按对象、责任属性、肯定谓语和责任类型解析，未解析完整的句式转内部处理，保留原文证据。；同义表达限定为完整性：材料完备、资料齐全；真实性：明确承担发票验真责任。仅有动作、制度依据不自动推断责任。",
+  "title": "基本责任表达"
+}

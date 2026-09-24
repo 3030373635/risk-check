@@ -1,0 +1,57 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_schema",
+      "location_policy": "material",
+      "message": {
+        "review": "【第3条】{advice_v2}",
+        "violation": "【第3条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "schema_contains",
+      "operator_version": 2,
+      "params": {
+        "accept_split_applicability": true,
+        "check_applicability_tail": true,
+        "compare_baseline": true,
+        "ignore_fields": [
+          "applicability",
+          "applicability_reason"
+        ],
+        "required_fields": [
+          "measure_id",
+          "control_measure",
+          "control_system",
+          "carrier",
+          "responsibility",
+          "applicability"
+        ],
+        "sheet_types": [
+          "matrix"
+        ]
+      }
+    }
+  ],
+  "display_code": "R03",
+  "enabled": true,
+  "revision": 8,
+  "rule_id": "schema.applicability",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵0916-6.docx 有效正文（接受新增、排除修订删除）",
+  "title": "字段及适用性"
+}

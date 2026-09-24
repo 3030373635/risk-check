@@ -1,0 +1,52 @@
+{
+  "checks": [
+    {
+      "check_id": "explicit_role_responsibility",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第11条）",
+        "violation": "{advice_v2}（第11条）"
+      },
+      "on_unavailable": "review",
+      "operator": "value_mapping",
+      "operator_version": 3,
+      "params": {
+        "mapping": {
+          "审批": [
+            "审批责任"
+          ],
+          "审核": [
+            "审核责任"
+          ],
+          "经办": [
+            "主体责任"
+          ]
+        },
+        "source_field": "role",
+        "text_field": "duty"
+      }
+    }
+  ],
+  "display_code": "R11",
+  "enabled": true,
+  "revision": 4,
+  "rule_id": "duties.role_mapping",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核规则第11条；v1.6.0：按对象、责任属性、肯定谓语和责任类型解析，未解析完整的句式转内部处理，保留原文证据。；责任映射仍限经办—主体责任、审核—审核责任、审批—审批责任；其他责任词不新增冲突类别。；v1.7.0：识别本岗位与他人承担、后文责任否定；修正名词性要求落实及匹配对象解析，明确病句保留整改意见。；有证据时连接共用责任谓语的并列分句和紧邻对象片段；独立主体和否定范围不得混用；动作中的规范不推定为规范性责任。",
+  "title": "角色责任对应"
+}

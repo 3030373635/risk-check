@@ -1,0 +1,12 @@
+{
+  "schema_version":"1.0","rule_id":"duties.completeness","display_code":"R05","title":"部门岗位人员职责","source_reference":"审核规则第5条","revision":1,"enabled":true,
+  "scope":{"record_type":"position_duty","business_codes":{"include":["*"],"exclude":[]},"entity_codes":{"include":["*"],"exclude":[]}},
+  "checks":[
+    {"check_id":"department_specific","operator":"required_fields","operator_version":1,"params":{"fields":["department"],"placeholders":["无","待定","-","各部门","相关部门","有关部门","需求提报部门","项目承担部门","归口管理部门","资产使用保管部门","委托方财务部门"],"labels":{"department":"部门"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}，请明确具体部门。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"},
+    {"check_id":"position_specific","operator":"required_fields","operator_version":1,"params":{"fields":["position"],"placeholders":["无","待定","-","项目管理人员","管理人员","相关人员","经办人员"],"labels":{"position":"岗位名称"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}，请明确具体岗位。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"},
+    {"check_id":"person_required","operator":"required_fields","operator_version":1,"params":{"fields":["person_names"],"labels":{"person_names":"姓名"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}，请补充到人。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"},
+    {"check_id":"duty_id_required","operator":"required_fields","operator_version":1,"params":{"fields":["duty_id"],"labels":{"duty_id":"岗位职责编号"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"},
+    {"check_id":"duty_required","operator":"required_fields","operator_version":1,"params":{"fields":["duty"],"labels":{"duty":"岗位职责"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"},
+    {"check_id":"measure_id_required","operator":"required_fields","operator_version":1,"params":{"fields":["measure_id"],"labels":{"measure_id":"控制措施编号"}},"on_unavailable":"review","message":{"violation":"【第5条】{field_label}{reason}。","review":"【第5条】待核实：{unavailable_reason}。"},"location_policy":"row"}
+  ]
+}

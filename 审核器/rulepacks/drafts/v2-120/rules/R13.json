@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "check_id": "deleted_text_in_duties",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第13条）",
+        "violation": "{advice_v2}（第13条）"
+      },
+      "on_unavailable": "review",
+      "operator": "deleted_text_reappears",
+      "operator_version": 1,
+      "params": {
+        "match_scope": "measure",
+        "source_fields": [
+          "control_measure",
+          "carrier"
+        ],
+        "target_field": "duty"
+      }
+    }
+  ],
+  "display_code": "R13",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "deleted_matrix_text.in_duties",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "v2第13条；此前已确认：仅查相同控制措施编号，删除原文不设最短长度",
+  "title": "矩阵删除原文与岗位职责核对"
+}

@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "check_id": "broad_responsibility_pattern",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第10条）",
+        "violation": "{advice}（第10条）"
+      },
+      "on_unavailable": "review",
+      "operator": "text_pattern",
+      "operator_version": 1,
+      "params": {
+        "field": "duty",
+        "patterns": [
+          "对.{1,200}(?:负|承担|履行).{0,20}(?:主体|审核|审批|监督|管理)?责任",
+          "负有.{0,30}(?:主体|审核|审批|监督|管理)?责任",
+          "承担.{0,30}责任"
+        ]
+      }
+    }
+  ],
+  "display_code": "R10",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "duties.responsibility_phrase",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核规则第10条",
+  "title": "基本责任表达"
+}

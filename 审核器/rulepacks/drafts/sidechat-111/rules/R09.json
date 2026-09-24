@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "check_id": "deleted_text_in_duties",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第9条）",
+        "violation": "{advice}（第9条）"
+      },
+      "on_unavailable": "review",
+      "operator": "deleted_text_reappears",
+      "operator_version": 1,
+      "params": {
+        "match_scope": "measure",
+        "source_fields": [
+          "control_measure",
+          "carrier"
+        ],
+        "target_field": "duty"
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "deleted_matrix_text.in_duties",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核规则第9条（用户更正：仅核对相同控制措施编号，删除原文不设字数门槛）",
+  "title": "矩阵删除原文与岗位职责核对"
+}

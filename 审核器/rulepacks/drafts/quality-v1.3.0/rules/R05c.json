@@ -1,0 +1,51 @@
+{
+  "checks": [
+    {
+      "check_id": "entity_name_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_unit_specific",
+      "operator_version": 1,
+      "params": {
+        "field": "responsibility",
+        "generic_unit_names": [
+          "各级单位",
+          "各单位",
+          "相关单位",
+          "有关单位",
+          "所属单位",
+          "各级公司",
+          "各公司",
+          "相关公司",
+          "有关公司"
+        ]
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "duties.unit_specificity",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "2026-09-14用户补充确认：各级单位等泛指单位表述应明确为具体责任单位；即使部门岗位已对应也应单独指出；部门岗位对应关系仍独立核对。",
+  "title": "矩阵责任单位名称具体性"
+}

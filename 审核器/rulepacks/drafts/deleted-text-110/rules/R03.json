@@ -1,0 +1,56 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_schema",
+      "location_policy": "material",
+      "message": {
+        "review": "{advice}（第3条）",
+        "violation": "{advice}（第3条）"
+      },
+      "on_unavailable": "review",
+      "operator": "schema_contains",
+      "operator_version": 1,
+      "params": {
+        "check_applicability_tail": true,
+        "compare_baseline": true,
+        "ignore_fields": [
+          "applicability",
+          "applicability_reason"
+        ],
+        "required_fields": [
+          "measure_id",
+          "control_measure",
+          "control_system",
+          "carrier",
+          "responsibility",
+          "applicability"
+        ],
+        "sheet_types": [
+          "matrix"
+        ]
+      }
+    }
+  ],
+  "display_code": "R03",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "schema.applicability",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "审核规则第3条",
+  "title": "字段及适用性"
+}

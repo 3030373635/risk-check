@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "measure_applicability_alignment",
+      "location_policy": "row",
+      "message": {
+        "review": "【第16条】请结合业务实际再次核实适用性。",
+        "violation": "【第16条】请结合业务实际再次核实适用性。"
+      },
+      "on_unavailable": "review",
+      "operator": "measure_applicability_alignment",
+      "operator_version": 3,
+      "params": {}
+    }
+  ],
+  "display_code": "R16",
+  "enabled": true,
+  "revision": 5,
+  "rule_id": "matrices.measure_applicability",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "0923-2.docx 有效正文（接受新增、排除修订删除）",
+  "title": "岗位清单已有措施与矩阵适用性联动"
+}

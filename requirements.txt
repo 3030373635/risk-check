@@ -1,0 +1,7 @@
+# 风控矩阵审核器运行依赖，要求 Python 3.11 或更高版本。
+openpyxl==3.1.5
+lxml==6.1.1
+python-docx==1.2.0
+xlrd==2.0.2
+jsonschema==4.25.1
+pypdf==6.10.2

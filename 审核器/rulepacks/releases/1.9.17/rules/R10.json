@@ -1,0 +1,48 @@
+{
+  "checks": [
+    {
+      "check_id": "broad_responsibility_pattern",
+      "location_policy": "row",
+      "message": {
+        "review": "【第10条】{advice_v2}",
+        "violation": "【第10条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_phrase",
+      "operator_version": 9,
+      "params": {
+        "attributes": [
+          "一致性",
+          "准确性",
+          "真实性",
+          "完整性",
+          "有效性",
+          "及时性",
+          "合规性"
+        ]
+      }
+    }
+  ],
+  "display_code": "R10",
+  "enabled": true,
+  "revision": 15,
+  "rule_id": "duties.responsibility_phrase",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "0921-1.docx 有效正文（接受新增、排除修订删除）",
+  "title": "基本责任表达"
+}

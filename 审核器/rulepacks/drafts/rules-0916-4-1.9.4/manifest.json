@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-16",
+  "engine_compatibility": ">=1.9.4,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "14e6797f967c78a6b6e9e9795807f0f578bacb3702da8ce404d740b7739e7b51",
+  "status": "draft",
+  "title": "风控矩阵0916-4更新规则",
+  "version": "1.9.4"
+}

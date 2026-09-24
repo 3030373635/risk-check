@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "check_id": "system_measure_order",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第12条）",
+        "violation": "{advice_v2}（第12条）"
+      },
+      "on_unavailable": "review",
+      "operator": "ordered_records",
+      "operator_version": 2,
+      "params": {
+        "field": "measure_id"
+      }
+    }
+  ],
+  "display_code": "R12",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "lists.order_system",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "system_rule"
+  },
+  "source_reference": "审核规则第12条；20260914质量修正：技术限制转内部未完成；同措施载体结构及模板归因，岗位对应列明实际差异，排序按表集中保留证据。",
+  "title": "系统规则清单排序"
+}

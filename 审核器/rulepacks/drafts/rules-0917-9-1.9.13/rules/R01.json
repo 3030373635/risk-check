@@ -1,0 +1,68 @@
+{
+  "checks": [
+    {
+      "check_id": "required_matrix_and_lists",
+      "location_policy": "material",
+      "message": {
+        "review": "【第1条】{advice_v2}",
+        "violation": "【第1条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_documents",
+      "operator_version": 3,
+      "params": {
+        "material_types": [
+          "matrix",
+          "three_lists"
+        ]
+      }
+    },
+    {
+      "check_id": "file_naming",
+      "location_policy": "material",
+      "message": {
+        "review": "【第1条】{advice_v2}",
+        "violation": "【第1条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_documents",
+      "operator_version": 4,
+      "params": {
+        "material_types": [],
+        "naming_keywords": {
+          "matrix": [
+            "矩阵",
+            "取证"
+          ],
+          "three_lists": [
+            "三清单"
+          ]
+        },
+        "naming_mode": true,
+        "require_entity_name": false
+      }
+    }
+  ],
+  "display_code": "R01",
+  "enabled": true,
+  "revision": 7,
+  "rule_id": "documents.completeness",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "0917-9.docx 有效正文（接受新增、排除修订删除）",
+  "title": "资料完整性"
+}

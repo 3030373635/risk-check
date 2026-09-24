@@ -1,0 +1,9 @@
+{
+  "candidate_only": true,
+  "enabled": true,
+  "model_id": "BAAI/bge-small-zh-v1.5",
+  "model_manifest_sha256": "3903bf4895e5111db58b47705b7ff9686e9d1e4585752da1c8a91a16c39aa8ee",
+  "threads": 2,
+  "top_k": 3,
+  "version": 1
+}

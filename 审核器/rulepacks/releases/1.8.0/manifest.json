@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-15",
+  "content_hash": "396b2e43fefd4feac7ab45903b634934462055b0369b49bc8614731d36d4d1ac",
+  "engine_compatibility": ">=1.8.0,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "7499e6e80bce50bf727a7f67ef83aee43e49d88b161d7728c630142e11ac99fd",
+  "status": "released",
+  "title": "风控矩阵及三清单审核确认稿V1及批准执行口径",
+  "version": "1.8.0"
+}

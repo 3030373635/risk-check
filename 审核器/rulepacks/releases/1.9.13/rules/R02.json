@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "check_id": "entity_difference_explanation",
+      "location_policy": "material",
+      "message": {
+        "review": "【第2条】{advice_v2}",
+        "violation": "【第2条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_documents",
+      "operator_version": 3,
+      "params": {
+        "explanation_mode": true,
+        "material_types": []
+      }
+    }
+  ],
+  "display_code": "R02",
+  "enabled": true,
+  "revision": 6,
+  "rule_id": "entities.explanation",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "0917-9.docx 有效正文（接受新增、排除修订删除）",
+  "title": "主体差异及说明"
+}

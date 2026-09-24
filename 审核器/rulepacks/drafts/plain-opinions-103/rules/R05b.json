@@ -1,0 +1,48 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_duty_coverage",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第5条）",
+        "violation": "{advice}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "coverage",
+      "operator_version": 1,
+      "params": {
+        "generic_responsibilities": [
+          "各级单位",
+          "各部门",
+          "相关部门"
+        ],
+        "not_applicable_values": [
+          "否",
+          "不适用"
+        ]
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "duties.coverage",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "审核规则第5条",
+  "title": "矩阵责任覆盖"
+}

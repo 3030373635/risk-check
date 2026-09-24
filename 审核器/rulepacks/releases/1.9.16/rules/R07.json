@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "system_type_header",
+      "location_policy": "row",
+      "message": {
+        "review": "【第7条】请在C列插入“系统类型”列，该列填报枚举值：一级部署系统、二级部署系统、三级部署系统，请根据系统的实际情况填报。",
+        "violation": "【第7条】请在C列插入“系统类型”列，该列填报枚举值：一级部署系统、二级部署系统、三级部署系统，请根据系统的实际情况填报。"
+      },
+      "on_unavailable": "review",
+      "operator": "system_type_header",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R07",
+  "enabled": true,
+  "revision": 6,
+  "rule_id": "systems.type_header",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "0920-2.docx 有效正文（接受新增、排除修订删除）",
+  "title": "系统控制规则清单系统类型表头"
+}

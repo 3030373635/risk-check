@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-16",
+  "content_hash": "eb606c382681545323c98373cd1feb896e39943bd98ad4b71281b03ea6817f0b",
+  "engine_compatibility": ">=1.9.6,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "1d63e40bb2b7437358200bf117602cbbaae21f5ad164c50a35f658f3596ccde7",
+  "status": "released",
+  "title": "风控矩阵0916-6第5条更新规则",
+  "version": "1.9.6"
+}

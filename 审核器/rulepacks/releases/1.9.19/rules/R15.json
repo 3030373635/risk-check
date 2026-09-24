@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "duplicate_duties",
+      "location_policy": "row",
+      "message": {
+        "review": "【第15条】{advice_v2}",
+        "violation": "【第15条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "duplicate_duties",
+      "operator_version": 2,
+      "params": {}
+    }
+  ],
+  "display_code": "R15",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "duties.duplicate_rows",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "0923-2.docx 有效正文（接受新增、排除修订删除）",
+  "title": "岗位职责六字段重复项"
+}

@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-23",
+  "engine_compatibility": ">=1.9.19,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "c1fd059572f9fe0edfffcc62dd5c503479fb2e12ef51a95367b89da74fb38e3e",
+  "status": "draft",
+  "title": "多批次模板业务唯一标识更新包",
+  "version": "1.9.19"
+}

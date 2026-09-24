@@ -1,0 +1,269 @@
+{
+  "accounting_supervision": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "analysis_evaluation": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "applicability": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "applicability_reason": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "asset_protection": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "budget_control": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "build_status": {
+    "record_types": [
+      "system_rule"
+    ],
+    "type": "string"
+  },
+  "business_authenticity": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "business_domain": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "business_field": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "carrier": {
+    "record_types": [
+      "matrix",
+      "position_duty"
+    ],
+    "type": "string"
+  },
+  "contract_control": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "control_measure": {
+    "record_types": [
+      "matrix",
+      "position_duty"
+    ],
+    "type": "string"
+  },
+  "control_mode": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "control_objective": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "control_requirement": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "control_system": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "department": {
+    "record_types": [
+      "position_duty",
+      "system_rule",
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "duty": {
+    "record_types": [
+      "position_duty",
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "duty_id": {
+    "record_types": [
+      "position_duty"
+    ],
+    "type": "string"
+  },
+  "graded_authorization": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "incompatible_control": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "incompatible_roles": {
+    "record_types": [
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "key_control_point": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "manual_review": {
+    "audit_only": true,
+    "record_types": [],
+    "type": "string"
+  },
+  "measure_id": {
+    "record_types": [
+      "matrix",
+      "position_duty",
+      "system_rule",
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "payment_control": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "person_ids": {
+    "record_types": [
+      "position_duty"
+    ],
+    "type": "string"
+  },
+  "person_names": {
+    "record_types": [
+      "position_duty"
+    ],
+    "type": "person_set"
+  },
+  "position": {
+    "record_types": [
+      "position_duty",
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "position_a": {
+    "record_types": [
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "position_b": {
+    "record_types": [
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "position_c": {
+    "record_types": [
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "process_step": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "responsibility": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "risk": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  },
+  "role": {
+    "record_types": [
+      "position_duty"
+    ],
+    "type": "enum"
+  },
+  "sequence": {
+    "record_types": [
+      "system_rule",
+      "incompatible_position"
+    ],
+    "type": "string"
+  },
+  "system_name": {
+    "record_types": [
+      "system_rule"
+    ],
+    "type": "string"
+  },
+  "system_owner": {
+    "record_types": [
+      "system_rule"
+    ],
+    "type": "string"
+  },
+  "system_rule_content": {
+    "record_types": [
+      "system_rule"
+    ],
+    "type": "string"
+  },
+  "system_rule_name": {
+    "record_types": [
+      "system_rule"
+    ],
+    "type": "string"
+  },
+  "typical_issue": {
+    "record_types": [
+      "matrix"
+    ],
+    "type": "string"
+  }
+}

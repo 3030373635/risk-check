@@ -1,0 +1,92 @@
+{
+  "catalog_path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核器/vocabulary/20260914-102-final/catalog.json",
+  "catalog_sha256": "45a0a9c2039001f4a49140e8e1035e4a50476e221c4d0b36f6d47c0feada8403",
+  "summary": {
+    "candidate_counts": {
+      "carrier": 935,
+      "department": 445,
+      "position": 1773
+    },
+    "eligible_holdout_records": 1617,
+    "eligible_mining_records": 24494,
+    "entities": {
+      "204Q": 20,
+      "2050": 15,
+      "2051": 15,
+      "207L": 15,
+      "20CD": 8,
+      "20CE": 8,
+      "20CF": 8,
+      "20CG": 8,
+      "20CH": 8,
+      "20CI": 8,
+      "20CJ": 8,
+      "20CK": 8,
+      "20CL": 6,
+      "20GA": 6,
+      "20LD": 22,
+      "20LE": 13,
+      "20LF": 17,
+      "UNRESOLVED": 7
+    },
+    "excluded_sheets": 41,
+    "files": 200,
+    "files_with_errors": 8,
+    "holdout_files": 13,
+    "mining_files": 187,
+    "output": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核器/vocabulary/20260914-102-final",
+    "parsed_files": 200,
+    "recognition_counts": {
+      "carrier": 932,
+      "department": 240,
+      "position": 885
+    },
+    "records": 76506
+  },
+  "validation": {
+    "星通识别检查": {
+      "duty_records": 410,
+      "files": 5,
+      "records": 673,
+      "with_vocabulary": {
+        "issues": 60,
+        "rows_flagged": 60,
+        "types": {
+          "carrier_reference_unmatched": 32,
+          "matrix_ambiguous": 28
+        }
+      },
+      "without_vocabulary": {
+        "issues": 60,
+        "rows_flagged": 60,
+        "types": {
+          "carrier_reference_unmatched": 32,
+          "matrix_ambiguous": 28
+        }
+      }
+    },
+    "龙山县留出验证": {
+      "duty_records": 1089,
+      "files": 12,
+      "records": 1617,
+      "with_vocabulary": {
+        "issues": 315,
+        "rows_flagged": 306,
+        "types": {
+          "carrier_parse_unavailable": 190,
+          "carrier_reference_unmatched": 13,
+          "matrix_ambiguous": 112
+        }
+      },
+      "without_vocabulary": {
+        "issues": 311,
+        "rows_flagged": 306,
+        "types": {
+          "carrier_parse_unavailable": 190,
+          "carrier_reference_unmatched": 9,
+          "matrix_ambiguous": 112
+        }
+      }
+    }
+  }
+}

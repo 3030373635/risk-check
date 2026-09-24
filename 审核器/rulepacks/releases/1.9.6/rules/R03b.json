@@ -1,0 +1,48 @@
+{
+  "checks": [
+    {
+      "check_id": "applicability_content",
+      "location_policy": "row",
+      "message": {
+        "review": "【第3条】{advice_v2}",
+        "violation": "【第3条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "applicability_values",
+      "operator_version": 2,
+      "params": {
+        "placeholders": [
+          "",
+          "/",
+          "无",
+          "待定",
+          "-",
+          "--",
+          "不涉及"
+        ]
+      }
+    }
+  ],
+  "display_code": "R03",
+  "enabled": true,
+  "revision": 6,
+  "rule_id": "applicability.values",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "风控矩阵0916-6.docx 有效正文（接受新增、排除修订删除）",
+  "title": "适用性填写"
+}

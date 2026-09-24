@@ -1,0 +1,179 @@
+{
+  "checks": [
+    {
+      "check_id": "department_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 1,
+      "params": {
+        "field": "department",
+        "placeholders": [
+          "管理部门",
+          "各部门",
+          "需求部门",
+          "用工部门",
+          "归口管理部门",
+          "待定",
+          "相关部门",
+          "有关部门",
+          "需求提报部门",
+          "项目承担部门",
+          "资产使用保管部门",
+          "委托方财务部门",
+          "无",
+          "-",
+          "/"
+        ],
+        "placeholder_patterns": [],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "position_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 1,
+      "params": {
+        "field": "position",
+        "placeholders": [
+          "某某",
+          "待定",
+          "相关人员",
+          "管理人员",
+          "出差人员",
+          "需求人员",
+          "报账人员",
+          "部门负责人",
+          "项目管理人员",
+          "经办人员",
+          "无",
+          "-",
+          "/"
+        ],
+        "placeholder_patterns": [],
+        "separators": [
+          "、",
+          "，",
+          "；",
+          ",",
+          ";"
+        ]
+      }
+    },
+    {
+      "check_id": "person_required",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 1,
+      "params": {
+        "field": "person_names",
+        "placeholders": [
+          "待定",
+          "某某",
+          "相关人员",
+          "无",
+          "-",
+          "/"
+        ],
+        "placeholder_patterns": [
+          "等|…|\\.{3}"
+        ],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "duty_id_required",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "duty_id"
+        ],
+        "labels": {
+          "duty_id": "岗位职责编号"
+        }
+      }
+    },
+    {
+      "check_id": "duty_required",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "duty"
+        ],
+        "labels": {
+          "duty": "岗位职责"
+        }
+      }
+    },
+    {
+      "check_id": "measure_id_required",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "measure_id"
+        ],
+        "labels": {
+          "measure_id": "控制措施编号"
+        }
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "duties.completeness",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "v2第5条：具体部门、岗位、人员及一岗一行",
+  "title": "部门岗位人员职责"
+}

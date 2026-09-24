@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "handler_reviewer_overlap",
+      "location_policy": "related_rows",
+      "message": {
+        "review": "【第8条】{advice_v2}",
+        "violation": "【第8条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "roles_same_duty",
+      "operator_version": 3,
+      "params": {}
+    }
+  ],
+  "display_code": "R08",
+  "enabled": true,
+  "revision": 5,
+  "rule_id": "duties.separation",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核确认稿 V1 及 2026-09-15 用户批准执行口径",
+  "title": "经办审核人员分离"
+}

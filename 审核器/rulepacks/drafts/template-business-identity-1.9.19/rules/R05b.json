@@ -1,0 +1,69 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_duty_coverage",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_coverage",
+      "operator_version": 7,
+      "params": {
+        "confirmed_aliases": {},
+        "confirmed_mappings": {},
+        "generic_responsibilities": [
+          "各级单位",
+          "各部门",
+          "委托方财务部门",
+          "归口管理部门",
+          "有关部门",
+          "相关人员",
+          "相关部门",
+          "管理人员",
+          "经办人员",
+          "资产使用保管部门",
+          "需求提报部门",
+          "项目承担部门",
+          "项目管理人员"
+        ],
+        "generic_unit_names": [
+          "各级单位",
+          "各单位",
+          "相关单位",
+          "有关单位",
+          "所属单位",
+          "各级公司",
+          "各公司",
+          "相关公司",
+          "有关公司"
+        ],
+        "unresolved_kind": "review"
+      }
+    }
+  ],
+  "disabled_reason": "0916-6已删除第5条矩阵责任主体覆盖岗位清单的要求",
+  "display_code": "R05",
+  "enabled": false,
+  "revision": 12,
+  "rule_id": "duties.coverage",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "0923-2.docx 有效正文（接受新增、排除修订删除）",
+  "title": "矩阵责任覆盖"
+}

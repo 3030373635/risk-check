@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "risk-audit"
+version = "1.9.19"
+description = "本地规则与语义候选辅助的风控矩阵及三清单审核器"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl==3.1.5",
+  "lxml==6.1.1",
+  "python-docx==1.2.0",
+  "xlrd==2.0.2",
+  "jsonschema==4.25.1",
+  "pypdf==6.10.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2", "pytest-qt==4.5.0"]
+semantic = ["numpy==2.3.5", "onnxruntime==1.22.1", "tokenizers==0.21.4"]
+desktop = ["PySide6==6.8.3"]
+build = ["PyInstaller==6.16.0"]
+
+[project.scripts]
+risk-audit = "risk_audit.cli:main"
+risk-audit-desktop = "risk_audit_desktop.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,39 @@
+{
+  "checks": [
+    {
+      "check_id": "system_rule_content",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第7条）",
+        "violation": "{advice_v2}（第7条）"
+      },
+      "on_unavailable": "review",
+      "operator": "system_rule_content",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "disabled_reason": "本期暂停系统规则内容审核；不影响R04、R08和R12",
+  "display_code": "R07",
+  "enabled": false,
+  "revision": 2,
+  "rule_id": "systems.content",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "system_rule"
+  },
+  "source_reference": "审核规则第7条",
+  "title": "系统规则内容"
+}

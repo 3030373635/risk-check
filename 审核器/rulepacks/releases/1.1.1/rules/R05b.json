@@ -1,0 +1,56 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_duty_coverage",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第5条）",
+        "violation": "{advice}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_coverage",
+      "operator_version": 1,
+      "params": {
+        "generic_responsibilities": [
+          "各级单位",
+          "各部门",
+          "委托方财务部门",
+          "归口管理部门",
+          "有关部门",
+          "相关人员",
+          "相关部门",
+          "管理人员",
+          "经办人员",
+          "资产使用保管部门",
+          "需求提报部门",
+          "项目承担部门",
+          "项目管理人员"
+        ],
+        "confirmed_mappings": {},
+        "confirmed_aliases": {}
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "duties.coverage",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "侧对话修正：泛称本身不出审核意见；未确认映射单列核对限制",
+  "title": "矩阵责任覆盖"
+}

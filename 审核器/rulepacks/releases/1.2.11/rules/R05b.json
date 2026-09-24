@@ -1,0 +1,68 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_duty_coverage",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第5条）",
+        "violation": "{advice_v2}（第5条）"
+      },
+      "on_unavailable": "review",
+      "operator": "responsibility_coverage",
+      "operator_version": 3,
+      "params": {
+        "confirmed_aliases": {},
+        "confirmed_mappings": {},
+        "generic_responsibilities": [
+          "各级单位",
+          "各部门",
+          "委托方财务部门",
+          "归口管理部门",
+          "有关部门",
+          "相关人员",
+          "相关部门",
+          "管理人员",
+          "经办人员",
+          "资产使用保管部门",
+          "需求提报部门",
+          "项目承担部门",
+          "项目管理人员"
+        ],
+        "generic_unit_names": [
+          "各级单位",
+          "各单位",
+          "相关单位",
+          "有关单位",
+          "所属单位",
+          "各级公司",
+          "各公司",
+          "相关公司",
+          "有关公司"
+        ],
+        "unresolved_kind": "review"
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 6,
+  "rule_id": "duties.coverage",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "v2第5条及用户补充确认：责任单位名称具体性与岗位覆盖分别检查；无法对应时，列出同措施部门、岗位的实际差异。",
+  "title": "矩阵责任覆盖"
+}

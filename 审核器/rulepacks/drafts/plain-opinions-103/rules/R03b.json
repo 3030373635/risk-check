@@ -1,0 +1,71 @@
+{
+  "checks": [
+    {
+      "check_id": "applicability_required",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第3条）",
+        "violation": "{advice}（第3条）"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "applicability"
+        ],
+        "labels": {
+          "applicability": "是否适用"
+        }
+      }
+    },
+    {
+      "check_id": "not_applicable_reason",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice}（第3条）",
+        "violation": "{advice}（第3条）"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "applicability_reason"
+        ],
+        "labels": {
+          "applicability_reason": "不适用原因"
+        },
+        "when": {
+          "field": "applicability",
+          "in": [
+            "否",
+            "不适用"
+          ]
+        }
+      }
+    }
+  ],
+  "display_code": "R03",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "applicability.values",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "审核规则第3条",
+  "title": "适用性填写"
+}

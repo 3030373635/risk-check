@@ -1,0 +1,24 @@
+# CPU audit runtime only. Model export uses separate development dependencies.
+numpy==2.3.5
+onnxruntime==1.22.1
+tokenizers==0.21.4
+coloredlogs==15.0.1
+humanfriendly==10.0
+flatbuffers==25.12.19
+packaging==26.3
+protobuf==7.36.1
+sympy==1.14.0
+mpmath==1.3.0
+# tokenizers declares this dependency; the auditor itself uses only local JSON.
+huggingface-hub==0.36.2
+filelock==3.32.6
+fsspec==2026.7.0
+PyYAML==6.0.3
+requests==2.34.2
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.19
+urllib3==2.7.0
+tqdm==4.70.1
+typing_extensions==4.16.0
+hf-xet==1.6.0

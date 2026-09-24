@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "check_id": "measure_exists",
+      "location_policy": "row",
+      "message": {
+        "review": "【第9条】待核实：{unavailable_reason}。",
+        "violation": "【第9条】本行引用措施“{reference}”在本主体当前矩阵中不存在、未填写或明确不适用，请核对编号及适用性。"
+      },
+      "on_unavailable": "review",
+      "operator": "reference_exists",
+      "operator_version": 2,
+      "params": {
+        "source_field": "measure_id",
+        "target_field": "measure_id",
+        "target_record_type": "matrix"
+      }
+    },
+    {
+      "check_id": "deleted_text_in_duty_0916",
+      "location_policy": "row",
+      "message": {
+        "review": "【第9条】{unavailable_reason}",
+        "violation": "【第9条】矩阵中对应的措施或载体已删除，请核对岗位职责描述是否规范。"
+      },
+      "on_unavailable": "review",
+      "operator": "deleted_text_reappears",
+      "operator_version": 3,
+      "params": {
+        "match_scope": "measure",
+        "source_fields": [
+          "control_measure",
+          "carrier"
+        ],
+        "target_field": "duty"
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 11,
+  "rule_id": "references.current_matrix",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "0917-9.docx 有效正文（接受新增、排除修订删除）",
+  "title": "当前控制措施编号对应"
+}

@@ -1,0 +1,60 @@
+{
+  "checks": [
+    {
+      "check_id": "measure_exists",
+      "location_policy": "row",
+      "message": {
+        "review": "【第9条】待核实：{unavailable_reason}。",
+        "violation": "【第9条】控制措施编号“{reference}”未在同主体、同业务、同变体当前矩阵中找到。"
+      },
+      "on_unavailable": "review",
+      "operator": "reference_exists",
+      "operator_version": 1,
+      "params": {
+        "source_field": "measure_id",
+        "target_field": "measure_id",
+        "target_record_type": "matrix"
+      }
+    },
+    {
+      "check_id": "carrier_subset",
+      "location_policy": "row",
+      "message": {
+        "review": "【第9条】待核实：{unavailable_reason}。",
+        "violation": "【第9条】明确引用载体超出当前矩阵载体集合。"
+      },
+      "on_unavailable": "review",
+      "operator": "set_subset",
+      "operator_version": 1,
+      "params": {
+        "alias_resource": "carrier_aliases",
+        "fallback_explicit_field": "duty",
+        "source_field": "carrier",
+        "target_field": "carrier",
+        "target_record_type": "matrix"
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "references.current_matrix",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核规则第9条",
+  "title": "当前编号和载体引用"
+}

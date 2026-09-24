@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "check_id": "incompatible_measure_order",
+      "location_policy": "row",
+      "message": {
+        "review": "【排序检查】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。",
+        "violation": "【排序检查】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。"
+      },
+      "on_unavailable": "review",
+      "operator": "ordered_records",
+      "operator_version": 4,
+      "params": {
+        "field": "measure_id"
+      }
+    }
+  ],
+  "disabled_reason": "0916有效新增内容要求对岗位清单实际排序，已删除原第12条排序检查及对外意见",
+  "display_code": "R12",
+  "enabled": false,
+  "revision": 6,
+  "rule_id": "lists.order_incompatible",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "incompatible_position"
+  },
+  "source_reference": "0920-2.docx 有效正文（接受新增、排除修订删除）",
+  "title": "不相容岗位清单排序"
+}

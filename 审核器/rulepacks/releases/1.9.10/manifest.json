@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-17",
+  "content_hash": "2574796842460e2da1e1af20e680e5fc575f7edd088a03f4b373da4b556ea999",
+  "engine_compatibility": ">=1.9.10,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "b0533f9d93b665d82be0929dab4b958200a6e3c06ecc580bce1e1f0c9bcf8a37",
+  "status": "released",
+  "title": "0917第17条删除规则包",
+  "version": "1.9.10"
+}

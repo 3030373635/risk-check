@@ -1,0 +1,202 @@
+{
+  "incompatible_position": {
+    "department": [
+      "部门"
+    ],
+    "duty": [
+      "岗位职责",
+      "职责描述"
+    ],
+    "incompatible_roles": [
+      "不相容业务角色"
+    ],
+    "measure_id": [
+      "控制措施编号",
+      "控制措施/编号"
+    ],
+    "position": [
+      "岗位名称"
+    ],
+    "position_a": [
+      "岗位A"
+    ],
+    "position_b": [
+      "岗位B"
+    ],
+    "position_c": [
+      "岗位C",
+      "岗位 C",
+      "岗位c"
+    ],
+    "sequence": [
+      "序号"
+    ]
+  },
+  "matrix": {
+    "accounting_supervision": [
+      "会计监督"
+    ],
+    "analysis_evaluation": [
+      "分析与评价"
+    ],
+    "applicability": [
+      "信通公司是否适用",
+      "是否适用",
+      "是否适用及原因"
+    ],
+    "applicability_reason": [
+      "信通公司修改备注",
+      "修改备注",
+      "不适用原因",
+      "原因",
+      "是否适用原因",
+      "备注"
+    ],
+    "asset_protection": [
+      "财产保护"
+    ],
+    "budget_control": [
+      "预算管控"
+    ],
+    "business_authenticity": [
+      "业务真实性控制",
+      "业务真实性校验"
+    ],
+    "business_domain": [
+      "业务领域"
+    ],
+    "business_field": [
+      "业务条线"
+    ],
+    "carrier": [
+      "控制载体",
+      "内控载体"
+    ],
+    "contract_control": [
+      "合同控制"
+    ],
+    "control_measure": [
+      "控制措施"
+    ],
+    "control_mode": [
+      "控制方式",
+      "控制方式（枚举值）"
+    ],
+    "control_objective": [
+      "控制目标"
+    ],
+    "control_requirement": [
+      "控制要求"
+    ],
+    "control_system": [
+      "控制系统"
+    ],
+    "graded_authorization": [
+      "分级授权"
+    ],
+    "incompatible_control": [
+      "不相容岗位"
+    ],
+    "key_control_point": [
+      "关键控制点"
+    ],
+    "measure_id": [
+      "控制措施编号",
+      "控制措施/编号"
+    ],
+    "payment_control": [
+      "收付控制"
+    ],
+    "process_step": [
+      "业务流程步骤"
+    ],
+    "responsibility": [
+      "责任主体",
+      "责任主体（需根据实际情况调整）"
+    ],
+    "risk": [
+      "经营风险"
+    ],
+    "typical_issue": [
+      "典型问题",
+      "对应典型问题"
+    ]
+  },
+  "position_duty": {
+    "carrier": [
+      "控制载体",
+      "内控载体"
+    ],
+    "control_measure": [
+      "控制措施"
+    ],
+    "department": [
+      "部门"
+    ],
+    "duty": [
+      "岗位职责"
+    ],
+    "duty_id": [
+      "岗位职责编号"
+    ],
+    "measure_id": [
+      "控制措施编号",
+      "控制措施/编号"
+    ],
+    "person_ids": [
+      "人员编号",
+      "员工编号",
+      "工号",
+      "人员ID"
+    ],
+    "person_names": [
+      "姓名",
+      "员工姓名",
+      "人员姓名",
+      "执行人员姓名",
+      "岗位人员名称",
+      "岗位人员姓名",
+      "实际执行人姓名",
+      "实际执行人员姓名"
+    ],
+    "position": [
+      "岗位名称"
+    ],
+    "role": [
+      "角色",
+      "角色（根据下拉框填写）"
+    ]
+  },
+  "system_rule": {
+    "build_status": [
+      "建设状态"
+    ],
+    "department": [
+      "部门"
+    ],
+    "measure_id": [
+      "控制措施编号",
+      "控制措施/编号"
+    ],
+    "sequence": [
+      "序号"
+    ],
+    "system_name": [
+      "系统名称"
+    ],
+    "system_owner": [
+      "系统规则管理主体",
+      "系统管理层次",
+      "系统管理/层次"
+    ],
+    "system_rule_content": [
+      "规则内容"
+    ],
+    "system_rule_name": [
+      "规则名称"
+    ],
+    "system_type": [
+      "系统类型"
+    ]
+  }
+}

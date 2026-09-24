@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-17",
+  "engine_compatibility": ">=1.9.12,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "b32fa5307d9f91d3267f92d90dee5720c0f0d24a95ddae540111a7f8aac92cd7",
+  "status": "draft",
+  "title": "0917-6规则更新包",
+  "version": "1.9.12"
+}

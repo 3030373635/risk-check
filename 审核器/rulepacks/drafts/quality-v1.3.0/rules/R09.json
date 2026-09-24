@@ -1,0 +1,60 @@
+{
+  "checks": [
+    {
+      "check_id": "measure_exists",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第9条）",
+        "violation": "{advice_v2}（第9条）"
+      },
+      "on_unavailable": "review",
+      "operator": "reference_exists",
+      "operator_version": 1,
+      "params": {
+        "source_field": "measure_id",
+        "target_field": "measure_id",
+        "target_record_type": "matrix"
+      }
+    },
+    {
+      "check_id": "carrier_subset",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第9条）",
+        "violation": "{advice_v2}（第9条）"
+      },
+      "on_unavailable": "review",
+      "operator": "set_subset",
+      "operator_version": 4,
+      "params": {
+        "alias_resource": "carrier_aliases",
+        "fallback_explicit_field": "duty",
+        "source_field": "carrier",
+        "target_field": "carrier",
+        "target_record_type": "matrix"
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 7,
+  "rule_id": "references.current_matrix",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "v2第9条及原表复核：载体列与岗位职责正文分别核对同措施当前载体；来源不可读保留待核实；删除线意见仅合并职责正文同对象提示；20260914确认优化：解析字段与动作、制度依据、当前措施明确载体名称结构，保留不确定项。；20260914质量修正：技术限制转内部未完成；同措施载体结构及模板归因，岗位对应列明实际差异，排序按表集中保留证据。",
+  "title": "当前编号和载体引用"
+}

@@ -1,0 +1,52 @@
+{
+  "checks": [
+    {
+      "check_id": "explicit_role_responsibility",
+      "location_policy": "row",
+      "message": {
+        "review": "【第11条】经办对应主体责任、审核对应审核责任、审批对应审批责任。",
+        "violation": "【第11条】经办对应主体责任、审核对应审核责任、审批对应审批责任。"
+      },
+      "on_unavailable": "review",
+      "operator": "value_mapping",
+      "operator_version": 5,
+      "params": {
+        "mapping": {
+          "审批": [
+            "审批责任"
+          ],
+          "审核": [
+            "审核责任"
+          ],
+          "经办": [
+            "主体责任"
+          ]
+        },
+        "source_field": "role",
+        "text_field": "duty"
+      }
+    }
+  ],
+  "display_code": "R11",
+  "enabled": true,
+  "revision": 6,
+  "rule_id": "duties.role_mapping",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "0921-1.docx 有效正文（接受新增、排除修订删除）",
+  "title": "角色责任对应"
+}

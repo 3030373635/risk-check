@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-17",
+  "engine_compatibility": ">=1.9.9,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "b0533f9d93b665d82be0929dab4b958200a6e3c06ecc580bce1e1f0c9bcf8a37",
+  "status": "draft",
+  "title": "0917第10条规范性责任属性规则",
+  "version": "1.9.9"
+}

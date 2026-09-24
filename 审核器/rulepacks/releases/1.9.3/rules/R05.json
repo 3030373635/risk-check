@@ -1,0 +1,245 @@
+{
+  "checks": [
+    {
+      "check_id": "department_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 5,
+      "params": {
+        "exact_exceptions": [],
+        "field": "department",
+        "placeholder_patterns": [
+          "(?:各级单位|管理部门|实施部门|各部门|需求部门|用工部门|归口管理部门|会签部门|实物资产|资产使用|委托|项目管理部门|项目建设部门|待定|项目承担部门|项目需求部门|各级单位\\-项目管理部门/建设单位|牵头部门|牵头管理部门|实物资产管理部门|建设管理部门|使用保管部门|专业管理部门|用工管理部门|食堂经费管理部门|职工教育经费管理部门|职工体检实施部门|资金发起部门|会议承办部门|接待承办部门|办公用品管理部门|公务车辆管理部门)"
+        ],
+        "placeholders": [
+          "各级单位",
+          "管理部门",
+          "实施部门",
+          "各部门",
+          "需求部门",
+          "用工部门",
+          "归口管理部门",
+          "会签部门",
+          "实物资产",
+          "资产使用",
+          "委托",
+          "项目管理部门",
+          "项目建设部门",
+          "待定",
+          "项目承担部门",
+          "项目需求部门",
+          "各级单位-项目管理部门/建设单位",
+          "牵头部门",
+          "牵头管理部门",
+          "实物资产管理部门",
+          "建设管理部门",
+          "使用保管部门",
+          "专业管理部门",
+          "用工管理部门",
+          "食堂经费管理部门",
+          "职工教育经费管理部门",
+          "职工体检实施部门",
+          "资金发起部门",
+          "会议承办部门",
+          "接待承办部门",
+          "办公用品管理部门",
+          "公务车辆管理部门",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "position_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 5,
+      "params": {
+        "exact_exceptions": [
+          "查勘人员"
+        ],
+        "field": "position",
+        "placeholder_patterns": [
+          "(?:某某|待定|人员|管理人员|实施人员|需求人员|用工人员|归口管理人员|会签人员|实物资产|资产使用|委托|项目管理人员|项目建设人员|项目承担人员|项目需求人员|相关人员|采购人员|资产使用保管人员|保管人员|接待人员|承接人员|出差人员|报账人员|部门负责人|需求审核人员|合同签订人员|合同经办人员|合同管理人员|合同审核人员|合同结算人员|往来管理人员|使用保管人员|收货人员|需求提报人|负责人|监督人员|领料人员|审批人员|复核人员|审核人员|柜收人员|签订人员|监控人员|装表人员|勘查人员|办理人员|核算人员|受理人员|收费人员|收取人员|结算人员|财务人员|技经人员|规划人员|合规人员|计划人员|前期人员|招标人员|需求提报人员|物资上架人员|履约人员|物资调拨人员|经办人员|匹配人员|项目负责人|出差报销审核人)"
+        ],
+        "placeholders": [
+          "某某",
+          "待定",
+          "人员",
+          "管理人员",
+          "实施人员",
+          "需求人员",
+          "用工人员",
+          "归口管理人员",
+          "会签人员",
+          "实物资产",
+          "资产使用",
+          "委托",
+          "项目管理人员",
+          "项目建设人员",
+          "项目承担人员",
+          "项目需求人员",
+          "相关人员",
+          "采购人员",
+          "资产使用保管人员",
+          "保管人员",
+          "接待人员",
+          "承接人员",
+          "出差人员",
+          "报账人员",
+          "部门负责人",
+          "需求审核人员",
+          "合同签订人员",
+          "合同经办人员",
+          "合同管理人员",
+          "合同审核人员",
+          "合同结算人员",
+          "往来管理人员",
+          "使用保管人员",
+          "收货人员",
+          "需求提报人",
+          "负责人",
+          "监督人员",
+          "领料人员",
+          "审批人员",
+          "复核人员",
+          "审核人员",
+          "柜收人员",
+          "签订人员",
+          "监控人员",
+          "装表人员",
+          "勘查人员",
+          "办理人员",
+          "核算人员",
+          "受理人员",
+          "收费人员",
+          "收取人员",
+          "结算人员",
+          "财务人员",
+          "技经人员",
+          "规划人员",
+          "合规人员",
+          "计划人员",
+          "前期人员",
+          "招标人员",
+          "需求提报人员",
+          "物资上架人员",
+          "履约人员",
+          "物资调拨人员",
+          "经办人员",
+          "匹配人员",
+          "项目负责人",
+          "出差报销审核人",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": [
+          "、",
+          "，",
+          "；",
+          ",",
+          ";"
+        ]
+      }
+    },
+    {
+      "check_id": "person_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】请具体到人员。"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 4,
+      "params": {
+        "field": "person_names",
+        "placeholder_patterns": [
+          "等|…|\\.{3}"
+        ],
+        "placeholders": [
+          "待定",
+          "某某",
+          "相关人员",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "duty_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "duty"
+        ],
+        "labels": {
+          "duty": "岗位职责"
+        }
+      }
+    },
+    {
+      "check_id": "measure_id_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "measure_id"
+        ],
+        "labels": {
+          "measure_id": "控制措施编号"
+        }
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 7,
+  "rule_id": "duties.completeness",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "风控矩阵0916-3.docx 有效正文（排除修订删除）",
+  "title": "部门岗位人员职责"
+}

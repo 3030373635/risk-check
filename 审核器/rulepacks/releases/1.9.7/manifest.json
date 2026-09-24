@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-17",
+  "content_hash": "49a4076da7eb8a30e4767737414408a07900ecab3be33088633b9e08ceb1c572",
+  "engine_compatibility": ">=1.9.7,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "2fad4640cdbb2c3daaec8f6544567cb7ba29111e727cc3f6e84f8672d80ba8a0",
+  "status": "released",
+  "title": "0917部门岗位名称例外及同表判重规则",
+  "version": "1.9.7"
+}

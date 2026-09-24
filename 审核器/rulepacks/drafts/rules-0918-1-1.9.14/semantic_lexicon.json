@@ -1,0 +1,96 @@
+{
+  "applicability": [
+    {
+      "decision": null,
+      "id": "app_01",
+      "pattern": "(?:本(?:单位|公司)|县公司|目前|当前)?(?:暂(?:时)?(?:无|未开展|没有)|尚未开展|未开展|没有)(?:此|该|这|相关|此项|该项|这项)?业务(?:[,:;].*)?",
+      "reason_from_text": false,
+      "source": "原表：古丈01 AN5、07 AN9、06 AL16；仅表示业务状态",
+      "state": "business_absent"
+    },
+    {
+      "decision": null,
+      "id": "app_02",
+      "pattern": "(?:直接)?(?:引用|沿用|采用)(?:省公司(?:模板|矩阵|版本))?",
+      "reason_from_text": false,
+      "source": "原表：泸溪07 AN4；表示模板采用方式",
+      "state": "template_adopted"
+    },
+    {
+      "decision": null,
+      "id": "app_03",
+      "pattern": "(?:(?:直接)?引用[,、])?修改(?:责任主体|控制措施|控制载体)(?:[,、](?:责任主体|控制措施|控制载体))*",
+      "reason_from_text": false,
+      "source": "原表：泸溪07 AN79/87、湘西10 AO60；表示模板修改",
+      "state": "template_modified"
+    },
+    {
+      "decision": null,
+      "id": "app_04",
+      "pattern": "(?:本单位|县公司)?(?:无业务核算岗位.*|无权限处理.+|无对应系统.*)",
+      "reason_from_text": false,
+      "source": "原表：古丈01 AN40/73、06 AL32；尚未明确控制适用性",
+      "state": "scope_explanation"
+    },
+    {
+      "decision": "applicable",
+      "id": "app_05",
+      "pattern": "(?:本条|本措施|该措施|此控制措施)?适用于本(?:单位|公司)",
+      "reason_from_text": false,
+      "source": "明确表明本单位适用；不含疑问、条件或复杂否定",
+      "state": "explicit_positive"
+    },
+    {
+      "decision": "not_applicable",
+      "id": "app_06",
+      "pattern": "(?:本条|本措施|该措施|此控制措施)?不适用于本(?:单位|公司)(?:[,:;].*)?",
+      "reason_from_text": false,
+      "source": "明确表明本单位不适用；原因另行核对",
+      "state": "explicit_negative"
+    }
+  ],
+  "prototypes": [
+    {
+      "concept": "applicable",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "本单位适用该控制措施"
+    },
+    {
+      "concept": "not_applicable",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "该控制措施不适用于本单位"
+    },
+    {
+      "concept": "business_absent",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "本单位目前没有开展该项业务"
+    },
+    {
+      "concept": "business_absent",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "暂无此业务，参照省公司执行"
+    },
+    {
+      "concept": "template_adopted",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "直接引用省公司的矩阵模板"
+    },
+    {
+      "concept": "template_modified",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "已修改控制措施和责任主体"
+    },
+    {
+      "concept": "scope_explanation",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "本单位没有相应业务权限"
+    },
+    {
+      "concept": "unknown",
+      "source": "受控类别原型；仅语义候选，不独立推导审核通过",
+      "text": "尚未确定是否适用"
+    }
+  ],
+  "relations": [],
+  "version": 1
+}

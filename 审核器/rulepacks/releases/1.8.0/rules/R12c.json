@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "check_id": "incompatible_measure_order",
+      "location_policy": "row",
+      "message": {
+        "review": "【第12条】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。",
+        "violation": "【第12条】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。"
+      },
+      "on_unavailable": "review",
+      "operator": "ordered_records",
+      "operator_version": 3,
+      "params": {
+        "field": "measure_id"
+      }
+    }
+  ],
+  "display_code": "R12",
+  "enabled": true,
+  "revision": 4,
+  "rule_id": "lists.order_incompatible",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "incompatible_position"
+  },
+  "source_reference": "审核确认稿 V1 及 2026-09-15 用户批准执行口径",
+  "title": "不相容岗位清单排序"
+}

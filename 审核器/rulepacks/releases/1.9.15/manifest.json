@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-20",
+  "content_hash": "efd4952c44b2ee4e0ef16b03c6bdffb37477148843b35ed72e9702d1ea01626a",
+  "engine_compatibility": ">=1.9.15,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "47ffe7e4501d2d1bf2666f0c883768612b2ef4b041585786f833a79deaecbe33",
+  "status": "released",
+  "title": "0920-2规则更新包",
+  "version": "1.9.15"
+}

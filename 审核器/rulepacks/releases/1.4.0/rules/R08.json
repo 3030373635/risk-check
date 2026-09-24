@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "handler_reviewer_overlap",
+      "location_policy": "related_rows",
+      "message": {
+        "review": "{advice_v2}（第8条）",
+        "violation": "{advice_v2}（第8条）"
+      },
+      "on_unavailable": "review",
+      "operator": "roles_same_duty",
+      "operator_version": 2,
+      "params": {}
+    }
+  ],
+  "display_code": "R08",
+  "enabled": true,
+  "revision": 4,
+  "rule_id": "duties.separation",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "v2第8条：含员工报账，仅职责内容相同且经办审核人员重合时提示冲突；20260914确认优化：解析字段与动作、制度依据、当前措施明确载体名称结构，保留不确定项。",
+  "title": "经办审核人员分离"
+}

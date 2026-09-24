@@ -1,0 +1,65 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_schema",
+      "location_policy": "material",
+      "message": {
+        "review": "【第3条】{advice_v2}",
+        "violation": "【第3条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "schema_contains",
+      "operator_version": 3,
+      "params": {
+        "accept_split_applicability": true,
+        "check_applicability_tail": true,
+        "compare_baseline": true,
+        "ignore_fields": [
+          "applicability",
+          "applicability_reason"
+        ],
+        "field_labels": {
+          "applicability": "是否适用/是否适用及原因",
+          "carrier": "控制载体",
+          "control_measure": "控制措施",
+          "control_system": "控制系统",
+          "measure_id": "控制措施编号",
+          "responsibility": "责任主体"
+        },
+        "required_fields": [
+          "measure_id",
+          "control_measure",
+          "control_system",
+          "carrier",
+          "responsibility",
+          "applicability"
+        ],
+        "sheet_types": [
+          "matrix"
+        ]
+      }
+    }
+  ],
+  "display_code": "R03",
+  "enabled": true,
+  "revision": 9,
+  "rule_id": "schema.applicability",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "0917-4.docx 有效正文（接受新增、排除修订删除）；缺失字段意见使用通用字段名，不引用特定单位别名。",
+  "title": "字段及适用性"
+}

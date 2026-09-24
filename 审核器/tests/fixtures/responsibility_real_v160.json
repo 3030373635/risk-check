@@ -1,0 +1,182 @@
+[
+  {
+    "id": "real-01",
+    "text": "对按照财务业务流程要求，做好报销审核、检查材料完备负有审核责任。",
+    "role": "审核",
+    "expected_R10": "pass",
+    "expected_R11": null,
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "relative_path": "国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "sha256": "0e26f1cca80db16e1aae5c397f2038d891b5ddd0995d2433fa7555f4c98ba075",
+      "sheet": "岗位职责清单 ",
+      "row": 72,
+      "cell": "F72",
+      "entity_code": "205H",
+      "measure_id": "员工报账业务-12.公务接待范围、执行制度、费用报销-控制措施03"
+    }
+  },
+  {
+    "id": "real-02",
+    "text": "对落实发票验真负主体责任。",
+    "role": "经办",
+    "expected_R10": "pass",
+    "expected_R11": null,
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "relative_path": "国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "sha256": "0e26f1cca80db16e1aae5c397f2038d891b5ddd0995d2433fa7555f4c98ba075",
+      "sheet": "岗位职责清单 ",
+      "row": 60,
+      "cell": "F60",
+      "entity_code": "205H",
+      "measure_id": "员工报账业务-11.报销发票审核-控制措施02"
+    }
+  },
+  {
+    "id": "real-03",
+    "text": "发票提交人负有落实发票验真的主体责任。",
+    "role": "经办",
+    "expected_R10": "pass",
+    "expected_R11": "pass",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "relative_path": "1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "sha256": "7f19635c36d5c3362560765842b683602703a215ed3537e1c2c8abc27abc311d",
+      "sheet": "岗位职责清单",
+      "row": 1445,
+      "cell": "F1445",
+      "entity_code": "204Q",
+      "measure_id": "员工报账业务-11.报销发票审核-控制措施02"
+    }
+  },
+  {
+    "id": "real-04",
+    "text": "对按照财务业务流程要求，做好报销复核、检查材料完备负有主体责任。",
+    "role": "审核",
+    "expected_R10": "pass",
+    "expected_R11": "responsibility_role_conflict",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "relative_path": "1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "sha256": "7f19635c36d5c3362560765842b683602703a215ed3537e1c2c8abc27abc311d",
+      "sheet": "岗位职责清单",
+      "row": 838,
+      "cell": "F838",
+      "entity_code": "204Q",
+      "measure_id": "员工报账业务-15.会议规模、费用报销-控制措施03"
+    }
+  },
+  {
+    "id": "real-05",
+    "text": "对营销业务费列支情况、发票和业务作证资料齐全负有审核责任，确保完整性和合规性。",
+    "role": "审核",
+    "expected_R10": "pass",
+    "expected_R11": "pass",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "relative_path": "1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "sha256": "7f19635c36d5c3362560765842b683602703a215ed3537e1c2c8abc27abc311d",
+      "sheet": "岗位职责清单",
+      "row": 852,
+      "cell": "F852",
+      "entity_code": "204Q",
+      "measure_id": "员工报账业务-32.业务费报销-控制措施03"
+    }
+  },
+  {
+    "id": "real-06",
+    "text": "对营销退费管理，明确分级分类审批标准及系统建设负有审核责任。",
+    "role": "审批",
+    "expected_R10": "responsibility_quality_missing",
+    "expected_R11": "responsibility_role_conflict",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/1国网湖南省电力有限公司湘西供电分公司本部/01 营销售电-营销部/“三清单”-01营销售电-湘西本部0910.xlsx",
+      "relative_path": "1国网湖南省电力有限公司湘西供电分公司本部/01 营销售电-营销部/“三清单”-01营销售电-湘西本部0910.xlsx",
+      "sha256": "91e477508c535de407ad7b6e1e4bf8f4a4225deaf23d5f30a12f183da92e1a63",
+      "sheet": "岗位职责清单 (汇总) 9.8",
+      "row": 78,
+      "cell": "F78",
+      "entity_code": "204Q",
+      "measure_id": "营销售电业务-28.退费申请与退费资料一致性管控-控制措施01"
+    }
+  },
+  {
+    "id": "real-07",
+    "text": "按照财务业务流程要求，做好报销审核、检查材料完备。",
+    "role": "审核",
+    "expected_R10": "responsibility_assertion_missing",
+    "expected_R11": "responsibility_role_missing",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/3国网湖南省电力有限公司凤凰县供电分公司/10 员工报账/“三清单”-10员工报账-省公司（审定）8.14-凤凰（9-4）.xlsx",
+      "relative_path": "3国网湖南省电力有限公司凤凰县供电分公司/10 员工报账/“三清单”-10员工报账-省公司（审定）8.14-凤凰（9-4）.xlsx",
+      "sha256": "57d621cdfe40ebb93f0dd0db158fcd373265efa3ae0d78d24619a8493f63a400",
+      "sheet": "岗位职责清单",
+      "row": 173,
+      "cell": "F173",
+      "entity_code": "2051",
+      "measure_id": "员工报账业务-12.公务接待范围、执行制度、费用报销-控制措施03"
+    }
+  },
+  {
+    "id": "real-08",
+    "text": "对做好报销审核。按照财务业务流程要求，做好报销审核、检查材料完备审核责任。",
+    "role": "审核",
+    "expected_R10": "responsibility_structure_unresolved",
+    "expected_R11": "responsibility_role_unresolved",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "relative_path": "1国网湖南省电力有限公司湘西供电分公司本部/10员工报账-财务部/“三清单”-10员工报账-湘西公司9.9.xlsx",
+      "sha256": "7f19635c36d5c3362560765842b683602703a215ed3537e1c2c8abc27abc311d",
+      "sheet": "岗位职责清单",
+      "row": 836,
+      "cell": "F836",
+      "entity_code": "204Q",
+      "measure_id": "员工报账业务-12.公务接待范围、执行制度、费用报销-控制措施03"
+    }
+  },
+  {
+    "id": "real-09",
+    "text": "对赴异地挂职发起出差申请，按照规定探亲在途期间出差申请选择原单位成本中心，挂职期间出差申请选择挂职单位成本中心负有主体责任。",
+    "role": "经办",
+    "expected_R10": "responsibility_quality_missing",
+    "expected_R11": null,
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "relative_path": "国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/10 员工报账-9.11初审/国网湖南信通公司“三清单”-10员工报账.xlsx",
+      "sha256": "0e26f1cca80db16e1aae5c397f2038d891b5ddd0995d2433fa7555f4c98ba075",
+      "sheet": "岗位职责清单 ",
+      "row": 10,
+      "cell": "F10",
+      "entity_code": "205H",
+      "measure_id": "员工报账业务-1.出差申请发起-控制措施03"
+    }
+  },
+  {
+    "id": "real-10",
+    "text": "赴异地挂职发起出差申请，按照规定探亲在途期间出差申请选择原单位成本中心，挂职期间出差申请选择挂职单位成本中心。",
+    "role": "经办",
+    "expected_R10": "responsibility_assertion_missing",
+    "expected_R11": "responsibility_role_missing",
+    "label_basis": "开发阶段依据已确认规则及原文标注预期，尚未经审核人员独立确认；不以旧审核意见或模型分数作标签",
+    "source": {
+      "path": "/Users/mindblaster/Desktop/AI_GEN/Risk_Matrix/审核/湘西公司风控矩阵(20260911上报版）/3国网湖南省电力有限公司凤凰县供电分公司/10 员工报账/“三清单”-10员工报账-省公司（审定）8.14-凤凰（9-4）.xlsx",
+      "relative_path": "3国网湖南省电力有限公司凤凰县供电分公司/10 员工报账/“三清单”-10员工报账-省公司（审定）8.14-凤凰（9-4）.xlsx",
+      "sha256": "57d621cdfe40ebb93f0dd0db158fcd373265efa3ae0d78d24619a8493f63a400",
+      "sheet": "岗位职责清单",
+      "row": 13,
+      "cell": "F13",
+      "entity_code": "2051",
+      "measure_id": "员工报账业务-1.出差申请发起-控制措施03"
+    }
+  }
+]

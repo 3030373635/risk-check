@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "check_id": "position_measure_order",
+      "location_policy": "row",
+      "message": {
+        "review": "【排序检查】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。",
+        "violation": "【排序检查】{reason}，本行措施“{measure_id}”与“{related_sheet}”第{related_row}行位置相关，请将同一措施连续排列并按基准措施顺序调整。"
+      },
+      "on_unavailable": "review",
+      "operator": "ordered_records",
+      "operator_version": 4,
+      "params": {
+        "field": "measure_id"
+      }
+    }
+  ],
+  "display_code": "R12",
+  "enabled": true,
+  "revision": 5,
+  "rule_id": "lists.order",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "风控矩阵0916-3.docx 有效正文（排除修订删除）",
+  "title": "三清单排序"
+}

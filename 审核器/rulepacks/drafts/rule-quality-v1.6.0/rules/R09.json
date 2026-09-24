@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "check_id": "measure_exists",
+      "location_policy": "row",
+      "message": {
+        "review": "{advice_v2}（第9条）",
+        "violation": "{advice_v2}（第9条）"
+      },
+      "on_unavailable": "review",
+      "operator": "reference_exists",
+      "operator_version": 1,
+      "params": {
+        "source_field": "measure_id",
+        "target_field": "measure_id",
+        "target_record_type": "matrix"
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 9,
+  "rule_id": "references.current_matrix",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "用户最新确认：停止核验岗位职责、矩阵描述或岗位清单载体字段中的载体是否列入矩阵控制载体栏；不再执行载体引用、解析与模板载体差异检查。载体内容仅按第13条核对删除线原文是否在同编号岗位职责中重复。独立的控制措施编号存在性子项保留。",
+  "title": "当前控制措施编号对应"
+}

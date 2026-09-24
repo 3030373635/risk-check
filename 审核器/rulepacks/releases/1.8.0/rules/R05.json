@@ -1,0 +1,179 @@
+{
+  "checks": [
+    {
+      "check_id": "department_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 2,
+      "params": {
+        "field": "department",
+        "placeholder_patterns": [],
+        "placeholders": [
+          "管理部门",
+          "实施部门",
+          "各部门",
+          "需求部门",
+          "用工部门",
+          "归口管理部门",
+          "会签部门",
+          "实物资产",
+          "资产使用",
+          "委托",
+          "项目管理部门",
+          "项目建设部门",
+          "待定",
+          "项目承担部门",
+          "项目需求部门",
+          "资产使用保管部门",
+          "相关部门",
+          "有关部门",
+          "需求提报部门",
+          "委托方财务部门",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "position_specific",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 2,
+      "params": {
+        "field": "position",
+        "placeholder_patterns": [],
+        "placeholders": [
+          "某某",
+          "待定",
+          "相关人员",
+          "管理人员",
+          "实施人员",
+          "接待人员",
+          "承接人员",
+          "出差人员",
+          "需求人员",
+          "报账人员",
+          "部门负责人",
+          "需求审核人员",
+          "合同签订人员",
+          "合同经办人员",
+          "合同审核人员",
+          "合同结算人员",
+          "往来管理人员",
+          "使用保管人员",
+          "项目管理人员",
+          "需求提报人",
+          "负责人",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": [
+          "、",
+          "，",
+          "；",
+          ",",
+          ";"
+        ]
+      }
+    },
+    {
+      "check_id": "person_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】请具体到人员。"
+      },
+      "on_unavailable": "review",
+      "operator": "field_constraints",
+      "operator_version": 2,
+      "params": {
+        "field": "person_names",
+        "placeholder_patterns": [
+          "等|…|\\.{3}"
+        ],
+        "placeholders": [
+          "待定",
+          "某某",
+          "相关人员",
+          "无",
+          "-",
+          "/"
+        ],
+        "separators": []
+      }
+    },
+    {
+      "check_id": "duty_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "duty"
+        ],
+        "labels": {
+          "duty": "岗位职责"
+        }
+      }
+    },
+    {
+      "check_id": "measure_id_required",
+      "location_policy": "row",
+      "message": {
+        "review": "【第5条】{advice_v2}",
+        "violation": "【第5条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "required_fields",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "measure_id"
+        ],
+        "labels": {
+          "measure_id": "控制措施编号"
+        }
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 5,
+  "rule_id": "duties.completeness",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核确认稿 V1 及 2026-09-15 用户批准执行口径",
+  "title": "部门岗位人员职责"
+}

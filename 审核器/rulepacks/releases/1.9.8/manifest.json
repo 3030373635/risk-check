@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-17",
+  "content_hash": "4f6ab1db556ae8e705fdb42829ad82be6f781ea49031d805ac636b2117fe1752",
+  "engine_compatibility": ">=1.9.8,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "c17e8b028704b7d12106ace588af1fe2d676b99fd6136b1ef936ecc4abcdfc86",
+  "status": "released",
+  "title": "0917第10条诊断式审核意见规则",
+  "version": "1.9.8"
+}

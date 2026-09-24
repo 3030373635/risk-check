@@ -1,0 +1,55 @@
+{
+  "checks": [
+    {
+      "check_id": "remove_smart_control_platform",
+      "location_policy": "row",
+      "message": {
+        "review": "【第4条】{advice_v2}",
+        "violation": "【第4条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "forbidden_reference",
+      "operator_version": 1,
+      "params": {
+        "fields": [
+          "system_name",
+          "system_rule_name",
+          "system_rule_content"
+        ],
+        "measure_contains": "数字化项目",
+        "negation_markers": [
+          "删除",
+          "不使用",
+          "停用",
+          "示例",
+          "不涉及"
+        ],
+        "terms": [
+          "数字化项目智慧管控平台"
+        ]
+      }
+    }
+  ],
+  "display_code": "R04",
+  "enabled": false,
+  "revision": 4,
+  "rule_id": "systems.forbidden_platform",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "08"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "system_rule"
+  },
+  "source_reference": "审核确认稿 V1 及 2026-09-15 用户批准执行口径",
+  "title": "指定平台专项"
+}

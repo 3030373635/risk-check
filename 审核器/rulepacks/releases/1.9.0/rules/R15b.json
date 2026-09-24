@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "missing_duty_measures",
+      "location_policy": "row",
+      "message": {
+        "review": "【第15条】请核实适用性。",
+        "violation": "【第15条】请核实适用性。"
+      },
+      "on_unavailable": "review",
+      "operator": "missing_duty_measures",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R15",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "matrices.missing_duty_measures",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "matrix"
+  },
+  "source_reference": "风控矩阵-0916-1.docx 有效正文（排除修订删除）",
+  "title": "岗位清单未覆盖措施编号"
+}

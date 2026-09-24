@@ -1,0 +1,55 @@
+{
+  "checks": [
+    {
+      "check_id": "handler_reviewer_overlap",
+      "location_policy": "related_rows",
+      "message": {
+        "review": "{advice}（第8条）",
+        "violation": "{advice}（第8条）"
+      },
+      "on_unavailable": "review",
+      "operator": "roles_disjoint",
+      "operator_version": 1,
+      "params": {
+        "group_by": [
+          "entity_code",
+          "business_code",
+          "variant_id",
+          "measure_id"
+        ],
+        "person_field": "person_keys",
+        "role_field": "role",
+        "role_pairs": [
+          [
+            "经办",
+            "审核"
+          ]
+        ]
+      }
+    }
+  ],
+  "display_code": "R08",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "duties.separation",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [
+        "10"
+      ],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "审核规则第8条",
+  "title": "经办审核人员分离"
+}

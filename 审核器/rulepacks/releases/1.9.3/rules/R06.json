@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "check_id": "incompatible_sheet_exists",
+      "location_policy": "material",
+      "message": {
+        "review": "【第6条】{advice_v2}",
+        "violation": "【第6条】{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "sheet_exists",
+      "operator_version": 1,
+      "params": {
+        "sheet_types": [
+          "incompatible_position"
+        ]
+      }
+    }
+  ],
+  "display_code": "R06",
+  "enabled": true,
+  "revision": 4,
+  "rule_id": "lists.incompatible_exists",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵0916-3.docx 有效正文（排除修订删除）",
+  "title": "不相容岗位清单存在性"
+}
