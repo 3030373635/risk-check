@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: "审核器/pyproject.toml"
 
       - name: 安装构建与测试依赖
-        run: python -m pip install --disable-pip-version-check -e ".\审核器[web,test]"
+        run: python -m pip install --disable-pip-version-check ".\审核器[web,test]"
 
       - name: 验证锁定运行时和安装策略
         run: |

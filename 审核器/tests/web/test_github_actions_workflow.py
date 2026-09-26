@@ -52,6 +52,16 @@ def test_web_build_workflow_uses_runtime_lock_tests_and_portable_builder() -> No
     assert "PyInstaller" not in workflow
 
 
+def test_windows_workflow_installs_project_without_editable_mode() -> None:
+    """Windows 必须用普通 wheel 安装项目；无参数，防止中文路径写入 editable .pth。"""
+    workflow = read_workflow()
+    install_step = workflow.split("- name: 安装构建与测试依赖", 1)[1].split("\n      - name:", 1)[0]
+
+    # editable 安装会把包含中文的绝对源码路径写入 Windows .pth 文件。
+    assert not re.search(r"(?<!\S)(?:-e|--editable)(?:\s|=)", install_step)
+    assert r".\审核器[web,test]" in install_step
+
+
 def test_web_build_workflow_pins_libreoffice_and_uploads_zip() -> None:
     """工作流必须校验固定 LibreOffice 并上传最终 ZIP。"""
     workflow = read_workflow()
