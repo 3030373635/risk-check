@@ -55,7 +55,8 @@ jobs:
         run: python ".\审核器\tools\vendor_web_assets.py" --verify
 
       - name: 运行 Web 版测试
-        run: python -m pytest ".\审核器\tests\web" -q
+        working-directory: 审核器
+        run: python -m pytest "tests\web" -q
 
       - name: 下载并安装 LibreOffice
         run: |

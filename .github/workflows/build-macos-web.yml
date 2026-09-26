@@ -72,8 +72,9 @@ jobs:
 
       - name: 运行 Web 版测试
         shell: bash
+        working-directory: 审核器
         run: |
-          PYTHONPATH="审核器/src" "审核器/.venv/bin/python" -m pytest "审核器/tests/web" -q
+          PYTHONPATH="src" ".venv/bin/python" -m pytest "tests/web" -q
 
       - name: 下载并校验 LibreOffice
         shell: bash

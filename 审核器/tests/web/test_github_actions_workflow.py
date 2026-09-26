@@ -126,3 +126,12 @@ def test_macos_build_workflow_uploads_only_final_archive() -> None:
     assert "release/**" not in upload_block
     assert "if-no-files-found: error" in upload_block
     assert "compression-level: 0" in upload_block
+
+
+@pytest.mark.parametrize("workflow_reader", [read_workflow, read_macos_workflow])
+def test_web_test_step_runs_from_auditor_root(workflow_reader) -> None:
+    """双平台测试步骤必须以审核器为工作目录，使 tools 与 src 同时可导入。"""
+    workflow = workflow_reader()
+    test_step = workflow.split("- name: 运行 Web 版测试", 1)[1].split("\n      - name:", 1)[0]
+
+    assert "working-directory: 审核器" in test_step
