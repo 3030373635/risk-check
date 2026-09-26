@@ -16,6 +16,10 @@ RESOURCE_FILES = (
 
 
 def load_pack(path: str | Path) -> dict[str, Any]:
+    """加载规则包并计算资源文件哈希。
+
+    参数 path 为规则包目录，可传入字符串或 Path 对象。
+    """
     base = Path(path).resolve()
     if not base.is_dir():
         raise FileNotFoundError(f"rule pack does not exist: {base}")
@@ -32,7 +36,8 @@ def load_pack(path: str | Path) -> dict[str, Any]:
         rule["_source"] = str(p)
         pack["rules"].append(rule)
     pack["_resource_hashes"] = {
-        str(p.relative_to(base)): sha256_file(p)
+        # 哈希键统一使用正斜杠，避免 Windows 分隔符改变发布包内容哈希。
+        p.relative_to(base).as_posix(): sha256_file(p)
         for p in sorted(base.rglob("*.json"))
     }
     return pack

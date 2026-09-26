@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import builtins
 import copy
 import json
 import shutil
 
 import pytest
 
+from risk_audit.configuration import loader
 from risk_audit.configuration.publisher import RulePackStore
 from risk_audit.configuration.validator import ConfigError, validate_pack
 
@@ -19,6 +21,32 @@ def test_release_valid_and_r07_cannot_be_enabled(pack, registry):
     rule(pack, "systems.content")["enabled"] = True
     with pytest.raises(ConfigError, match="not implemented"):
         validate_pack(pack, registry)
+
+
+def test_released_pack_hash_is_independent_of_windows_path_separator(
+    monkeypatch,
+    project_root,
+    registry,
+):
+    """模拟 Windows 路径字符串并校验已发布规则包。
+
+    参数 monkeypatch 用于模拟 Windows 的反斜杠路径字符串，project_root
+    提供项目根目录，registry 提供规则能力注册表。
+    """
+
+    def windows_path_string(value):
+        """将路径对象转换为 Windows 分隔符字符串。
+
+        参数 value 为待转换的任意对象；非路径值仍使用标准 str 语义。
+        """
+        return builtins.str(value).replace("/", "\\")
+
+    monkeypatch.setattr(loader, "str", windows_path_string, raising=False)
+    release_path = project_root / "risk-audit/rulepacks/releases/1.9.19"
+
+    pack = loader.load_pack(release_path)
+
+    validate_pack(pack, registry)
 
 
 @pytest.mark.parametrize("mutation,needle", [
