@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "platforms": {
+    "windows-x64": {
+      "python": {
+        "kind": "archive",
+        "version": "3.11.16+20260924",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "sha256": "f86b3cbd425e1c446b56aa24e20a7be1223c1a8146e5e3a68c8e18d08b76e810",
+        "size": 25273229,
+        "archive_root": "python"
+      },
+      "libreoffice": {
+        "kind": "msi",
+        "version": "26.2.6",
+        "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi",
+        "sha256": "f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660",
+        "size": null,
+        "archive_root": "LibreOffice"
+      }
+    },
+    "macos-arm64": {
+      "python": {
+        "kind": "archive",
+        "version": "3.11.16+20260924",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "sha256": "e1d745b07b6acc0641dbb3237d3c5953deeeed182141bab2242684076fd86547",
+        "size": 26965707,
+        "archive_root": "python"
+      },
+      "libreoffice": {
+        "kind": "dmg",
+        "version": "25.2.6.2",
+        "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/25.2.6.2/mac/aarch64/LibreOffice_25.2.6.2_MacOS_aarch64.dmg",
+        "sha256": "b1c4b78fdaea8bd42461ad3bee264d5d281827dfcfdc1a567c64bc512ccde8b3",
+        "size": 291550461,
+        "archive_root": "LibreOffice.app"
+      }
+    }
+  }
+}

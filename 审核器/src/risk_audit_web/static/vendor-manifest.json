@@ -1,0 +1,43 @@
+{
+  "assets": [
+    {
+      "path": "src/risk_audit_web/static/css/bootstrap.min.css",
+      "sha256": "d85327d99c7a3ee1f9b5d0500d1370acea3ad2db39c163c2f51f232baedbdede",
+      "size": 232111,
+      "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+    },
+    {
+      "path": "src/risk_audit_web/static/js/bootstrap.bundle.min.js",
+      "sha256": "e4fd49181388c48ec5040bd3fe66f57c29c8e67fcd8502b3354b96ec7ab47cc7",
+      "size": 80496,
+      "url": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    },
+    {
+      "path": "src/risk_audit_web/static/css/bootstrap-icons.min.css",
+      "sha256": "a5d6387a32ca3baec4d02336b5b3edab50c9dd518355576a011ea3dd9c1d884e",
+      "size": 87008,
+      "url": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
+    },
+    {
+      "path": "src/risk_audit_web/static/fonts/bootstrap-icons.woff2",
+      "sha256": "6c75710364a1ca5604267716f6d28997b26319fdb078cf11e0b42ab66ff2ea61",
+      "size": 134044,
+      "url": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/fonts/bootstrap-icons.woff2"
+    },
+    {
+      "path": "licenses/web/Bootstrap.txt",
+      "sha256": "4620c84ad5ce8602ff65640ed6b7c8b78ebb9e036584f0ebc1ccc88206a4bb51",
+      "size": 1093,
+      "url": "https://raw.githubusercontent.com/twbs/bootstrap/v5.3.8/LICENSE"
+    },
+    {
+      "path": "licenses/web/Bootstrap-Icons.txt",
+      "sha256": "0fb3e11bd57e896c5a512afd64864d28a37de45d19835016c87ca1ad19ead969",
+      "size": 1093,
+      "url": "https://raw.githubusercontent.com/twbs/icons/v1.13.1/LICENSE"
+    }
+  ],
+  "bootstrap_icons_version": "1.13.1",
+  "bootstrap_version": "5.3.8",
+  "schema_version": "1.0"
+}

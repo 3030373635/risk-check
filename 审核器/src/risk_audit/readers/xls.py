@@ -13,7 +13,8 @@ from openpyxl import load_workbook
 from lxml import etree
 from openpyxl.utils.cell import coordinate_to_tuple, get_column_letter
 
-SOFFICE = Path("/Users/mindblaster/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice")
+# Web Worker 启动后会注入包内路径；默认值只用于明确的未配置错误提示。
+SOFFICE = Path("soffice")
 PROFILE_PATH: Path | None = None
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"

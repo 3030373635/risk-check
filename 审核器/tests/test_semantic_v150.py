@@ -3,8 +3,9 @@ from pathlib import Path
 from types import SimpleNamespace
 import json
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")
 
 from risk_audit.semantic import SemanticAssistant, LocalEncoder
 from risk_audit.semantic_matching import parse_responsibility, position_conflicts, filter_applicability

@@ -1,0 +1,112 @@
+name: 构建 Windows 离线 Web 便携版
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: "1"
+  PYTHON_RUNTIME_SHA256: "f86b3cbd425e1c446b56aa24e20a7be1223c1a8146e5e3a68c8e18d08b76e810"
+  LIBREOFFICE_VERSION: "26.2.6"
+  LIBREOFFICE_INSTALLER_URL: "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi"
+  LIBREOFFICE_INSTALLER_SHA256: "f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660"
+  RELEASE_ROOT: "release"
+
+jobs:
+  build-windows-web:
+    name: Windows x64 离线 Web 便携版
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: 获取源代码
+        uses: actions/checkout@v7
+
+      - name: 配置构建 Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: "审核器/pyproject.toml"
+
+      - name: 安装构建与测试依赖
+        run: python -m pip install --disable-pip-version-check -e ".\审核器[web,test]"
+
+      - name: 验证锁定运行时和安装策略
+        run: |
+          $manifest = Get-Content ".\审核器\packaging\runtime-sources.json" -Raw | ConvertFrom-Json
+          if ($manifest.platforms.'windows-x64'.python.sha256 -ne $env:PYTHON_RUNTIME_SHA256) {
+            throw "runtime-sources.json 的 Windows Python SHA-256 与 CI 锁定值不一致"
+          }
+          if (-not (Select-String -Path ".\审核器\tools\portable_release.py" -SimpleMatch '"--require-hashes"')) {
+            throw "目标 Python 安装未强制 --require-hashes"
+          }
+          if (-not (Test-Path ".\审核器\requirements-runtime.lock" -PathType Leaf)) {
+            throw "缺少纯运行依赖锁 requirements-runtime.lock"
+          }
+
+      - name: 验证 Web 静态资产
+        run: python ".\审核器\tools\vendor_web_assets.py" --verify
+
+      - name: 运行 Web 版测试
+        run: python -m pytest ".\审核器\tests\web" -q
+
+      - name: 下载并安装 LibreOffice
+        run: |
+          $installerPath = Join-Path $env:RUNNER_TEMP "LibreOffice_$env:LIBREOFFICE_VERSION`_Win_x86-64.msi"
+          $installLogPath = Join-Path $env:RUNNER_TEMP "libreoffice-install.log"
+          Invoke-WebRequest -Uri $env:LIBREOFFICE_INSTALLER_URL -OutFile $installerPath
+
+          # 固定官方安装包摘要，防止下载内容在构建时被替换。
+          $actualHash = (Get-FileHash -Path $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:LIBREOFFICE_INSTALLER_SHA256) {
+            throw "LibreOffice 安装包 SHA-256 不匹配：$actualHash"
+          }
+
+          $installerArguments = @(
+            "/i", "`"$installerPath`"", "/qn", "/norestart", "/L*v", "`"$installLogPath`"",
+            "REGISTER_ALL_MSO_TYPES=0", "ISCHECKFORPRODUCTUPDATES=0", "QUICKSTART=0"
+          )
+          $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $installerArguments -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 3010)) {
+            Get-Content -Path $installLogPath -Tail 200
+            throw "LibreOffice 安装失败，退出码：$($process.ExitCode)"
+          }
+          $libreOfficeRoot = Join-Path $env:ProgramFiles "LibreOffice"
+          if (-not (Test-Path (Join-Path $libreOfficeRoot "program\soffice.exe") -PathType Leaf)) {
+            throw "LibreOffice 运行文件缺失"
+          }
+          "LIBREOFFICE_ROOT=$libreOfficeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 构建离线便携版
+        run: |
+          python ".\审核器\tools\build_portable.py" `
+            --platform windows-x64 `
+            --project-root "." `
+            --libreoffice "$env:LIBREOFFICE_ROOT" `
+            --licenses ".\审核器\licenses" `
+            --usage-guide ".\审核器\Windows Web版使用说明.md" `
+            --output ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.0.0"
+
+      - name: 验证最终归档
+        run: |
+          $archivePath = ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.0.0-Windows-x64.zip"
+          python ".\审核器\tools\verify_portable_distribution.py" $archivePath --platform windows-x64
+          $archiveHash = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "### Windows 离线 Web 便携版" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- SHA-256：``$archiveHash``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: 上传 Windows 便携版
+        uses: actions/upload-artifact@v7
+        with:
+          path: "release/风控矩阵审核器-v2.0.0-Windows-x64.zip"
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          archive: false

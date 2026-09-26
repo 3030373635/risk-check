@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "risk-audit"
-version = "1.9.19"
-description = "本地规则与语义候选辅助的风控矩阵及三清单审核器"
+version = "2.0.0"
+description = "完全离线的本机 Web 风控矩阵及三清单审核器"
 requires-python = ">=3.11"
 dependencies = [
   "openpyxl==3.1.5",
@@ -17,17 +17,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==8.4.2", "pytest-qt==4.5.0"]
-semantic = ["numpy==2.3.5", "onnxruntime==1.22.1", "tokenizers==0.21.4"]
-desktop = ["PySide6==6.8.3"]
-build = ["PyInstaller==6.16.0"]
+test = ["pytest==8.4.2", "httpx==0.28.1"]
+web = ["fastapi==0.141.1", "uvicorn==0.53.0"]
 
 [project.scripts]
 risk-audit = "risk_audit.cli:main"
-risk-audit-desktop = "risk_audit_desktop.app:main"
+risk-audit-web = "risk_audit_web.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+risk_audit_web = ["assets/*", "static/*", "static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
