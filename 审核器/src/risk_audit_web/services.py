@@ -60,6 +60,30 @@ def task_response(task: ManagedTask) -> dict[str, Any]:
     return payload
 
 
+def diagnostic_response(report: DiagnosticReport) -> list[dict[str, Any]]:
+    """构造精简诊断响应；report 为启动时完整资源诊断。"""
+    failed_items = [item for item in report.items if not item.ok]
+    if failed_items:
+        visible_items = failed_items
+    else:
+        # 全部成功时只返回汇总，避免浏览器渲染数万条文件明细。
+        return [{
+            "code": "ok",
+            "path": "",
+            "message": f"运行环境检查通过，共校验 {len(report.items)} 项资源",
+            "ok": True,
+        }]
+    return [
+        {
+            "code": item.code,
+            "path": item.relative_path,
+            "message": item.message,
+            "ok": item.ok,
+        }
+        for item in visible_items
+    ]
+
+
 @dataclass
 class ApplicationServices:
     """组合 API 所需的任务、平台和退出能力。"""
@@ -95,15 +119,7 @@ class ApplicationServices:
             "can_create_task": report.can_start and accepting_tasks,
             "rule_version": rule_version,
             "running_count": self.manager.snapshot().running_count,
-            "diagnostics": [
-                {
-                    "code": item.code,
-                    "path": item.relative_path,
-                    "message": item.message,
-                    "ok": item.ok,
-                }
-                for item in report.items
-            ],
+            "diagnostics": diagnostic_response(report),
         }
 
     def select_input_directory(self) -> dict[str, Any]:
@@ -141,6 +157,15 @@ class ApplicationServices:
             with self._creation_lock:
                 if self._shutting_down:
                     raise ApiProblem(409, "SERVICE_SHUTTING_DOWN", "审核器正在退出，不能创建新任务")
+                if not self._startup_report.can_start:
+                    errors = "；".join(
+                        item.message for item in self._startup_report.items if not item.ok
+                    )
+                    raise ApiProblem(
+                        422,
+                        "ENVIRONMENT_NOT_READY",
+                        f"运行环境检查未通过：{errors}",
+                    )
                 record = self.store.create_task(
                     input_root=Path(request.input_root),
                     display_name=request.display_name,

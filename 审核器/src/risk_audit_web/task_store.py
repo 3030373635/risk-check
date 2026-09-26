@@ -21,10 +21,7 @@ from risk_audit_web.task_contracts import (
     TaskState,
     TaskRequest,
 )
-from risk_audit_web.diagnostics import (
-    load_active_rulepack,
-    run_startup_diagnostics,
-)
+from risk_audit_web.diagnostics import load_active_rulepack
 from risk_audit_web.task_paths import (
     PortablePaths,
     default_output_path,
@@ -148,10 +145,6 @@ class TaskStore:
         token_factory: Callable[[], str] | None = None,
     ) -> TaskRecord:
         """创建并持久化任务；参数为表单路径、名称、资源路径及可选时间和编号源。"""
-        diagnostics = run_startup_diagnostics(paths)
-        if not diagnostics.can_start:
-            errors = "；".join(item.message for item in diagnostics.items if not item.ok)
-            raise ValueError(f"运行环境检查未通过：{errors}")
         creation_time = created_at or datetime.now().astimezone()
         token = (token_factory or (lambda: secrets.token_hex(2)))()
         task_id = f"{creation_time.strftime('%Y%m%d-%H%M%S')}-{token}"
