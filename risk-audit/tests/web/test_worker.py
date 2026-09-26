@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-import time
+import threading
 
 import pytest
 
@@ -162,19 +162,35 @@ def test_worker_cancel_check_reads_only_own_marker(tmp_path: Path) -> None:
     assert is_cancel_requested(own_task)
 
 
-def test_worker_refreshes_heartbeat_during_long_audit_unit(tmp_path: Path) -> None:
+def test_worker_refreshes_heartbeat_during_long_audit_unit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """即使核心暂时没有进度事件，Worker 也必须周期刷新心跳。"""
-    from risk_audit_web.worker import run_worker
+    from risk_audit_web import worker
 
     request, request_path = create_request(tmp_path)
     state_path = Path(request.output_root) / ".task/state.json"
-    heartbeats = []
+    heartbeat_written = threading.Event()
+    heartbeat_values: list[str] = []
+    heartbeat_observed: list[bool] = []
+    original_atomic_write_json = worker.atomic_write_json
+
+    def observe_state_write(path: Path, payload: dict) -> None:
+        """记录状态写入；path 为目标文件，payload 为状态数据。"""
+        original_atomic_write_json(path, payload)
+        if path != state_path:
+            return
+        heartbeat_values.append(payload["heartbeat_at"])
+        # 只有时间戳真正变化才能证明心跳已刷新。
+        if heartbeat_values[-1] != heartbeat_values[0]:
+            heartbeat_written.set()
+
+    monkeypatch.setattr(worker, "atomic_write_json", observe_state_write)
 
     def slow_audit(*args, **kwargs):
         """模拟单个耗时工作单元；参数与审核核心一致。"""
-        heartbeats.append(json.loads(state_path.read_text(encoding="utf-8"))["heartbeat_at"])
-        time.sleep(0.08)
-        heartbeats.append(json.loads(state_path.read_text(encoding="utf-8"))["heartbeat_at"])
+        heartbeat_observed.append(heartbeat_written.wait(timeout=1.0))
         return {
             "write_completed": True,
             "input_files": 0,
@@ -184,5 +200,9 @@ def test_worker_refreshes_heartbeat_during_long_audit_unit(tmp_path: Path) -> No
             "business_results": [],
         }
 
-    assert run_worker(request_path, audit_func=slow_audit, heartbeat_interval_seconds=0.02) == 0
-    assert heartbeats[0] != heartbeats[1]
+    assert worker.run_worker(
+        request_path,
+        audit_func=slow_audit,
+        heartbeat_interval_seconds=0.02,
+    ) == 0
+    assert heartbeat_observed == [True]
