@@ -113,7 +113,7 @@ class TaskManager:
         for record in index.records:
             try:
                 state = self._stable_state(record, self.store.read_state(record))
-                cancel_path = Path(record.output_root) / "_task/cancel.requested"
+                cancel_path = Path(record.output_root) / ".task/cancel.requested"
                 if state.status == "running" and cancel_path.is_file():
                     # 取消标记只影响页面投影，持久状态仍由 Worker 独占写入。
                     state = state.with_updates(
@@ -136,7 +136,7 @@ class TaskManager:
 
     def start_task(self, record: TaskRecord) -> int:
         """立即启动独立 Worker；record 为已持久化任务，返回子进程 PID。"""
-        request_path = Path(record.output_root) / "_task/request.json"
+        request_path = Path(record.output_root) / ".task/request.json"
         arguments = self.worker_arguments_factory(self.executable, request_path)
         options: dict[str, Any] = {
             "shell": False,
@@ -158,7 +158,7 @@ class TaskManager:
         record = self._records().get(task_id)
         if record is None:
             return False
-        task_dir = Path(record.output_root) / "_task"
+        task_dir = Path(record.output_root) / ".task"
         cancel_path = task_dir / "cancel.requested"
         if cancel_path.is_file():
             state = self.store.read_state(record)

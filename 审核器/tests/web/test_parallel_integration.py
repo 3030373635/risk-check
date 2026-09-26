@@ -13,7 +13,7 @@ def create_task(store, tmp_path: Path, task_id: str, barrier: Path, mode: str = 
     from risk_audit_web.task_contracts import TaskRecord, TaskState
 
     output_root = (tmp_path / "outputs" / task_id).resolve()
-    task_dir = output_root / "_task"
+    task_dir = output_root / ".task"
     task_dir.mkdir(parents=True)
     request_path = task_dir / "request.json"
     request_path.write_text(json.dumps({
@@ -67,7 +67,7 @@ def test_two_workers_overlap_and_keep_directories_isolated(tmp_path: Path) -> No
     manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
     manager.start_task(a)
     manager.start_task(b)
-    wait_until(lambda: all((Path(record.output_root) / "_task/ready").exists() for record in (a, b)))
+    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (a, b)))
 
     state_a, state_b = store.read_state(a), store.read_state(b)
     assert state_a.status == state_b.status == "running"
@@ -75,7 +75,7 @@ def test_two_workers_overlap_and_keep_directories_isolated(tmp_path: Path) -> No
     barrier.touch()
     wait_until(lambda: store.read_state(a).status == store.read_state(b).status == "completed")
     for record in (a, b):
-        task_dir = Path(record.output_root) / "_task"
+        task_dir = Path(record.output_root) / ".task"
         assert (task_dir / "work/owner.txt").read_text(encoding="utf-8") == record.task_id
         assert (task_dir / "lo-profile/owner.txt").read_text(encoding="utf-8") == record.task_id
         assert record.task_id in (task_dir / "worker.log").read_text(encoding="utf-8")
@@ -93,14 +93,14 @@ def test_cancelling_one_worker_does_not_affect_the_other(tmp_path: Path) -> None
     manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
     manager.start_task(a)
     manager.start_task(b)
-    wait_until(lambda: all((Path(record.output_root) / "_task/ready").exists() for record in (a, b)))
+    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (a, b)))
     assert manager.request_cancel("task-a")
     barrier.touch()
     wait_until(lambda: store.read_state(a).status == "cancelled")
     wait_until(lambda: store.read_state(b).status == "completed")
 
-    assert not (Path(b.output_root) / "_task/cancel.requested").exists()
-    assert "task-a" not in (Path(b.output_root) / "_task/worker.log").read_text(encoding="utf-8")
+    assert not (Path(b.output_root) / ".task/cancel.requested").exists()
+    assert "task-a" not in (Path(b.output_root) / ".task/worker.log").read_text(encoding="utf-8")
 
 
 def test_crashed_worker_is_interrupted_while_other_completes(tmp_path: Path) -> None:
@@ -114,7 +114,7 @@ def test_crashed_worker_is_interrupted_while_other_completes(tmp_path: Path) -> 
     manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
     manager.start_task(crashed)
     manager.start_task(healthy)
-    wait_until(lambda: all((Path(record.output_root) / "_task/ready").exists() for record in (crashed, healthy)))
+    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (crashed, healthy)))
     barrier.touch()
 
     def poll_to_terminal() -> bool:

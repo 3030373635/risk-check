@@ -13,7 +13,7 @@ def create_request(tmp_path: Path):
     from risk_audit_web.task_store import atomic_write_json
 
     output_root = tmp_path / "output"
-    task_dir = output_root / "_task"
+    task_dir = output_root / ".task"
     task_dir.mkdir(parents=True)
     soffice = tmp_path / "runtime/libreoffice/program/soffice.exe"
     soffice.parent.mkdir(parents=True)
@@ -60,9 +60,9 @@ def test_worker_maps_audit_result_to_terminal_state(
         from risk_audit.progress import AuditProgressEvent
 
         captured.update(kwargs)
-        report = kwargs["runs_root"] / kwargs["run_id"] / "_risk_audit/集中复核事项.md"
+        report = kwargs["runs_root"] / kwargs["run_id"] / "_risk_audit/未审核文件.json"
         report.parent.mkdir(parents=True)
-        report.write_text("复核事项", encoding="utf-8")
+        report.write_text("[]", encoding="utf-8")
         statistics = Path(request.output_root) / "审核统计表.xlsx"
         statistics.write_bytes(b"xlsx")
         kwargs["progress_callback"](AuditProgressEvent(
@@ -83,7 +83,7 @@ def test_worker_maps_audit_result_to_terminal_state(
 
     code = run_worker(request_path, audit_func=audit_func)
     state = TaskState.from_dict(json.loads(
-        (Path(request.output_root) / "_task/state.json").read_text(encoding="utf-8")
+        (Path(request.output_root) / ".task/state.json").read_text(encoding="utf-8")
     ))
 
     assert code == 0
@@ -94,12 +94,13 @@ def test_worker_maps_audit_result_to_terminal_state(
     assert state.result_summary["warnings"] == 1
     assert state.result_summary["limitations"] == 0
     assert Path(state.result_summary["audit_statistics_report"]).is_file()
-    assert Path(state.result_summary["review_report"]).is_file()
-    assert captured["runs_root"] == Path(request.output_root) / "_task/reports"
+    assert Path(state.result_summary["unaudited_files_report"]).is_file()
+    assert "review_report" not in state.result_summary
+    assert captured["runs_root"] == Path(request.output_root) / ".task/reports"
     assert "model_root" not in captured
-    assert not (Path(request.output_root) / "_task/work").exists()
-    assert not (Path(request.output_root) / "_task/libreoffice-profile").exists()
-    assert (Path(request.output_root) / "_task/reports").is_dir()
+    assert not (Path(request.output_root) / ".task/work").exists()
+    assert not (Path(request.output_root) / ".task/libreoffice-profile").exists()
+    assert (Path(request.output_root) / ".task/reports").is_dir()
 
 
 def test_worker_maps_audit_cancel_to_cancelled(tmp_path: Path) -> None:
@@ -116,7 +117,7 @@ def test_worker_maps_audit_cancel_to_cancelled(tmp_path: Path) -> None:
 
     code = run_worker(request_path, audit_func=cancel)
     state = TaskState.from_dict(json.loads(
-        (Path(request.output_root) / "_task/state.json").read_text(encoding="utf-8")
+        (Path(request.output_root) / ".task/state.json").read_text(encoding="utf-8")
     ))
 
     assert code == 0
@@ -136,7 +137,7 @@ def test_worker_failure_writes_failed_state_and_traceback(tmp_path: Path) -> Non
         raise RuntimeError("模拟审核崩溃")
 
     code = run_worker(request_path, audit_func=fail)
-    task_dir = Path(request.output_root) / "_task"
+    task_dir = Path(request.output_root) / ".task"
     state = TaskState.from_dict(json.loads((task_dir / "state.json").read_text(encoding="utf-8")))
 
     assert code == 1
@@ -150,8 +151,8 @@ def test_worker_cancel_check_reads_only_own_marker(tmp_path: Path) -> None:
     """取消检查只能读取当前任务目录中的标记。"""
     from risk_audit_web.worker import is_cancel_requested
 
-    own_task = tmp_path / "a/_task"
-    other_task = tmp_path / "b/_task"
+    own_task = tmp_path / "a/.task"
+    other_task = tmp_path / "b/.task"
     own_task.mkdir(parents=True)
     other_task.mkdir(parents=True)
     (other_task / "cancel.requested").touch()
@@ -166,7 +167,7 @@ def test_worker_refreshes_heartbeat_during_long_audit_unit(tmp_path: Path) -> No
     from risk_audit_web.worker import run_worker
 
     request, request_path = create_request(tmp_path)
-    state_path = Path(request.output_root) / "_task/state.json"
+    state_path = Path(request.output_root) / ".task/state.json"
     heartbeats = []
 
     def slow_audit(*args, **kwargs):

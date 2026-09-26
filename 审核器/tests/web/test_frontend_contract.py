@@ -70,6 +70,21 @@ def test_frontend_only_selects_input_and_keeps_output_readonly() -> None:
     assert "output_root:" not in app_source
 
 
+def test_frontend_uses_automatic_name_and_readable_unaudited_files_modal() -> None:
+    """页面不得要求任务名，并应在弹窗中展示未审核文件；无参数。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app_source = (root / "js/app.js").read_text(encoding="utf-8")
+
+    assert 'id="task-name"' not in html
+    assert "任务名称由系统自动生成" in html
+    assert 'id="view-unaudited-files-button"' in html
+    assert 'id="unaudited-files-modal"' in html
+    assert "/unaudited-files" in app_source
+    assert "display_name:" not in app_source
+    assert "review-openings" not in app_source
+
+
 def test_markdown_guides_use_cross_platform_script_terms() -> None:
     """Markdown 说明必须去除 EXE/PyInstaller 口径并覆盖双平台启动。"""
     project_root = static_root().parents[2]

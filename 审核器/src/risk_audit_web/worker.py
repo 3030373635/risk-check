@@ -32,7 +32,7 @@ def _now() -> str:
 
 
 def is_cancel_requested(task_dir: Path) -> bool:
-    """检查安全停止标记；task_dir 为当前任务的 `_task` 目录。"""
+    """检查安全停止标记；task_dir 为当前任务的 `.task` 目录。"""
     return (task_dir / "cancel.requested").is_file()
 
 
@@ -55,7 +55,10 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
         summary["audit_statistics_report"] = statistics_report
     if isinstance(run_dir, str):
         summary["run_dir"] = run_dir
-        summary["review_report"] = str(Path(run_dir) / "_risk_audit/集中复核事项.md")
+        unaudited_files_report = Path(run_dir) / "_risk_audit/未审核文件.json"
+        # 只有真实生成报告时才开放页面入口，避免客户点击后得到不存在错误。
+        if unaudited_files_report.is_file():
+            summary["unaudited_files_report"] = str(unaudited_files_report)
     return summary
 
 
@@ -98,7 +101,7 @@ def run_worker(
     payload = json.loads(request_path.read_text(encoding="utf-8"))
     request = TaskRequest.from_dict(payload)
     output_root = Path(request.output_root)
-    task_dir = output_root / "_task"
+    task_dir = output_root / ".task"
     state_path = task_dir / "state.json"
     events_path = task_dir / "events.jsonl"
     log_path = task_dir / "worker.log"

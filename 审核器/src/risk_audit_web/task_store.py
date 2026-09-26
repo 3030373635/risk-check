@@ -138,17 +138,18 @@ class TaskStore:
         self,
         *,
         input_root: Path,
-        display_name: str,
         paths: PortablePaths,
         output_root: Path | None = None,
         created_at: datetime | None = None,
         token_factory: Callable[[], str] | None = None,
     ) -> TaskRecord:
-        """创建并持久化任务；参数为表单路径、名称、资源路径及可选时间和编号源。"""
+        """创建并持久化任务；参数为输入路径、资源路径及可选输出、时间和编号源。"""
         creation_time = created_at or datetime.now().astimezone()
         token = (token_factory or (lambda: secrets.token_hex(2)))()
         task_id = f"{creation_time.strftime('%Y%m%d-%H%M%S')}-{token}"
         resolved_input = input_root.resolve(strict=False)
+        # 客户只选择资料目录，任务名称统一由目录名和创建时间生成。
+        display_name = f"{resolved_input.name or '审核任务'}-{creation_time.strftime('%Y%m%d-%H%M%S')}"
         created_output = False
         if output_root is None:
             preview_path = default_output_path(resolved_input, paths.outputs_root, creation_time)
@@ -163,7 +164,7 @@ class TaskStore:
             resolved_output = output_root.resolve()
             created_output = True
 
-        task_dir = resolved_output / "_task"
+        task_dir = resolved_output / ".task"
         request_path = task_dir / "request.json"
         state_path = task_dir / "state.json"
         timestamp = creation_time.isoformat(timespec="seconds")
@@ -172,7 +173,7 @@ class TaskStore:
             request = TaskRequest(
                 schema_version=SCHEMA_VERSION,
                 task_id=task_id,
-                display_name=display_name.strip() or resolved_input.name,
+                display_name=display_name,
                 input_root=str(resolved_input),
                 output_root=str(resolved_output),
                 rulepack=str(load_active_rulepack(paths.rulepacks).resolve()),

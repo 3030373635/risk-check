@@ -19,7 +19,7 @@ def make_record(tmp_path: Path, task_id: str = "task-1"):
         input_root=str((tmp_path / "input").resolve()),
         output_root=str((tmp_path / task_id).resolve()),
         created_at="2026-09-24T10:30:15+08:00",
-        state_path=str((tmp_path / task_id / "_task/state.json").resolve()),
+        state_path=str((tmp_path / task_id / ".task/state.json").resolve()),
     )
 
 
@@ -256,7 +256,6 @@ def test_create_task_writes_request_state_and_index(tmp_path: Path) -> None:
 
     record = store.create_task(
         input_root=input_root,
-        display_name="第一批审核",
         paths=paths,
         created_at=created_at,
         token_factory=lambda: "a1b2",
@@ -264,12 +263,12 @@ def test_create_task_writes_request_state_and_index(tmp_path: Path) -> None:
 
     output_root = Path(record.output_root)
     request = TaskRequest.from_dict(json.loads(
-        (output_root / "_task/request.json").read_text(encoding="utf-8")
+        (output_root / ".task/request.json").read_text(encoding="utf-8")
     ))
     state = store.read_state(record)
     assert output_root.name == "第一批资料0924-20260924-103015"
     assert record.task_id == "20260924-103015-a1b2"
-    assert record.display_name == "第一批审核"
+    assert record.display_name == "第一批资料0924-20260924-103015"
     assert request.input_root == str(input_root.resolve())
     assert "model_root" not in request.to_dict()
     assert state.status == "running" and state.worker_pid is None
@@ -288,7 +287,6 @@ def test_create_task_with_explicit_default_output_creates_missing_outputs_parent
 
     record = store.create_task(
         input_root=input_root,
-        display_name="材料",
         paths=paths,
         output_root=output_root,
         created_at=datetime(2026, 9, 24, 10, 30, 15, tzinfo=timezone.utc),
@@ -314,7 +312,6 @@ def test_create_task_rolls_back_managed_directory_when_index_write_fails(
     with pytest.raises(OSError, match="index failed"):
         store.create_task(
             input_root=input_root,
-            display_name="资料",
             paths=paths,
             created_at=datetime(2026, 9, 24, 10, 30, 15, tzinfo=timezone.utc),
             token_factory=lambda: "a1b2",

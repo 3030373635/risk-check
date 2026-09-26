@@ -7,19 +7,19 @@ from types import SimpleNamespace
 import pytest
 
 
-def create_request(display_name: str, input_root: Path):
-    """创建严格任务请求；display_name/input_root 为用户字段。"""
+def create_request(input_root: Path):
+    """创建严格任务请求；input_root 为用户选择的输入目录。"""
     from risk_audit_web.api_models import TaskCreateRequest
 
-    return TaskCreateRequest(display_name=display_name, input_root=str(input_root))
+    return TaskCreateRequest(input_root=str(input_root))
 
 
 def test_concurrent_tasks_reserve_distinct_output_directories(web_services, input_root: Path) -> None:
     """同秒并发任务必须获得不同输出目录；services/input_root 为真实边界。"""
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
-            executor.submit(web_services.create_task, create_request(f"任务{index}", input_root))
-            for index in range(2)
+            executor.submit(web_services.create_task, create_request(input_root))
+            for _ in range(2)
         ]
     tasks = [future.result() for future in futures]
 
@@ -33,7 +33,7 @@ def test_shutdown_requires_explicit_active_task_policy(web_services, input_root:
     """存在活动任务时 immediate 必须拒绝；services/input_root 为真实边界。"""
     from risk_audit_web.services import ApiProblem
 
-    task = web_services.create_task(create_request("运行中", input_root))
+    task = web_services.create_task(create_request(input_root))
     try:
         web_services.request_shutdown("immediate")
     except ApiProblem as error:
@@ -48,13 +48,13 @@ def test_shutdown_rejects_new_tasks_while_waiting(web_services, input_root: Path
     """退出流程开始后不得再接收新任务；services/input_root 为真实边界。"""
     from risk_audit_web.services import ApiProblem
 
-    web_services.create_task(create_request("运行中", input_root))
+    web_services.create_task(create_request(input_root))
     callbacks = []
     web_services.background_runner = callbacks.append
     web_services.request_shutdown("cancel_active_tasks")
 
     try:
-        web_services.create_task(create_request("新任务", input_root))
+        web_services.create_task(create_request(input_root))
     except ApiProblem as error:
         assert error.status_code == 409
         assert error.error_code == "SERVICE_SHUTTING_DOWN"
@@ -183,7 +183,7 @@ def test_create_task_does_not_repeat_release_manifest_verification(
 
     monkeypatch.setattr(diagnostics, "verify_release_manifest", track_verification)
 
-    web_services.create_task(create_request("不重复校验", input_root))
+    web_services.create_task(create_request(input_root))
 
     assert calls == []
 
@@ -201,7 +201,7 @@ def test_create_task_rejects_cached_failed_diagnostics(
     ])
 
     with pytest.raises(ApiProblem) as raised:
-        web_services.create_task(create_request("环境不可用", input_root))
+        web_services.create_task(create_request(input_root))
 
     assert raised.value.status_code == 422
     assert raised.value.error_code == "ENVIRONMENT_NOT_READY"

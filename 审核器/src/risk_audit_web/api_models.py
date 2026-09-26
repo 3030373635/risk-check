@@ -16,7 +16,6 @@ class StrictModel(BaseModel):
 class TaskCreateRequest(StrictModel):
     """描述用户可提交的新任务字段。"""
 
-    display_name: str = Field(min_length=1, max_length=200)
     input_root: str = Field(min_length=1)
 
 
@@ -34,4 +33,3 @@ class ShutdownRequest(StrictModel):
 
 class EmptyRequest(StrictModel):
     """描述不允许携带业务字段的修改请求。"""
-

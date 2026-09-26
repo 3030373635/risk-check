@@ -11,7 +11,7 @@ def test_convert_xls_uses_explicit_soffice_and_profile(monkeypatch, tmp_path: Pa
     soffice = tmp_path / "runtime/libreoffice/program/soffice.exe"
     soffice.parent.mkdir(parents=True)
     soffice.write_bytes(b"exe")
-    profile = tmp_path / "output/_task/libreoffice-profile"
+    profile = tmp_path / "output/.task/libreoffice-profile"
     source = tmp_path / "source.xls"
     source.write_bytes(b"xls")
     destination = tmp_path / "converted"
@@ -38,4 +38,3 @@ def test_convert_xls_uses_explicit_soffice_and_profile(monkeypatch, tmp_path: Pa
     settings = profile / "user/registrymodifications.xcu"
     assert "DisableMacrosExecution" in settings.read_text(encoding="utf-8")
     assert captured["kwargs"]["env"]["SAL_DISABLE_MACROS"] == "1"
-

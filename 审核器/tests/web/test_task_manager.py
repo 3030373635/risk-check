@@ -10,7 +10,7 @@ def write_task(store, tmp_path: Path, task_id: str, status: str):
     from risk_audit_web.task_contracts import TaskRecord, TaskState
 
     output_root = (tmp_path / task_id).resolve()
-    task_dir = output_root / "_task"
+    task_dir = output_root / ".task"
     task_dir.mkdir(parents=True)
     (task_dir / "request.json").write_text("{}", encoding="utf-8")
     state_path = task_dir / "state.json"
@@ -79,7 +79,7 @@ def test_cancel_does_not_replace_worker_terminal_state(monkeypatch, tmp_path: Pa
 
     assert manager.request_cancel(record.task_id)
     assert store.read_state(record).status == "completed"
-    assert not (Path(record.output_root) / "_task/cancel.requested").exists()
+    assert not (Path(record.output_root) / ".task/cancel.requested").exists()
 
 
 def test_start_task_uses_argument_list_without_shell(tmp_path: Path) -> None:
@@ -100,7 +100,7 @@ def test_start_task_uses_argument_list_without_shell(tmp_path: Path) -> None:
     manager = TaskManager(store, executable, popen_factory=fake_popen)
 
     assert manager.start_task(record) == 501
-    assert calls[0][0] == [str(executable), "--worker", str(Path(record.output_root) / "_task/request.json")]
+    assert calls[0][0] == [str(executable), "--worker", str(Path(record.output_root) / ".task/request.json")]
     assert calls[0][1]["shell"] is False
 
 
@@ -136,7 +136,7 @@ def test_snapshot_projects_cancel_marker_without_persisting_transition(tmp_path:
 
     store = TaskStore(tmp_path / "data")
     record = write_task(store, tmp_path, "a", "running")
-    (Path(record.output_root) / "_task/cancel.requested").touch()
+    (Path(record.output_root) / ".task/cancel.requested").touch()
 
     state = TaskManager(store, tmp_path / "app.exe").snapshot().tasks[0].state
 

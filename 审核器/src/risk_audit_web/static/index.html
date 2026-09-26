@@ -124,10 +124,6 @@
             <div class="col-12 col-xl-8">
               <form class="panel form-panel" id="create-task-form">
                 <div class="mb-4">
-                  <label class="form-label" for="task-name">任务名称</label>
-                  <input class="form-control form-control-lg" id="task-name" maxlength="200" required placeholder="例如：第二批省公司风控矩阵">
-                </div>
-                <div class="mb-4">
                   <label class="form-label" for="input-directory">待审核材料目录</label>
                   <div class="input-group input-group-lg">
                     <input class="form-control" id="input-directory" readonly required placeholder="请选择本机材料目录">
@@ -135,6 +131,7 @@
                       <i class="bi bi-folder2-open" aria-hidden="true"></i> 选择目录
                     </button>
                   </div>
+                  <div class="form-text">任务名称由系统自动生成：文件夹名称-年月日-时分秒。</div>
                 </div>
                 <div class="mb-4">
                   <label class="form-label" for="output-path-preview">输出位置</label>
@@ -191,7 +188,7 @@
                 <h2>任务操作</h2>
                 <button class="btn btn-primary w-100" id="open-output-button" type="button"><i class="bi bi-folder2-open" aria-hidden="true"></i> 打开输出目录</button>
                 <button class="btn btn-light w-100" id="open-statistics-button" type="button"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> 打开统计表</button>
-                <button class="btn btn-light w-100" id="open-review-button" type="button"><i class="bi bi-journal-check" aria-hidden="true"></i> 打开集中复核结果</button>
+                <button class="btn btn-light w-100" id="view-unaudited-files-button" type="button"><i class="bi bi-file-earmark-excel" aria-hidden="true"></i> 查看未审核文件</button>
                 <hr>
                 <button class="btn btn-outline-danger w-100" id="cancel-task-button" type="button"><i class="bi bi-stop-circle" aria-hidden="true"></i> 安全停止任务</button>
               </aside>
@@ -218,6 +215,21 @@
 
   <div class="modal fade" id="shutdown-modal" tabindex="-1" aria-labelledby="shutdown-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="shutdown-modal-title">退出审核器</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><p id="shutdown-message">确认关闭本机服务？</p></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">继续使用</button><button class="btn btn-danger" id="confirm-shutdown-button" type="button">确认退出</button></div></div></div>
+  </div>
+  <div class="modal fade" id="unaudited-files-modal" tabindex="-1" aria-labelledby="unaudited-files-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div><h2 class="modal-title fs-5" id="unaudited-files-modal-title">未审核文件</h2><p class="modal-subtitle" id="unaudited-files-count">正在读取</p></div>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button>
+        </div>
+        <div class="modal-body">
+          <div class="unaudited-files-list" id="unaudited-files-list"></div>
+          <div class="empty-state d-none" id="unaudited-files-empty"><i class="bi bi-check-circle" aria-hidden="true"></i><h3>没有未审核文件</h3><p>本次任务中的文件均已进入自动审核流程。</p></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" type="button" data-bs-dismiss="modal">关闭</button></div>
+      </div>
+    </div>
   </div>
   <div class="toast-container position-fixed bottom-0 end-0 p-3"><div class="toast" id="app-toast" role="status" aria-live="polite"><div class="toast-header"><i class="bi bi-shield-check me-2" aria-hidden="true"></i><strong class="me-auto">风控矩阵审核器</strong><button class="btn-close" type="button" data-bs-dismiss="toast" aria-label="关闭"></button></div><div class="toast-body" id="toast-message"></div></div></div>
 </body>

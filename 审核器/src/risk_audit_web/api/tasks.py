@@ -76,11 +76,10 @@ def open_statistics(
     return services.open_result(task_id, "audit_statistics_report")
 
 
-@router.post("/{task_id}/review-openings", status_code=status.HTTP_201_CREATED)
-def open_review(
+@router.get("/{task_id}/unaudited-files")
+def read_unaudited_files(
     task_id: str,
-    _request: EmptyRequest,
     services: ApplicationServices = Depends(get_services),
-) -> dict[str, str]:
-    """打开集中复核结果；task_id 为任务编号，_request 禁止额外字段。"""
-    return services.open_result(task_id, "review_report")
+) -> dict[str, object]:
+    """读取未审核文件；task_id 为任务编号，services 为应用服务。"""
+    return services.get_unaudited_files(task_id)

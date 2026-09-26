@@ -139,7 +139,7 @@ function renderTaskDetail(task) {
   setText("result-limitations", summary.limitations);
   document.getElementById("cancel-task-button").disabled = !["running", "cancelling"].includes(task.status);
   document.getElementById("open-statistics-button").disabled = !summary.audit_statistics_report;
-  document.getElementById("open-review-button").disabled = !summary.review_report;
+  document.getElementById("view-unaudited-files-button").disabled = !summary.unaudited_files_report;
 }
 
 /** 刷新当前任务详情；无参数。 */
