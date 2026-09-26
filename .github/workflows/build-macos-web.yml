@@ -35,23 +35,23 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: "审核器/pyproject.toml"
+          cache-dependency-path: "risk-audit/pyproject.toml"
 
       - name: 创建项目环境并安装构建依赖
         shell: bash
         run: |
-          python -m venv "审核器/.venv"
-          "审核器/.venv/bin/python" -m pip install --disable-pip-version-check -e "审核器[web,test]"
+          python -m venv "risk-audit/.venv"
+          "risk-audit/.venv/bin/python" -m pip install --disable-pip-version-check -e "risk-audit[web,test]"
 
       - name: 验证锁定运行时来源
         shell: bash
         run: |
-          "审核器/.venv/bin/python" - <<'PY'
+          "risk-audit/.venv/bin/python" - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          manifest = json.loads(Path("审核器/packaging/runtime-sources.json").read_text(encoding="utf-8"))
+          manifest = json.loads(Path("risk-audit/packaging/runtime-sources.json").read_text(encoding="utf-8"))
           sources = manifest["platforms"]["macos-arm64"]
           if sources["python"]["sha256"] != os.environ["PYTHON_RUNTIME_SHA256"]:
               raise SystemExit("runtime-sources.json 的 macOS Python SHA-256 与 CI 锁定值不一致")
@@ -62,17 +62,17 @@ jobs:
           if sources["libreoffice"]["sha256"] != os.environ["LIBREOFFICE_DMG_SHA256"]:
               raise SystemExit("runtime-sources.json 的 LibreOffice SHA-256 与 CI 锁定值不一致")
           PY
-          test -f "审核器/requirements-runtime.lock"
-          grep -Fq '"--require-hashes"' "审核器/tools/portable_release.py"
+          test -f "risk-audit/requirements-runtime.lock"
+          grep -Fq '"--require-hashes"' "risk-audit/tools/portable_release.py"
 
       - name: 验证 Web 静态资产
         shell: bash
         run: |
-          "审核器/.venv/bin/python" "审核器/tools/vendor_web_assets.py" --verify
+          "risk-audit/.venv/bin/python" "risk-audit/tools/vendor_web_assets.py" --verify
 
       - name: 运行 Web 版测试
         shell: bash
-        working-directory: 审核器
+        working-directory: risk-audit
         run: |
           PYTHONPATH="src" ".venv/bin/python" -m pytest "tests/web" -q
 
@@ -110,15 +110,15 @@ jobs:
           codesign --verify --deep --strict "$libreoffice_root"
           lipo -archs "$libreoffice_root/Contents/MacOS/soffice" | grep -qw arm64
 
-          chmod +x "审核器/tools/build_macos_portable.command"
-          "审核器/tools/build_macos_portable.command" "$libreoffice_root"
+          chmod +x "risk-audit/tools/build_macos_portable.command"
+          "risk-audit/tools/build_macos_portable.command" "$libreoffice_root"
 
           mkdir -p "$RELEASE_ROOT"
           /usr/bin/ditto --noextattr --noqtn --noacl \
             "dist/风控矩阵审核器-v2.0.0-macOS-arm64.zip" \
             "$RELEASE_ROOT/风控矩阵审核器-v2.0.0-macOS-arm64.zip"
 
-          "审核器/.venv/bin/python" "审核器/tools/verify_portable_distribution.py" \
+          "risk-audit/.venv/bin/python" "risk-audit/tools/verify_portable_distribution.py" \
             "$RELEASE_ROOT/风控矩阵审核器-v2.0.0-macOS-arm64.zip" \
             --platform macos-arm64
 

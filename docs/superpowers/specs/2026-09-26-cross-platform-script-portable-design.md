@@ -336,7 +336,7 @@ chmod +x '风控矩阵审核器-v2.0.0/启动审核器.command'
 以下文档统一改为脚本启动口径：
 
 - 根目录 `使用说明.md`。
-- `审核器/README.md`。
+- `risk-audit/README.md`。
 - Windows 使用说明。
 - 新增 macOS Apple Silicon 使用说明。
 - `风控矩阵审核器使用说明.docx`。

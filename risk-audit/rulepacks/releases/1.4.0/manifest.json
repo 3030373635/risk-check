@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-11",
+  "content_hash": "8325a228d1270b2e79e466de55ab2aff6512c18f491263a2d5f0420351e1c9a7",
+  "engine_compatibility": ">=1.4.0,<2.0.0",
+  "schema_version": "1.0",
+  "status": "released",
+  "title": "风控矩阵及三清单审核规则v2及补充确认",
+  "version": "1.4.0"
+}

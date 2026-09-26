@@ -40,7 +40,7 @@
 实施完成后的主要结构如下：
 
 ```text
-审核器/
+risk-audit/
 ├── src/risk_audit_web/
 │   ├── __init__.py                 # Web 包版本与公开入口
 │   ├── app.py                      # EXE 主入口、Worker 分流、主/次实例流程
@@ -89,21 +89,21 @@
 ### Task 1: 建立无 Qt 的 Web 任务运行时包
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/__init__.py`
-- Create: `审核器/src/risk_audit_web/task_contracts.py`
-- Create: `审核器/src/risk_audit_web/task_paths.py`
-- Create: `审核器/src/risk_audit_web/task_store.py`
-- Create: `审核器/src/risk_audit_web/diagnostics.py`
-- Create: `审核器/src/risk_audit_web/platform_windows.py`
-- Create: `审核器/src/risk_audit_web/worker.py`
-- Create: `审核器/tests/web/conftest.py`
-- Create: `审核器/tests/web/test_runtime_imports.py`
-- Create: `审核器/tests/web/test_task_contracts.py`
-- Create: `审核器/tests/web/test_task_paths.py`
-- Create: `审核器/tests/web/test_task_store.py`
-- Create: `审核器/tests/web/test_diagnostics.py`
-- Create: `审核器/tests/web/test_worker.py`
-- Create: `审核器/tests/web/test_parallel_integration.py`
+- Create: `risk-audit/src/risk_audit_web/__init__.py`
+- Create: `risk-audit/src/risk_audit_web/task_contracts.py`
+- Create: `risk-audit/src/risk_audit_web/task_paths.py`
+- Create: `risk-audit/src/risk_audit_web/task_store.py`
+- Create: `risk-audit/src/risk_audit_web/diagnostics.py`
+- Create: `risk-audit/src/risk_audit_web/platform_windows.py`
+- Create: `risk-audit/src/risk_audit_web/worker.py`
+- Create: `risk-audit/tests/web/conftest.py`
+- Create: `risk-audit/tests/web/test_runtime_imports.py`
+- Create: `risk-audit/tests/web/test_task_contracts.py`
+- Create: `risk-audit/tests/web/test_task_paths.py`
+- Create: `risk-audit/tests/web/test_task_store.py`
+- Create: `risk-audit/tests/web/test_diagnostics.py`
+- Create: `risk-audit/tests/web/test_worker.py`
+- Create: `risk-audit/tests/web/test_parallel_integration.py`
 
 **Interfaces:**
 - Consumes: `risk_audit.runner.audit(...)`、`risk_audit.progress.AuditProgressEvent`、当前 `risk_audit_desktop` 中同名非 GUI 模块的已验证行为。
@@ -131,7 +131,7 @@ def test_web_runtime_modules_import_without_pyside(monkeypatch) -> None:
 
 - [ ] **Step 2: 运行测试并确认因新包不存在而失败**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_runtime_imports.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_runtime_imports.py -q`
 
 Expected: FAIL，错误包含 `ModuleNotFoundError: No module named 'risk_audit_web'`。
 
@@ -150,7 +150,7 @@ from risk_audit_web.task_store import append_event, atomic_write_json
 
 - [ ] **Step 4: 运行无 Qt 导入测试并确认通过**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_runtime_imports.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_runtime_imports.py -q`
 
 Expected: PASS。
 
@@ -167,11 +167,11 @@ tests/desktop/test_worker.py
 tests/desktop/test_parallel_integration.py
 ```
 
-删除只验证 Qt 入口参数的 `test_worker_dispatch_does_not_import_qt_widgets` 和 `test_desktop_worker_arguments_support_source_and_frozen_modes`；新的入口分流由 Task 7 覆盖。`tests/web/conftest.py` 只保留把 `审核器` 工程根加入 `sys.path` 的逻辑，不设置 `QT_QPA_PLATFORM`。
+删除只验证 Qt 入口参数的 `test_worker_dispatch_does_not_import_qt_widgets` 和 `test_desktop_worker_arguments_support_source_and_frozen_modes`；新的入口分流由 Task 7 覆盖。`tests/web/conftest.py` 只保留把 `risk-audit` 工程根加入 `sys.path` 的逻辑，不设置 `QT_QPA_PLATFORM`。
 
 - [ ] **Step 6: 运行迁移后的任务运行时测试**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_runtime_imports.py tests/web/test_task_contracts.py tests/web/test_task_paths.py tests/web/test_task_store.py tests/web/test_diagnostics.py tests/web/test_worker.py tests/web/test_parallel_integration.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_runtime_imports.py tests/web/test_task_contracts.py tests/web/test_task_paths.py tests/web/test_task_store.py tests/web/test_diagnostics.py tests/web/test_worker.py tests/web/test_parallel_integration.py -q`
 
 Expected: PASS，且 `rg -n "PySide6|risk_audit_desktop" src/risk_audit_web tests/web` 无输出。
 
@@ -186,9 +186,9 @@ refactor: 迁移无Qt任务运行时到Web包
 ### Task 2: 将 TaskManager 重构为纯 Python 快照接口
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/task_manager.py`
-- Create: `审核器/tests/web/test_task_manager.py`
-- Modify: `审核器/tests/web/test_parallel_integration.py`
+- Create: `risk-audit/src/risk_audit_web/task_manager.py`
+- Create: `risk-audit/tests/web/test_task_manager.py`
+- Modify: `risk-audit/tests/web/test_parallel_integration.py`
 
 **Interfaces:**
 - Consumes: `TaskStore.list_tasks()`、`TaskStore.read_state()`、`TaskStore.mark_interrupted()`、`is_process_alive()`、`terminate_process()`。
@@ -268,7 +268,7 @@ def test_cancel_does_not_replace_worker_terminal_state(monkeypatch, tmp_path: Pa
 
 - [ ] **Step 3: 运行新测试并确认缺少纯 Python Manager**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_task_manager.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_task_manager.py -q`
 
 Expected: FAIL，错误指向 `risk_audit_web.task_manager` 不存在或 `snapshot` 不存在。
 
@@ -305,7 +305,7 @@ class TaskSnapshot:
 
 - [ ] **Step 6: 运行 TaskManager 与并行集成测试**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_task_manager.py tests/web/test_parallel_integration.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_task_manager.py tests/web/test_parallel_integration.py -q`
 
 Expected: PASS，且 `rg -n "SignalChannel|QTimer|PySide6" src/risk_audit_web/task_manager.py` 无输出。
 
@@ -320,12 +320,12 @@ refactor: 将任务管理器改为纯Python快照接口
 ### Task 3: 实现单实例会话、浏览器重开和目录选择
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/single_instance.py`
-- Create: `审核器/src/risk_audit_web/browser.py`
-- Create: `审核器/src/risk_audit_web/directory_picker.py`
-- Create: `审核器/tests/web/test_single_instance.py`
-- Create: `审核器/tests/web/test_browser.py`
-- Create: `审核器/tests/web/test_directory_picker.py`
+- Create: `risk-audit/src/risk_audit_web/single_instance.py`
+- Create: `risk-audit/src/risk_audit_web/browser.py`
+- Create: `risk-audit/src/risk_audit_web/directory_picker.py`
+- Create: `risk-audit/tests/web/test_single_instance.py`
+- Create: `risk-audit/tests/web/test_browser.py`
+- Create: `risk-audit/tests/web/test_directory_picker.py`
 
 **Interfaces:**
 - Consumes: `atomic_write_json()`、Windows `CreateMutexW/GetLastError/CloseHandle`、`tkinter.filedialog.askdirectory`、`webbrowser.open`。
@@ -378,7 +378,7 @@ def test_directory_picker_rejects_second_concurrent_request(tmp_path: Path) -> N
 
 - [ ] **Step 3: 运行测试并确认模块不存在**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_single_instance.py tests/web/test_browser.py tests/web/test_directory_picker.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_single_instance.py tests/web/test_browser.py tests/web/test_directory_picker.py -q`
 
 Expected: FAIL，错误指向三个新模块尚未创建。
 
@@ -424,7 +424,7 @@ def open_default_browser(session: ServerSession, opener: Callable[[str], bool] =
 
 - [ ] **Step 7: 运行平台服务测试**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_single_instance.py tests/web/test_browser.py tests/web/test_directory_picker.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_single_instance.py tests/web/test_browser.py tests/web/test_directory_picker.py -q`
 
 Expected: PASS；并发选择测试稳定返回一个成功和一个 `DirectoryPickerBusy`。
 
@@ -439,14 +439,14 @@ feat: 增加Web版单实例与本机目录选择
 ### Task 4: 建立 FastAPI 服务、安全中间件和依赖锁
 
 **Files:**
-- Modify: `审核器/pyproject.toml`
-- Modify: `审核器/uv.lock`
-- Create: `审核器/requirements-web.lock`
-- Create: `审核器/src/risk_audit_web/security.py`
-- Create: `审核器/src/risk_audit_web/server.py`
-- Create: `审核器/src/risk_audit_web/api/__init__.py`
-- Create: `审核器/tests/web/test_security.py`
-- Create: `审核器/tests/web/test_server.py`
+- Modify: `risk-audit/pyproject.toml`
+- Modify: `risk-audit/uv.lock`
+- Create: `risk-audit/requirements-web.lock`
+- Create: `risk-audit/src/risk_audit_web/security.py`
+- Create: `risk-audit/src/risk_audit_web/server.py`
+- Create: `risk-audit/src/risk_audit_web/api/__init__.py`
+- Create: `risk-audit/tests/web/test_security.py`
+- Create: `risk-audit/tests/web/test_server.py`
 
 **Interfaces:**
 - Consumes: FastAPI、Uvicorn、`ServerSession`、任意测试静态目录。
@@ -505,7 +505,7 @@ def test_loopback_socket_uses_random_ipv4_port() -> None:
 
 - [ ] **Step 3: 运行测试并确认 FastAPI 层不存在**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_security.py tests/web/test_server.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_security.py tests/web/test_server.py -q`
 
 Expected: FAIL，错误包含缺少 `fastapi` 依赖或新模块不存在。
 
@@ -525,7 +525,7 @@ risk-audit-web = "risk_audit_web.app:main"
 Run:
 
 ```bash
-cd 审核器
+cd risk-audit
 uv lock
 uv export --extra web --extra test --extra build --no-dev --no-emit-project --format requirements.txt --output-file requirements-web.lock
 ```
@@ -569,7 +569,7 @@ class ServerController:
 
 - [ ] **Step 7: 运行安全和服务测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_security.py tests/web/test_server.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_security.py tests/web/test_server.py -q`
 
 Expected: PASS；`GET /healthz` 只返回 `{"status":"ok"}`，错误响应不含 traceback。
 
@@ -584,14 +584,14 @@ feat: 建立本机Web服务安全边界
 ### Task 5: 实现应用服务与 REST API
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/api_models.py`
-- Create: `审核器/src/risk_audit_web/services.py`
-- Create: `审核器/src/risk_audit_web/api/system.py`
-- Create: `审核器/src/risk_audit_web/api/tasks.py`
-- Modify: `审核器/src/risk_audit_web/server.py`
-- Create: `审核器/tests/web/test_system_api.py`
-- Create: `审核器/tests/web/test_tasks_api.py`
-- Create: `审核器/tests/web/test_services.py`
+- Create: `risk-audit/src/risk_audit_web/api_models.py`
+- Create: `risk-audit/src/risk_audit_web/services.py`
+- Create: `risk-audit/src/risk_audit_web/api/system.py`
+- Create: `risk-audit/src/risk_audit_web/api/tasks.py`
+- Modify: `risk-audit/src/risk_audit_web/server.py`
+- Create: `risk-audit/tests/web/test_system_api.py`
+- Create: `risk-audit/tests/web/test_tasks_api.py`
+- Create: `risk-audit/tests/web/test_services.py`
 
 **Interfaces:**
 - Consumes: `PortablePaths`、`TaskStore`、`TaskManager`、`DirectoryPicker`、`DiagnosticReport`、`ServerController`。
@@ -659,7 +659,7 @@ def test_output_opening_never_accepts_client_path(client, completed_task) -> Non
 
 - [ ] **Step 4: 运行 API 测试并确认路由不存在**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_services.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_services.py -q`
 
 Expected: FAIL，接口返回 `404` 或应用服务模块不存在。
 
@@ -750,7 +750,7 @@ def request_shutdown(self, mode: str) -> dict[str, object]:
 
 - [ ] **Step 9: 运行 REST API 和全部 Web 后端测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_services.py tests/web/test_task_manager.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_services.py tests/web/test_task_manager.py -q`
 
 Expected: PASS；设计文档中的每条 API 路径至少有一个成功测试和一个错误测试。
 
@@ -765,21 +765,21 @@ feat: 实现离线审核REST接口
 ### Task 6: 实现离线 Bootstrap 前端
 
 **Files:**
-- Create: `审核器/tools/vendor_web_assets.py`
-- Create: `审核器/src/risk_audit_web/static/index.html`
-- Create: `审核器/src/risk_audit_web/static/vendor-manifest.json`
-- Create: `审核器/src/risk_audit_web/static/css/bootstrap.min.css`
-- Create: `审核器/src/risk_audit_web/static/css/bootstrap-icons.min.css`
-- Create: `审核器/src/risk_audit_web/static/css/theme.css`
-- Create: `审核器/src/risk_audit_web/static/js/bootstrap.bundle.min.js`
-- Create: `审核器/src/risk_audit_web/static/js/api.js`
-- Create: `审核器/src/risk_audit_web/static/js/tasks.js`
-- Create: `审核器/src/risk_audit_web/static/js/app.js`
-- Create: `审核器/src/risk_audit_web/static/fonts/bootstrap-icons.woff2`
-- Create: `审核器/licenses/web/Bootstrap.txt`
-- Create: `审核器/licenses/web/Bootstrap-Icons.txt`
-- Create: `审核器/tests/web/test_web_assets.py`
-- Create: `审核器/tests/web/test_frontend_contract.py`
+- Create: `risk-audit/tools/vendor_web_assets.py`
+- Create: `risk-audit/src/risk_audit_web/static/index.html`
+- Create: `risk-audit/src/risk_audit_web/static/vendor-manifest.json`
+- Create: `risk-audit/src/risk_audit_web/static/css/bootstrap.min.css`
+- Create: `risk-audit/src/risk_audit_web/static/css/bootstrap-icons.min.css`
+- Create: `risk-audit/src/risk_audit_web/static/css/theme.css`
+- Create: `risk-audit/src/risk_audit_web/static/js/bootstrap.bundle.min.js`
+- Create: `risk-audit/src/risk_audit_web/static/js/api.js`
+- Create: `risk-audit/src/risk_audit_web/static/js/tasks.js`
+- Create: `risk-audit/src/risk_audit_web/static/js/app.js`
+- Create: `risk-audit/src/risk_audit_web/static/fonts/bootstrap-icons.woff2`
+- Create: `risk-audit/licenses/web/Bootstrap.txt`
+- Create: `risk-audit/licenses/web/Bootstrap-Icons.txt`
+- Create: `risk-audit/tests/web/test_web_assets.py`
+- Create: `risk-audit/tests/web/test_frontend_contract.py`
 
 **Interfaces:**
 - Consumes: Task 5 的 REST API 和启动 URL 查询参数 `token`。
@@ -827,7 +827,7 @@ def test_frontend_contains_session_recovery_and_required_pages(static_root: Path
 
 - [ ] **Step 3: 运行前端测试并确认静态文件不存在**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_web_assets.py tests/web/test_frontend_contract.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_web_assets.py tests/web/test_frontend_contract.py -q`
 
 Expected: FAIL，错误指向静态文件或资产清单缺失。
 
@@ -848,7 +848,7 @@ ASSET_URLS = {
 
 脚本下载后把图标 CSS 中 `./fonts/bootstrap-icons.woff2` 改为 `../fonts/bootstrap-icons.woff2`，为每个文件记录版本、来源 URL、大小和 SHA-256。运行时不调用此脚本。
 
-Run: `cd 审核器 && python tools/vendor_web_assets.py --download`
+Run: `cd risk-audit && python tools/vendor_web_assets.py --download`
 
 Expected: 生成四个静态资产、两个许可证和 `vendor-manifest.json`；再次运行 `python tools/vendor_web_assets.py --verify` 输出“Web 静态资源校验通过”。
 
@@ -903,7 +903,7 @@ async function apiRequest(path, options = {}) {
 
 - [ ] **Step 8: 运行前端资产和服务静态文件测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_web_assets.py tests/web/test_frontend_contract.py tests/web/test_server.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_web_assets.py tests/web/test_frontend_contract.py tests/web/test_server.py -q`
 
 Expected: PASS；`python tools/vendor_web_assets.py --verify` PASS；`rg -n "https?://|//cdn" src/risk_audit_web/static` 只允许 `vendor-manifest.json` 中的来源元数据，不得出现在 HTML/CSS/JS 运行引用中。
 
@@ -918,12 +918,12 @@ feat: 实现离线Bootstrap审核界面
 ### Task 7: 串联 EXE 启动、重开、Worker 分流和退出生命周期
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/app.py`
-- Create: `审核器/src/risk_audit_web/logging_setup.py`
-- Modify: `审核器/src/risk_audit_web/server.py`
-- Modify: `审核器/src/risk_audit_web/services.py`
-- Create: `审核器/tests/web/test_app_lifecycle.py`
-- Create: `审核器/tests/web/test_shutdown_lifecycle.py`
+- Create: `risk-audit/src/risk_audit_web/app.py`
+- Create: `risk-audit/src/risk_audit_web/logging_setup.py`
+- Modify: `risk-audit/src/risk_audit_web/server.py`
+- Modify: `risk-audit/src/risk_audit_web/services.py`
+- Create: `risk-audit/tests/web/test_app_lifecycle.py`
+- Create: `risk-audit/tests/web/test_shutdown_lifecycle.py`
 
 **Interfaces:**
 - Consumes: Tasks 1–6 的 Worker、单实例、会话、浏览器、服务控制器、应用服务和静态页面。
@@ -1002,7 +1002,7 @@ def test_cancel_active_tasks_shutdown_waits_before_server_exit(tmp_path: Path) -
 
 - [ ] **Step 4: 运行生命周期测试并确认入口不存在**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_app_lifecycle.py tests/web/test_shutdown_lifecycle.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_app_lifecycle.py tests/web/test_shutdown_lifecycle.py -q`
 
 Expected: FAIL，错误指向 `risk_audit_web.app` 或生命周期函数不存在。
 
@@ -1056,7 +1056,7 @@ def configure_server_logging(data_root: Path) -> logging.Logger:
 
 - [ ] **Step 10: 运行生命周期、API 和并行测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_app_lifecycle.py tests/web/test_shutdown_lifecycle.py tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_parallel_integration.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_app_lifecycle.py tests/web/test_shutdown_lifecycle.py tests/web/test_system_api.py tests/web/test_tasks_api.py tests/web/test_parallel_integration.py -q`
 
 Expected: PASS；主实例、次实例、Worker 三种入口均有独立测试。
 
@@ -1071,13 +1071,13 @@ feat: 串联Web审核器完整运行生命周期
 ### Task 8: 改造 onedir 便携构建、验证和 GitHub Actions
 
 **Files:**
-- Create: `审核器/tools/build_windows_web.py`
-- Create: `审核器/tools/collect_python_licenses.py`
-- Modify: `审核器/tools/verify_portable_distribution.py`
-- Create: `审核器/tests/web/test_portable_distribution.py`
-- Create: `审核器/tests/web/test_github_actions_workflow.py`
+- Create: `risk-audit/tools/build_windows_web.py`
+- Create: `risk-audit/tools/collect_python_licenses.py`
+- Modify: `risk-audit/tools/verify_portable_distribution.py`
+- Create: `risk-audit/tests/web/test_portable_distribution.py`
+- Create: `risk-audit/tests/web/test_github_actions_workflow.py`
 - Create: `.github/workflows/build-windows-web.yml`
-- Create: `审核器/Windows Web版使用说明.md`
+- Create: `risk-audit/Windows Web版使用说明.md`
 
 **Interfaces:**
 - Consumes: PyInstaller 输出目录、LibreOffice、规则包、基准、主体文件、Web 静态目录和全部许可证。
@@ -1123,7 +1123,7 @@ def test_distribution_rejects_web_and_qt_leaks(
 
 - [ ] **Step 3: 运行构建测试并确认旧脚本不满足要求**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_portable_distribution.py tests/web/test_github_actions_workflow.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_portable_distribution.py tests/web/test_github_actions_workflow.py -q`
 
 Expected: FAIL，至少包含旧构建使用 `--onefile`、未复制 `_internal` 或没有 `runtime/web`。
 
@@ -1139,7 +1139,7 @@ def pyinstaller_command(python_executable: Path, app_entry: Path, icon_path: Pat
     ]
 ```
 
-构建产物来源是 `dist/风控矩阵审核器/` 整个目录；组装时复制 EXE 和 `_internal`，再生成 `runtime`、空 `data`、空 `outputs` 和 `使用说明.md`。
+构建产物来源是 `dist/风控矩阵risk-audit/` 整个目录；组装时复制 EXE 和 `_internal`，再生成 `runtime`、空 `data`、空 `outputs` 和 `使用说明.md`。
 
 - [ ] **Step 5: 扩展运行资源收集和 manifest**
 
@@ -1179,7 +1179,7 @@ ALLOWED_ROOT_ITEMS = {
 
 - [ ] **Step 9: 运行构建、验证器和工作流契约测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests/web/test_portable_distribution.py tests/web/test_github_actions_workflow.py -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests/web/test_portable_distribution.py tests/web/test_github_actions_workflow.py -q`
 
 Expected: PASS；测试生成的 ZIP 只有一个顶层目录并包含 `_internal` 与 `runtime/web`。
 
@@ -1194,14 +1194,14 @@ build: 改为Windows离线Web版便携构建
 ### Task 9: 删除旧 GUI、更新说明并完成全量验证
 
 **Files:**
-- Delete: `审核器/src/risk_audit_desktop/`
-- Delete: `审核器/tests/desktop/`
-- Delete: `审核器/requirements-desktop.lock`
-- Delete: `审核器/tools/build_windows_desktop.py`
-- Delete: `审核器/Windows桌面版使用说明.md`
+- Delete: `risk-audit/src/risk_audit_desktop/`
+- Delete: `risk-audit/tests/desktop/`
+- Delete: `risk-audit/requirements-desktop.lock`
+- Delete: `risk-audit/tools/build_windows_desktop.py`
+- Delete: `risk-audit/Windows桌面版使用说明.md`
 - Delete: `.github/workflows/build-windows-desktop.yml`
-- Modify: `审核器/pyproject.toml`
-- Modify: `审核器/README.md`
+- Modify: `risk-audit/pyproject.toml`
+- Modify: `risk-audit/README.md`
 - Modify: `使用说明.md`
 - Modify: `风控矩阵审核器使用说明.docx`
 
@@ -1226,7 +1226,7 @@ def test_repository_has_no_runtime_qt_or_desktop_entry() -> None:
 
 - [ ] **Step 2: 运行清理测试并确认旧目录仍导致失败**
 
-Run: `cd 审核器 && python -m pytest tests/web/test_repository_cleanup.py -q`
+Run: `cd risk-audit && python -m pytest tests/web/test_repository_cleanup.py -q`
 
 Expected: FAIL，指出旧包、Qt 依赖和旧入口仍存在。
 
@@ -1246,8 +1246,8 @@ Run:
 
 ```bash
 rg -n "PySide6|pytest-qt|risk_audit_desktop|risk-audit-desktop|QT_QPA_PLATFORM|--onefile" \
-  审核器/src 审核器/tests/web 审核器/tools 审核器/pyproject.toml \
-  审核器/README.md 使用说明.md .github/workflows/build-windows-web.yml
+  risk-audit/src risk-audit/tests/web risk-audit/tools risk-audit/pyproject.toml \
+  risk-audit/README.md 使用说明.md .github/workflows/build-windows-web.yml
 ```
 
 Expected: 无输出。历史设计与计划文档不参与此扫描，可保留作为决策记录。
@@ -1257,7 +1257,7 @@ Expected: 无输出。历史设计与计划文档不参与此扫描，可保留�
 Run:
 
 ```bash
-cd 审核器
+cd risk-audit
 uv run --extra web --extra test python -m compileall src/risk_audit_web
 uv run --extra web --extra test python -m pytest tests/web -q
 ```
@@ -1266,13 +1266,13 @@ Expected: compileall 成功，`tests/web` 全部 PASS。
 
 - [ ] **Step 7: 运行审核核心全套测试**
 
-Run: `cd 审核器 && uv run --extra web --extra test python -m pytest tests -q`
+Run: `cd risk-audit && uv run --extra web --extra test python -m pytest tests -q`
 
 Expected: 全部 PASS；不存在因删除旧 GUI 测试产生的空测试目录或导入错误。
 
 - [ ] **Step 8: 执行源码模式本机烟雾测试**
 
-Run: `cd 审核器 && uv run --extra web risk-audit-web`
+Run: `cd risk-audit && uv run --extra web risk-audit-web`
 
 Expected: 仅监听 `127.0.0.1` 随机端口，默认浏览器打开诊断页；HTML/CSS/JS 均来自同源；源码目录缺少便携 runtime 时明确显示资源缺失并禁用创建任务；关闭页面后服务仍运行；再次执行同一命令重新打开页面；点击退出后进程结束并删除 `data/server-session.json`。完整任务创建和审核在下一步 Windows 便携产物中验收。
 

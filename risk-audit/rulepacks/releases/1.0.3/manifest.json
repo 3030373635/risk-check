@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-09-11",
+  "content_hash": "84660d17e1759ad3a264c18bda353db3064e0133e36d909b7c0423e2bd65911a",
+  "engine_compatibility": ">=1.0.0,<2.0.0",
+  "schema_version": "1.0",
+  "status": "released",
+  "title": "第一批风控矩阵审核规则包",
+  "version": "1.0.3"
+}

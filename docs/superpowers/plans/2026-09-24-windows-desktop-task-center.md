@@ -42,7 +42,7 @@
 主要新增和修改文件如下：
 
 ```text
-审核器/
+risk-audit/
 ├── pyproject.toml
 ├── requirements-desktop.lock
 ├── src/
@@ -100,7 +100,7 @@
 │   ├── resources/
 │   │   ├── rulepacks/
 │   │   │   └── audit-config.json
-│   │   ├── baselines/审核/                 # 保留规则包已冻结的相对路径
+│   │   ├── baselines/templates/                 # 保留规则包已冻结的相对路径
 │   │   ├── entities/会计主体清单20260907.xlsx
 │   │   └── models/bge-small-zh-v1.5/
 │   ├── licenses/
@@ -114,9 +114,9 @@
 ### Task 1: 为审核核心增加真实进度与安全取消点
 
 **Files:**
-- Create: `审核器/src/risk_audit/progress.py`
-- Modify: `审核器/src/risk_audit/runner.py:75-513`
-- Create: `审核器/tests/test_progress_and_cancel.py`
+- Create: `risk-audit/src/risk_audit/progress.py`
+- Modify: `risk-audit/src/risk_audit/runner.py:75-513`
+- Create: `risk-audit/tests/test_progress_and_cancel.py`
 
 **Interfaces:**
 - Consumes: 现有 `risk_audit.runner.audit(...) -> dict[str, Any]` 及主体/业务循环。
@@ -140,7 +140,7 @@ def test_raise_if_cancelled_is_noop_without_check():
 
 - [ ] **Step 2: 运行测试并确认因模块不存在而失败**
 
-Run: `python3 -m pytest 审核器/tests/test_progress_and_cancel.py -q`
+Run: `python3 -m pytest risk-audit/tests/test_progress_and_cancel.py -q`
 
 Expected: FAIL，提示 `ModuleNotFoundError: risk_audit.progress`。
 
@@ -197,11 +197,11 @@ emit_progress(progress_callback, AuditProgressEvent(
 ))
 ```
 
-同时把语义模型目录改为显式可选参数：桌面 Worker 传入 `runtime/resources/models/bge-small-zh-v1.5`；现有 CLI 未传参时继续使用 `project_root/审核器/models/bge-small-zh-v1.5`，避免改变命令行行为。
+同时把语义模型目录改为显式可选参数：桌面 Worker 传入 `runtime/resources/models/bge-small-zh-v1.5`；现有 CLI 未传参时继续使用 `project_root/risk-audit/models/bge-small-zh-v1.5`，避免改变命令行行为。
 
 - [ ] **Step 7: 运行核心新增测试和关键回归测试**
 
-Run: `python3 -m pytest 审核器/tests/test_progress_and_cancel.py 审核器/tests/test_business_incremental.py 审核器/tests/test_single_material_audit.py -q`
+Run: `python3 -m pytest risk-audit/tests/test_progress_and_cancel.py risk-audit/tests/test_business_incremental.py risk-audit/tests/test_single_material_audit.py -q`
 
 Expected: PASS。
 
@@ -214,9 +214,9 @@ Expected: PASS。
 ### Task 2: 实现便携路径、默认输出命名和目录保护
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/__init__.py`
-- Create: `审核器/src/risk_audit_desktop/task_paths.py`
-- Create: `审核器/tests/desktop/test_task_paths.py`
+- Create: `risk-audit/src/risk_audit_desktop/__init__.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_paths.py`
+- Create: `risk-audit/tests/desktop/test_task_paths.py`
 
 **Interfaces:**
 - Consumes: EXE 或源码入口路径、材料目录、创建时间和可选用户输出目录。
@@ -268,7 +268,7 @@ class PortablePaths:
 
 - [ ] **Step 6: 运行路径测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_task_paths.py -q`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_task_paths.py -q`
 
 Expected: PASS。
 
@@ -281,10 +281,10 @@ Expected: PASS。
 ### Task 3: 定义任务 JSON 契约和原子文件操作
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/task_contracts.py`
-- Create: `审核器/src/risk_audit_desktop/task_store.py`
-- Create: `审核器/tests/desktop/test_task_contracts.py`
-- Create: `审核器/tests/desktop/test_task_store.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_contracts.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_store.py`
+- Create: `risk-audit/tests/desktop/test_task_contracts.py`
+- Create: `risk-audit/tests/desktop/test_task_store.py`
 
 **Interfaces:**
 - Consumes: 用户创建参数、Worker 进度、结果摘要和现有 `data/tasks.json`。
@@ -363,7 +363,7 @@ def append_event(path: Path, event: TaskEvent) -> None:
 
 - [ ] **Step 7: 运行契约和存储测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_task_contracts.py 审核器/tests/desktop/test_task_store.py -q`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_task_contracts.py risk-audit/tests/desktop/test_task_store.py -q`
 
 Expected: PASS。
 
@@ -376,9 +376,9 @@ Expected: PASS。
 ### Task 4: 实现 runtime 资源定位和完整性诊断
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/diagnostics.py`
-- Create: `审核器/tests/desktop/test_diagnostics.py`
-- Modify: `审核器/src/risk_audit_desktop/task_paths.py`
+- Create: `risk-audit/src/risk_audit_desktop/diagnostics.py`
+- Create: `risk-audit/tests/desktop/test_diagnostics.py`
+- Modify: `risk-audit/src/risk_audit_desktop/task_paths.py`
 
 **Interfaces:**
 - Consumes: `runtime/manifest.json`、资源相对路径、大小和 SHA-256。
@@ -421,7 +421,7 @@ paths.config_file == app_root / "runtime/resources/rulepacks/audit-config.json"
 
 - [ ] **Step 5: 运行诊断测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_diagnostics.py -q`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_diagnostics.py -q`
 
 Expected: PASS。
 
@@ -434,10 +434,10 @@ Expected: PASS。
 ### Task 5: 隔离 LibreOffice 运行环境并实现 Worker
 
 **Files:**
-- Modify: `审核器/src/risk_audit/readers/xls.py:15,19-36,228-244`
-- Create: `审核器/src/risk_audit_desktop/worker.py`
-- Create: `审核器/tests/test_xls_runtime.py`
-- Create: `审核器/tests/desktop/test_worker.py`
+- Modify: `risk-audit/src/risk_audit/readers/xls.py:15,19-36,228-244`
+- Create: `risk-audit/src/risk_audit_desktop/worker.py`
+- Create: `risk-audit/tests/test_xls_runtime.py`
+- Create: `risk-audit/tests/desktop/test_worker.py`
 
 **Interfaces:**
 - Consumes: `TaskRequest`、任务自己的 `_task` 目录、核心 `audit()`。
@@ -485,7 +485,7 @@ def is_cancel_requested(task_dir: Path) -> bool:
 
 - [ ] **Step 7: 运行 Worker 与 LibreOffice 测试**
 
-Run: `python3 -m pytest 审核器/tests/test_xls_runtime.py 审核器/tests/desktop/test_worker.py -q`
+Run: `python3 -m pytest risk-audit/tests/test_xls_runtime.py risk-audit/tests/desktop/test_worker.py -q`
 
 Expected: PASS。
 
@@ -498,10 +498,10 @@ Expected: PASS。
 ### Task 6: 实现任务创建、索引恢复和中断判定
 
 **Files:**
-- Modify: `审核器/src/risk_audit_desktop/task_store.py`
-- Create: `审核器/src/risk_audit_desktop/platform_windows.py`
-- Create: `审核器/tests/desktop/test_task_store.py`
-- Create: `审核器/tests/desktop/test_task_manager.py`
+- Modify: `risk-audit/src/risk_audit_desktop/task_store.py`
+- Create: `risk-audit/src/risk_audit_desktop/platform_windows.py`
+- Create: `risk-audit/tests/desktop/test_task_store.py`
+- Create: `risk-audit/tests/desktop/test_task_manager.py`
 
 **Interfaces:**
 - Consumes: 表单参数、资源诊断结果、`tasks.json`、PID 和心跳。
@@ -529,7 +529,7 @@ Expected: PASS。
 
 - [ ] **Step 6: 运行存储与恢复测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_task_store.py 审核器/tests/desktop/test_task_manager.py -q -k 'create or recover or heartbeat'`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_task_store.py risk-audit/tests/desktop/test_task_manager.py -q -k 'create or recover or heartbeat'`
 
 Expected: PASS。
 
@@ -542,9 +542,9 @@ Expected: PASS。
 ### Task 7: 实现多 Worker 并行生命周期管理
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/task_manager.py`
-- Modify: `审核器/src/risk_audit_desktop/platform_windows.py`
-- Extend: `审核器/tests/desktop/test_task_manager.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_manager.py`
+- Modify: `risk-audit/src/risk_audit_desktop/platform_windows.py`
+- Extend: `risk-audit/tests/desktop/test_task_manager.py`
 
 **Interfaces:**
 - Consumes: 已持久化任务请求、主程序路径和 Worker 状态文件。
@@ -576,7 +576,7 @@ Windows 设置 `CREATE_NO_WINDOW`；内存只保存本次 GUI 启动的 `Popen` 
 
 - [ ] **Step 7: 运行任务管理测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_task_manager.py -q`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_task_manager.py -q`
 
 Expected: PASS。
 
@@ -589,10 +589,10 @@ Expected: PASS。
 ### Task 8: 建立统一入口与 Worker 早期分流
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/app.py`
-- Modify: `审核器/pyproject.toml`
-- Create: `审核器/requirements-desktop.lock`
-- Create: `审核器/tests/desktop/test_task_contracts.py`
+- Create: `risk-audit/src/risk_audit_desktop/app.py`
+- Modify: `risk-audit/pyproject.toml`
+- Create: `risk-audit/requirements-desktop.lock`
+- Create: `risk-audit/tests/desktop/test_task_contracts.py`
 
 **Interfaces:**
 - Consumes: `sys.argv` 中的 GUI 参数或 `--worker <request.json>`。
@@ -621,9 +621,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 - [ ] **Step 4: 安装开发依赖并运行入口测试**
 
-Run: `python3 -m pip install -e '审核器[desktop,test]'`
+Run: `python3 -m pip install -e 'risk-audit[desktop,test]'`
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_task_contracts.py -q -k worker_dispatch`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_task_contracts.py -q -k worker_dispatch`
 
 Expected: PASS。
 
@@ -636,13 +636,13 @@ Expected: PASS。
 ### Task 9: 实现任务列表、新建任务和任务详情页面
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/task_list_page.py`
-- Create: `审核器/src/risk_audit_desktop/task_create_page.py`
-- Create: `审核器/src/risk_audit_desktop/task_detail_page.py`
-- Create: `审核器/src/risk_audit_desktop/help_page.py`
-- Create: `审核器/src/risk_audit_desktop/theme.py`
-- Create: `审核器/tests/desktop/conftest.py`
-- Create: `审核器/tests/desktop/test_task_pages.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_list_page.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_create_page.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_detail_page.py`
+- Create: `risk-audit/src/risk_audit_desktop/help_page.py`
+- Create: `risk-audit/src/risk_audit_desktop/theme.py`
+- Create: `risk-audit/tests/desktop/conftest.py`
+- Create: `risk-audit/tests/desktop/test_task_pages.py`
 
 **Interfaces:**
 - Consumes: `TaskManager` 信号、任务记录、诊断结果和用户表单输入。
@@ -682,7 +682,7 @@ Expected: PASS。
 
 - [ ] **Step 9: 运行页面测试**
 
-Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest 审核器/tests/desktop/test_task_pages.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest risk-audit/tests/desktop/test_task_pages.py -q`
 
 Expected: PASS。
 
@@ -695,12 +695,12 @@ Expected: PASS。
 ### Task 10: 实现主窗口、托盘、关闭策略和单实例
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/main_window.py`
-- Create: `审核器/src/risk_audit_desktop/tray.py`
-- Create: `审核器/src/risk_audit_desktop/single_instance.py`
-- Create: `审核器/src/risk_audit_desktop/assets/app.ico`
-- Create: `审核器/tests/desktop/test_main_window.py`
-- Create: `审核器/tests/desktop/test_tray_and_single_instance.py`
+- Create: `risk-audit/src/risk_audit_desktop/main_window.py`
+- Create: `risk-audit/src/risk_audit_desktop/tray.py`
+- Create: `risk-audit/src/risk_audit_desktop/single_instance.py`
+- Create: `risk-audit/src/risk_audit_desktop/assets/app.ico`
+- Create: `risk-audit/tests/desktop/test_main_window.py`
+- Create: `risk-audit/tests/desktop/test_tray_and_single_instance.py`
 
 **Interfaces:**
 - Consumes: 四个页面、`TaskManager`、运行任务数和第二次启动激活消息。
@@ -739,7 +739,7 @@ server name 包含稳定应用 ID，不含用户名或路径。仅在确认没�
 
 - [ ] **Step 8: 运行窗口、托盘和单实例测试**
 
-Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest 审核器/tests/desktop/test_main_window.py 审核器/tests/desktop/test_tray_and_single_instance.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest risk-audit/tests/desktop/test_main_window.py risk-audit/tests/desktop/test_tray_and_single_instance.py -q`
 
 Expected: PASS。
 
@@ -752,10 +752,10 @@ Expected: PASS。
 ### Task 11: 构建便携 runtime、资源清单和 Windows EXE
 
 **Files:**
-- Create: `审核器/tools/build_windows_desktop.py`
-- Create: `审核器/tools/verify_portable_distribution.py`
-- Create: `审核器/tests/desktop/test_portable_distribution.py`
-- Create: `审核器/Windows桌面版使用说明.md`
+- Create: `risk-audit/tools/build_windows_desktop.py`
+- Create: `risk-audit/tools/verify_portable_distribution.py`
+- Create: `risk-audit/tests/desktop/test_portable_distribution.py`
+- Create: `risk-audit/Windows桌面版使用说明.md`
 
 **Interfaces:**
 - Consumes: 当前发布规则包、冻结基准、主体名册、模型、Windows LibreOffice 目录和许可证源目录。
@@ -767,7 +767,7 @@ Expected: PASS。
 
 - [ ] **Step 2: 实现确定性资源收集**
 
-基准复制到 `runtime/resources/baselines/审核/...`，保留规则包内 `审核/...` 相对路径；`audit-config.json` 复制到 `runtime/resources/rulepacks/audit-config.json`。只复制发布所需规则包和活动版本，不包含测试数据、历史 outputs、runs、草稿或 `.git`。
+基准复制到 `runtime/resources/baselines/templates/...`，保留规则包内 `templates/...` 相对路径；`audit-config.json` 复制到 `runtime/resources/rulepacks/audit-config.json`。只复制发布所需规则包和活动版本，不包含测试数据、历史 outputs、runs、草稿或 `.git`。
 
 - [ ] **Step 3: 编写缺许可证和缺 soffice 阻止构建测试**
 
@@ -780,9 +780,9 @@ Windows 上执行：
 ```powershell
 python -m PyInstaller --noconfirm --clean --onefile --windowed `
   --name 风控矩阵审核器 `
-  --icon 审核器/src/risk_audit_desktop/assets/app.ico `
+  --icon risk-audit/src/risk_audit_desktop/assets/app.ico `
   --collect-all PySide6 `
-  审核器/src/risk_audit_desktop/app.py
+  risk-audit/src/risk_audit_desktop/app.py
 ```
 
 构建脚本使用参数列表调用，不用 `shell=True`；构建后再复制外部 `runtime/`，避免 LibreOffice 被塞进单文件临时解压区。
@@ -797,7 +797,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed `
 
 - [ ] **Step 7: 运行便携结构测试**
 
-Run: `python3 -m pytest 审核器/tests/desktop/test_portable_distribution.py -q`
+Run: `python3 -m pytest risk-audit/tests/desktop/test_portable_distribution.py -q`
 
 Expected: PASS；macOS 只测收集和验证逻辑，不声称生成可用 Windows EXE。
 
@@ -810,9 +810,9 @@ Expected: PASS；macOS 只测收集和验证逻辑，不声称生成可用 Windo
 ### Task 12: 增加并行、取消、崩溃和恢复集成测试
 
 **Files:**
-- Extend: `审核器/tests/desktop/test_worker.py`
-- Extend: `审核器/tests/desktop/test_task_manager.py`
-- Create: `审核器/tests/desktop/test_parallel_integration.py`
+- Extend: `risk-audit/tests/desktop/test_worker.py`
+- Extend: `risk-audit/tests/desktop/test_task_manager.py`
+- Create: `risk-audit/tests/desktop/test_parallel_integration.py`
 
 **Interfaces:**
 - Consumes: 真实子进程式 fake Worker、真实文件协议、两个独立任务目录。
@@ -840,7 +840,7 @@ A 无终态退出后被标为 `interrupted`，B 继续更新并完成；任务�
 
 - [ ] **Step 6: 运行集成测试**
 
-Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest 审核器/tests/desktop/test_parallel_integration.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest risk-audit/tests/desktop/test_parallel_integration.py -q`
 
 Expected: PASS，且测试有最长等待时间，失败时不会永久挂起。
 
@@ -853,8 +853,8 @@ Expected: PASS，且测试有最长等待时间，失败时不会永久挂起。
 ### Task 13: 运行完整回归并在 Windows 构建交付包
 
 **Files:**
-- Verify: `审核器/tests/`
-- Verify: `审核器/src/risk_audit_desktop/`
+- Verify: `risk-audit/tests/`
+- Verify: `risk-audit/src/risk_audit_desktop/`
 - Generate on Windows: `dist/风控矩阵审核器-v2.0.0-Windows-x64.zip`
 
 **Interfaces:**
@@ -863,19 +863,19 @@ Expected: PASS，且测试有最长等待时间，失败时不会永久挂起。
 
 - [ ] **Step 1: 运行静态语法检查**
 
-Run: `python3 -m compileall -q 审核器/src`
+Run: `python3 -m compileall -q risk-audit/src`
 
 Expected: exit code 0。
 
 - [ ] **Step 2: 运行桌面端完整测试**
 
-Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest 审核器/tests/desktop 审核器/tests/test_progress_and_cancel.py 审核器/tests/test_xls_runtime.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python3 -m pytest risk-audit/tests/desktop risk-audit/tests/test_progress_and_cancel.py risk-audit/tests/test_xls_runtime.py -q`
 
 Expected: PASS。
 
 - [ ] **Step 3: 运行现有审核核心完整回归**
 
-Run: `python3 -m pytest 审核器/tests -q`
+Run: `python3 -m pytest risk-audit/tests -q`
 
 Expected: PASS；不得通过删除或放宽旧业务测试取得通过。
 
@@ -883,7 +883,7 @@ Expected: PASS；不得通过删除或放宽旧业务测试取得通过。
 
 ```powershell
 py -3.11 -m venv .venv-desktop
-.venv-desktop\Scripts\python -m pip install --require-hashes -r 审核器\requirements-desktop.lock
+.venv-desktop\Scripts\python -m pip install --require-hashes -r risk-audit\requirements-desktop.lock
 ```
 
 Expected: 不联网运行时使用预先准备的 wheelhouse；依赖版本与锁文件完全一致。
@@ -891,11 +891,11 @@ Expected: 不联网运行时使用预先准备的 wheelhouse；依赖版本与�
 - [ ] **Step 5: 在 Windows 构建并验证 ZIP**
 
 ```powershell
-.venv-desktop\Scripts\python 审核器\tools\build_windows_desktop.py `
+.venv-desktop\Scripts\python risk-audit\tools\build_windows_desktop.py `
   --libreoffice C:\build-inputs\LibreOfficePortable `
   --licenses C:\build-inputs\licenses `
   --output dist
-.venv-desktop\Scripts\python 审核器\tools\verify_portable_distribution.py `
+.venv-desktop\Scripts\python risk-audit\tools\verify_portable_distribution.py `
   dist\风控矩阵审核器-v2.0.0
 ```
 

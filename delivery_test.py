@@ -29,8 +29,8 @@ if __name__ == '__main__':
     print('Original-material tests excluded from this source package:')
     for name, reason in EXCLUDED.items():
         print(f'  {name}: {reason}')
-    arguments = ['审核器/tests', '-q', '-rs', '--junitxml=交付测试结果.xml']
+    arguments = ['risk-audit/tests', '-q', '-rs', '--junitxml=交付测试结果.xml']
     if find_spec('numpy') is None:
         print('Optional NumPy is absent: tests/test_semantic_v150.py is not collected. Install requirements-semantic.lock for these tests.')
-        arguments.append('--ignore=审核器/tests/test_semantic_v150.py')
+        arguments.append('--ignore=risk-audit/tests/test_semantic_v150.py')
     raise SystemExit(pytest.main(arguments, plugins=[DeliverySelection()]))

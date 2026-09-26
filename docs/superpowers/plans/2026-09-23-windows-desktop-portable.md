@@ -41,7 +41,7 @@
 新增和修改后的主要结构如下：
 
 ```text
-审核器/
+risk-audit/
 ├── pyproject.toml                         # 增加桌面依赖与桌面入口
 ├── requirements-desktop.lock             # 固定桌面和构建依赖
 ├── src/
@@ -90,8 +90,8 @@
 风控矩阵审核器-v2.0.0/
 ├── 风控矩阵审核器.exe
 ├── runtime/libreoffice/
-├── resources/project/审核器/rulepacks/
-├── resources/project/审核/
+├── resources/project/risk-audit/rulepacks/
+├── resources/project/templates/
 ├── resources/project/audit-config.json
 ├── resources/qml/
 ├── resources/assets/
@@ -107,9 +107,9 @@
 ### Task 1: 为审核核心增加结构化进度事件
 
 **Files:**
-- Create: `审核器/src/risk_audit/progress.py`
-- Modify: `审核器/src/risk_audit/runner.py:75-100,185-494`
-- Create: `审核器/tests/test_progress_events.py`
+- Create: `risk-audit/src/risk_audit/progress.py`
+- Modify: `risk-audit/src/risk_audit/runner.py:75-100,185-494`
+- Create: `risk-audit/tests/test_progress_events.py`
 
 **Interfaces:**
 - Consumes: 现有 `risk_audit.runner.audit(...) -> dict[str, Any]`。
@@ -137,7 +137,7 @@ def test_emit_progress_is_noop_without_callback():
 
 - [ ] **Step 2: 运行测试并确认因模块不存在而失败**
 
-Run: `python -m pytest 审核器/tests/test_progress_events.py -q`
+Run: `python -m pytest risk-audit/tests/test_progress_events.py -q`
 
 Expected: FAIL，提示 `ModuleNotFoundError: risk_audit.progress`。
 
@@ -221,7 +221,7 @@ emit_progress(progress_callback, AuditProgressEvent(
 
 - [ ] **Step 6: 运行进度测试和审核核心回归测试**
 
-Run: `python -m pytest 审核器/tests/test_progress_events.py 审核器/tests/test_engine.py 审核器/tests/test_audit_v180.py -q`
+Run: `python -m pytest risk-audit/tests/test_progress_events.py risk-audit/tests/test_engine.py risk-audit/tests/test_audit_v180.py -q`
 
 Expected: 全部 PASS，现有 CLI 在未传回调时仍只输出最终 JSON。
 
@@ -234,11 +234,11 @@ Expected: 全部 PASS，现有 CLI 在未传回调时仍只输出最终 JSON。
 ### Task 2: 建立桌面任务契约和工作进程入口
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/__init__.py`
-- Create: `审核器/src/risk_audit_desktop/contracts.py`
-- Create: `审核器/src/risk_audit_desktop/worker.py`
-- Create: `审核器/tests/desktop/test_contracts.py`
-- Create: `审核器/tests/desktop/test_worker.py`
+- Create: `risk-audit/src/risk_audit_desktop/__init__.py`
+- Create: `risk-audit/src/risk_audit_desktop/contracts.py`
+- Create: `risk-audit/src/risk_audit_desktop/worker.py`
+- Create: `risk-audit/tests/desktop/test_contracts.py`
+- Create: `risk-audit/tests/desktop/test_worker.py`
 
 **Interfaces:**
 - Consumes: `risk_audit.runner.audit(..., progress_callback=...)`、`AuditProgressEvent.to_dict()`。
@@ -421,7 +421,7 @@ def run_worker(
 
 - [ ] **Step 5: 运行任务契约与工作进程测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_contracts.py 审核器/tests/desktop/test_worker.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_contracts.py risk-audit/tests/desktop/test_worker.py -q`
 
 Expected: 全部 PASS。
 
@@ -434,9 +434,9 @@ Expected: 全部 PASS。
 ### Task 3: 实现便携目录解析与运行前诊断
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/paths.py`
-- Create: `审核器/src/risk_audit_desktop/diagnostics.py`
-- Create: `审核器/tests/desktop/test_paths_and_diagnostics.py`
+- Create: `risk-audit/src/risk_audit_desktop/paths.py`
+- Create: `risk-audit/src/risk_audit_desktop/diagnostics.py`
+- Create: `risk-audit/tests/desktop/test_paths_and_diagnostics.py`
 
 **Interfaces:**
 - Consumes: 最终 ZIP 目录结构、现有 `RulePackStore.validate()`、`sha256_file()`。
@@ -493,15 +493,15 @@ class DesktopPaths:
         resolved_root = app_root.resolve()
         project_root = resolved_root / "resources/project" if portable else resolved_root
         qml_root = (resolved_root / "resources/qml" if portable
-                    else resolved_root / "审核器/src/risk_audit_desktop/qml")
+                    else resolved_root / "risk-audit/src/risk_audit_desktop/qml")
         soffice_path = (resolved_root / "runtime/libreoffice/program/soffice.exe" if portable
                         else Path(environ.get("RISK_AUDIT_SOFFICE", "__missing_soffice__")).resolve())
         user_data_root = Path(local_app_data).resolve() / "RiskAuditDesktop"
         return cls(
             app_root=resolved_root,
             project_root=project_root,
-            rulepacks_root=project_root / "审核器/rulepacks",
-            entity_file=project_root / "审核/会计主体清单20260907.xlsx",
+            rulepacks_root=project_root / "risk-audit/rulepacks",
+            entity_file=project_root / "reference-data/会计主体清单20260907.xlsx",
             audit_config=project_root / "audit-config.json",
             soffice_path=soffice_path,
             qml_root=qml_root,
@@ -524,7 +524,7 @@ def test_preflight_reports_every_missing_required_resource(portable_paths):
 
 
 def test_preflight_rejects_changed_manifest_file(portable_tree):
-    target = portable_tree.project_root / "审核器/rulepacks/active.json"
+    target = portable_tree.project_root / "risk-audit/rulepacks/active.json"
     target.write_text("changed", encoding="utf-8")
     report = run_preflight(portable_tree)
     assert any(item.code == "resource_hash_mismatch" for item in report.items)
@@ -577,7 +577,7 @@ def verify_resource_manifest(app_root: Path, manifest_path: Path) -> list[Diagno
 
 - [ ] **Step 5: 运行路径和诊断测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_paths_and_diagnostics.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_paths_and_diagnostics.py -q`
 
 Expected: 全部 PASS。
 
@@ -590,8 +590,8 @@ Expected: 全部 PASS。
 ### Task 4: 实现历史记录持久化
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/history.py`
-- Create: `审核器/tests/desktop/test_history.py`
+- Create: `risk-audit/src/risk_audit_desktop/history.py`
+- Create: `risk-audit/tests/desktop/test_history.py`
 
 **Interfaces:**
 - Consumes: `%LOCALAPPDATA%\RiskAuditDesktop\history.json`。
@@ -683,7 +683,7 @@ class HistoryStore:
 
 - [ ] **Step 3: 运行历史记录测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_history.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_history.py -q`
 
 Expected: 全部 PASS。
 
@@ -696,13 +696,13 @@ Expected: 全部 PASS。
 ### Task 5: 实现 JSON 行解析和审核进程管理
 
 **Files:**
-- Modify: `审核器/pyproject.toml`
-- Create: `审核器/requirements-desktop.lock`
-- Create: `审核器/src/risk_audit_desktop/process_protocol.py`
-- Create: `审核器/src/risk_audit_desktop/task_manager.py`
-- Create: `审核器/src/risk_audit_desktop/platform_windows.py`
-- Create: `审核器/tests/desktop/test_process_protocol.py`
-- Create: `审核器/tests/desktop/test_task_manager.py`
+- Modify: `risk-audit/pyproject.toml`
+- Create: `risk-audit/requirements-desktop.lock`
+- Create: `risk-audit/src/risk_audit_desktop/process_protocol.py`
+- Create: `risk-audit/src/risk_audit_desktop/task_manager.py`
+- Create: `risk-audit/src/risk_audit_desktop/platform_windows.py`
+- Create: `risk-audit/tests/desktop/test_process_protocol.py`
+- Create: `risk-audit/tests/desktop/test_task_manager.py`
 
 **Interfaces:**
 - Consumes: `AuditTaskRequest` 和 `--worker --request <path>` 入口。
@@ -857,7 +857,7 @@ def terminate_process_tree(process_id: int, *, system_name: str = platform.syste
 
 - [ ] **Step 7: 运行进程协议测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_process_protocol.py 审核器/tests/desktop/test_task_manager.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_process_protocol.py risk-audit/tests/desktop/test_task_manager.py -q`
 
 Expected: 全部 PASS，测试过程中不出现真实子进程或终端窗口。
 
@@ -870,9 +870,9 @@ Expected: 全部 PASS，测试过程中不出现真实子进程或终端窗口�
 ### Task 6: 实现桌面应用控制器和平台操作
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/controller.py`
-- Modify: `审核器/src/risk_audit_desktop/platform_windows.py`
-- Create: `审核器/tests/desktop/test_controller.py`
+- Create: `risk-audit/src/risk_audit_desktop/controller.py`
+- Modify: `risk-audit/src/risk_audit_desktop/platform_windows.py`
+- Create: `risk-audit/tests/desktop/test_controller.py`
 
 **Interfaces:**
 - Consumes: `DesktopPaths`、`run_preflight()`、`HistoryStore`、`TaskManager`。
@@ -970,7 +970,7 @@ def open_local_path(path: Path) -> None:
 
 - [ ] **Step 5: 运行控制器测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_controller.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_controller.py -q`
 
 Expected: 全部 PASS。
 
@@ -983,14 +983,14 @@ Expected: 全部 PASS。
 ### Task 7: 实现 PySide6/QML 桌面界面
 
 **Files:**
-- Create: `审核器/src/risk_audit_desktop/app.py`
-- Create: `审核器/src/risk_audit_desktop/assets/app-icon.svg`
-- Create: `审核器/src/risk_audit_desktop/qml/Main.qml`
-- Create: `审核器/src/risk_audit_desktop/qml/components/FolderCard.qml`
-- Create: `审核器/src/risk_audit_desktop/qml/pages/AuditPage.qml`
-- Create: `审核器/src/risk_audit_desktop/qml/pages/HistoryPage.qml`
-- Create: `审核器/src/risk_audit_desktop/qml/pages/DiagnosticsPage.qml`
-- Create: `审核器/tests/desktop/test_qml_smoke.py`
+- Create: `risk-audit/src/risk_audit_desktop/app.py`
+- Create: `risk-audit/src/risk_audit_desktop/assets/app-icon.svg`
+- Create: `risk-audit/src/risk_audit_desktop/qml/Main.qml`
+- Create: `risk-audit/src/risk_audit_desktop/qml/components/FolderCard.qml`
+- Create: `risk-audit/src/risk_audit_desktop/qml/pages/AuditPage.qml`
+- Create: `risk-audit/src/risk_audit_desktop/qml/pages/HistoryPage.qml`
+- Create: `risk-audit/src/risk_audit_desktop/qml/pages/DiagnosticsPage.qml`
+- Create: `risk-audit/tests/desktop/test_qml_smoke.py`
 
 **Interfaces:**
 - Consumes: `DesktopController` 的 Qt 属性、信号和槽。
@@ -1118,7 +1118,7 @@ def test_main_qml_loads_without_errors(qml_engine, desktop_controller, qml_root)
 
 - [ ] **Step 7: 运行桌面界面测试和手工检查**
 
-Run: `QT_QPA_PLATFORM=offscreen python -m pytest 审核器/tests/desktop/test_qml_smoke.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python -m pytest risk-audit/tests/desktop/test_qml_smoke.py -q`
 
 Expected: PASS，无 QML warning。
 
@@ -1133,10 +1133,10 @@ Expected: PASS，无 QML warning。
 ### Task 8: 实现免安装包资源收集、校验和 Windows 构建
 
 **Files:**
-- Create: `审核器/tools/build_windows_desktop.py`
-- Create: `审核器/tests/desktop/test_portable_build.py`
-- Modify: `审核器/src/risk_audit_desktop/diagnostics.py`
-- Create: `审核器/Windows桌面版使用说明.md`
+- Create: `risk-audit/tools/build_windows_desktop.py`
+- Create: `risk-audit/tests/desktop/test_portable_build.py`
+- Modify: `risk-audit/src/risk_audit_desktop/diagnostics.py`
+- Create: `risk-audit/Windows桌面版使用说明.md`
 
 **Interfaces:**
 - Consumes: 项目根目录、激活规则包、基准注册表、LibreOffice 外部构建输入目录。
@@ -1147,11 +1147,11 @@ Expected: PASS，无 QML warning。
 ```python
 def test_collects_only_active_pack_and_referenced_baselines(fake_project, stage_root):
     collect_project_resources(fake_project, stage_root)
-    assert (stage_root / "resources/project/审核器/rulepacks/active.json").is_file()
-    assert (stage_root / "resources/project/审核器/rulepacks/releases/2.0.0/manifest.json").is_file()
-    assert not (stage_root / "resources/project/审核器/rulepacks/releases/1.0.0").exists()
-    assert (stage_root / "resources/project/审核/基准.xlsx").is_file()
-    assert not (stage_root / "resources/project/审核器/models").exists()
+    assert (stage_root / "resources/project/risk-audit/rulepacks/active.json").is_file()
+    assert (stage_root / "resources/project/risk-audit/rulepacks/releases/2.0.0/manifest.json").is_file()
+    assert not (stage_root / "resources/project/risk-audit/rulepacks/releases/1.0.0").exists()
+    assert (stage_root / "resources/project/templates/基准.xlsx").is_file()
+    assert not (stage_root / "resources/project/risk-audit/models").exists()
 
 
 def test_manifest_detects_missing_and_changed_files(stage_root):
@@ -1164,26 +1164,26 @@ def test_manifest_detects_missing_and_changed_files(stage_root):
 
 - [ ] **Step 2: 实现资源收集**
 
-构建脚本读取 `审核器/rulepacks/active.json`，只复制激活版本、`audit-config.json`、主体清单和激活规则 `baseline_registry.json` 引用的基准。复制时保留相对于项目根的原路径。若语义配置 `enabled` 为 `false`，明确不复制 `审核器/models`。
+构建脚本读取 `risk-audit/rulepacks/active.json`，只复制激活版本、`audit-config.json`、主体清单和激活规则 `baseline_registry.json` 引用的基准。复制时保留相对于项目根的原路径。若语义配置 `enabled` 为 `false`，明确不复制 `risk-audit/models`。
 
 ```python
 def collect_project_resources(project_root: Path, stage_root: Path) -> None:
     """收集桌面审核必需资源；两个参数分别为源码根和暂存根目录。"""
-    active = json.loads((project_root / "审核器/rulepacks/active.json").read_text(encoding="utf-8"))
+    active = json.loads((project_root / "risk-audit/rulepacks/active.json").read_text(encoding="utf-8"))
     version = active["version"]
-    source_pack = project_root / "审核器/rulepacks/releases" / version
+    source_pack = project_root / "risk-audit/rulepacks/releases" / version
     target_project = stage_root / "resources/project"
-    shutil.copy2(project_root / "审核器/rulepacks/active.json",
-                 target_project / "审核器/rulepacks/active.json")
-    shutil.copytree(source_pack, target_project / "审核器/rulepacks/releases" / version)
+    shutil.copy2(project_root / "risk-audit/rulepacks/active.json",
+                 target_project / "risk-audit/rulepacks/active.json")
+    shutil.copytree(source_pack, target_project / "risk-audit/rulepacks/releases" / version)
     registry = json.loads((source_pack / "baseline_registry.json").read_text(encoding="utf-8"))
     for item in registry["entries"]:
         source = project_root / item["path"]
         target = target_project / item["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    shutil.copy2(project_root / "审核/会计主体清单20260907.xlsx",
-                 target_project / "审核/会计主体清单20260907.xlsx")
+    shutil.copy2(project_root / "reference-data/会计主体清单20260907.xlsx",
+                 target_project / "reference-data/会计主体清单20260907.xlsx")
     shutil.copy2(project_root / "audit-config.json", target_project / "audit-config.json")
 
 
@@ -1240,7 +1240,7 @@ NOTICE
 
 - [ ] **Step 6: 运行资源构建单元测试**
 
-Run: `python -m pytest 审核器/tests/desktop/test_portable_build.py -q`
+Run: `python -m pytest risk-audit/tests/desktop/test_portable_build.py -q`
 
 Expected: 全部 PASS，测试只使用伪造的小型 LibreOffice 目录，不创建真实大包。
 
@@ -1250,16 +1250,16 @@ Run:
 
 ```powershell
 py -3.12 -m venv .venv-desktop
-.\.venv-desktop\Scripts\python.exe -m pip install -r .\审核器\requirements.lock
-.\.venv-desktop\Scripts\python.exe -m pip install -r .\审核器\requirements-desktop.lock
+.\.venv-desktop\Scripts\python.exe -m pip install -r .\risk-audit\requirements.lock
+.\.venv-desktop\Scripts\python.exe -m pip install -r .\risk-audit\requirements-desktop.lock
 .\.venv-desktop\Scripts\python.exe -m pip install --no-deps .\审核器
-.\.venv-desktop\Scripts\python.exe .\审核器\tools\build_windows_desktop.py `
+.\.venv-desktop\Scripts\python.exe .\risk-audit\tools\build_windows_desktop.py `
   --project-root . `
   --libreoffice-root C:\BuildDependencies\LibreOffice-x64 `
-  --output .\审核器\build\desktop
+  --output .\risk-audit\build\desktop
 ```
 
-Expected: 生成 `审核器\build\desktop\风控矩阵审核器-v2.0.0-Windows-x64.zip`，解压目录只有一个用户入口 EXE，不需要安装。
+Expected: 生成 `risk-audit\build\desktop\风控矩阵审核器-v2.0.0-Windows-x64.zip`，解压目录只有一个用户入口 EXE，不需要安装。
 
 - [ ] **Step 8: 记录建议提交信息，不执行提交**
 
@@ -1272,8 +1272,8 @@ Expected: 生成 `审核器\build\desktop\风控矩阵审核器-v2.0.0-Windows-x
 **Files:**
 - Modify: `delivery_test.py`
 - Modify: `使用说明.md`
-- Create: `审核器/tests/desktop/test_desktop_delivery.py`
-- Create: `审核器/build/desktop/验收记录.md`（构建产物，不纳入 Git）
+- Create: `risk-audit/tests/desktop/test_desktop_delivery.py`
+- Create: `risk-audit/build/desktop/验收记录.md`（构建产物，不纳入 Git）
 
 **Interfaces:**
 - Consumes: Task 1-8 的桌面程序、测试和 ZIP。
@@ -1285,16 +1285,16 @@ Expected: 生成 `审核器\build\desktop\风控矩阵审核器-v2.0.0-Windows-x
 
 ```python
 DESKTOP_TESTS = [
-    "审核器/tests/test_progress_events.py",
-    "审核器/tests/desktop/test_contracts.py",
-    "审核器/tests/desktop/test_worker.py",
-    "审核器/tests/desktop/test_paths_and_diagnostics.py",
-    "审核器/tests/desktop/test_history.py",
-    "审核器/tests/desktop/test_process_protocol.py",
-    "审核器/tests/desktop/test_task_manager.py",
-    "审核器/tests/desktop/test_controller.py",
-    "审核器/tests/desktop/test_qml_smoke.py",
-    "审核器/tests/desktop/test_portable_build.py",
+    "risk-audit/tests/test_progress_events.py",
+    "risk-audit/tests/desktop/test_contracts.py",
+    "risk-audit/tests/desktop/test_worker.py",
+    "risk-audit/tests/desktop/test_paths_and_diagnostics.py",
+    "risk-audit/tests/desktop/test_history.py",
+    "risk-audit/tests/desktop/test_process_protocol.py",
+    "risk-audit/tests/desktop/test_task_manager.py",
+    "risk-audit/tests/desktop/test_controller.py",
+    "risk-audit/tests/desktop/test_qml_smoke.py",
+    "risk-audit/tests/desktop/test_portable_build.py",
 ]
 ```
 
@@ -1322,7 +1322,7 @@ assert events[-1]["result"]["write_completed"] is True
 
 - [ ] **Step 3: 运行全量自动化测试**
 
-Run: `python -m pytest 审核器/tests -q`
+Run: `python -m pytest risk-audit/tests -q`
 
 Expected: 全部适用测试 PASS；已有明确依赖缺失的测试只允许按现有交付测试规则排除，不允许为桌面改造新增静默排除。
 
@@ -1355,7 +1355,7 @@ Expected: 无空白错误。
 
 Run: `git status --short`
 
-Expected: 只包含本计划列出的源码、测试、说明和设计文件；`审核器/build/desktop` 继续由 `.gitignore` 排除。
+Expected: 只包含本计划列出的源码、测试、说明和设计文件；`risk-audit/build/desktop` 继续由 `.gitignore` 排除。
 
 - [ ] **Step 7: 记录建议提交信息，不执行提交**
 

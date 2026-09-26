@@ -1,8 +1,8 @@
 __pycache__/
 .pytest_cache/
 .venv/
-审核器/build/
-审核器/src/*.egg-info/
+risk-audit/build/
+risk-audit/src/*.egg-info/
 数据/
 outputs/
 runs/

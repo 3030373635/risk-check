@@ -1,0 +1,10 @@
+{
+  "audit_as_of": "2026-09-16",
+  "content_hash": "e76bb4b8c905d6005d1f00ae2af8dc95fe16158a4cefaaae170b3eb95e2539f3",
+  "engine_compatibility": ">=1.9.0,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "5b5f03ff0271b3fde491dfc1ca6403d6df0f352bb4c97398cded77cbfa4f3fc8",
+  "status": "released",
+  "title": "风控矩阵0916更新规则",
+  "version": "1.9.0"
+}

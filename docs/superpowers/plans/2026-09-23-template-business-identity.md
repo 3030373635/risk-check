@@ -32,9 +32,9 @@
 ### 任务 1：业务目录配置与确定性匹配器
 
 **文件：**
-- 新建：`审核器/src/risk_audit/business_identity.py`
-- 修改：`审核器/src/risk_audit/configuration/validator.py`
-- 新建：`审核器/tests/test_business_identity.py`
+- 新建：`risk-audit/src/risk_audit/business_identity.py`
+- 修改：`risk-audit/src/risk_audit/configuration/validator.py`
+- 新建：`risk-audit/tests/test_business_identity.py`
 
 **接口：**
 - `normalize_business_text(value: str) -> str`
@@ -43,7 +43,7 @@
 - `BusinessIdentity(business_id, business_code, business_name, variant_id)`
 
 - [x] 编写失败测试：覆盖重复展示编号、28–31、括号空格归一化、最长别名、同长度冲突、无匹配和电网基建变体。
-- [x] 运行 `pytest -q 审核器/tests/test_business_identity.py`，确认因模块/API 不存在而失败。
+- [x] 运行 `pytest -q risk-audit/tests/test_business_identity.py`，确认因模块/API 不存在而失败。
 - [x] 实现规范化、配置校验和确定性匹配；错误必须包含相对路径、候选项、命中别名和 `baseline_registry.json` 提示。
 - [x] 再次运行目标测试并确认通过。
 - [x] 记录建议提交信息：`feat: 新增模板业务唯一标识与路径匹配`
@@ -51,13 +51,13 @@
 ### 任务 2：模型、扫描和读取链路传播 business_id
 
 **文件：**
-- 修改：`审核器/src/risk_audit/models.py`
-- 修改：`审核器/src/risk_audit/inventory.py`
-- 修改：`审核器/src/risk_audit/inventory_v180.py`
-- 修改：`审核器/src/risk_audit/readers/excel.py`
-- 修改：`审核器/src/risk_audit/readers/confirmed_v180.py`
-- 修改：`审核器/src/risk_audit/runner.py`
-- 修改：`审核器/tests/test_business_identity.py`
+- 修改：`risk-audit/src/risk_audit/models.py`
+- 修改：`risk-audit/src/risk_audit/inventory.py`
+- 修改：`risk-audit/src/risk_audit/inventory_v180.py`
+- 修改：`risk-audit/src/risk_audit/readers/excel.py`
+- 修改：`risk-audit/src/risk_audit/readers/confirmed_v180.py`
+- 修改：`risk-audit/src/risk_audit/runner.py`
+- 修改：`risk-audit/tests/test_business_identity.py`
 
 **接口：**
 - `FileRecord.business_id: str | None`
@@ -74,9 +74,9 @@
 ### 任务 3：基准模板按 business_id 加载
 
 **文件：**
-- 修改：`审核器/src/risk_audit/baselines.py`
-- 修改：`审核器/tests/test_reference_prerequisites.py`
-- 修改：`审核器/tests/test_business_identity.py`
+- 修改：`risk-audit/src/risk_audit/baselines.py`
+- 修改：`risk-audit/tests/test_reference_prerequisites.py`
+- 修改：`risk-audit/tests/test_business_identity.py`
 
 **接口：**
 - `load_baselines(...) -> dict[tuple[str, str], dict[str, Any]]`，键为 `(business_id, variant_id)`。
@@ -91,16 +91,16 @@
 ### 任务 4：审核范围、业务分组、规则上下文和输出隔离
 
 **文件：**
-- 修改：`审核器/src/risk_audit/submission_scope.py`
-- 修改：`审核器/src/risk_audit/runner.py`
-- 修改：`审核器/src/risk_audit/engine.py`
-- 修改：`审核器/src/risk_audit/output_0916.py`
-- 修改：`审核器/src/risk_audit/checks/*.py`
-- 修改：`审核器/src/risk_audit/review_tasks.py`
-- 修改：`审核器/src/risk_audit/semantic_matching.py`
-- 修改：`审核器/src/risk_audit/writer.py`
-- 修改：`审核器/tests/test_business_incremental.py`
-- 新建：`审核器/tests/test_duplicate_business_codes.py`
+- 修改：`risk-audit/src/risk_audit/submission_scope.py`
+- 修改：`risk-audit/src/risk_audit/runner.py`
+- 修改：`risk-audit/src/risk_audit/engine.py`
+- 修改：`risk-audit/src/risk_audit/output_0916.py`
+- 修改：`risk-audit/src/risk_audit/checks/*.py`
+- 修改：`risk-audit/src/risk_audit/review_tasks.py`
+- 修改：`risk-audit/src/risk_audit/semantic_matching.py`
+- 修改：`risk-audit/src/risk_audit/writer.py`
+- 修改：`risk-audit/tests/test_business_incremental.py`
+- 新建：`risk-audit/tests/test_duplicate_business_codes.py`
 
 **接口：**
 - 所有隔离键统一为 `(entity_code, business_id, variant_id)`；展示和规则选择仍可读取 `business_code`。
@@ -115,11 +115,11 @@
 ### 任务 5：迁移 19 份模板并发布新规则包
 
 **文件：**
-- 新建：`审核器/rulepacks/drafts/template-business-identity-1.9.19/baseline_registry.json`
-- 新建：`审核器/tools/publish_template_business_identity_1919.py`
-- 新建：`审核器/rulepacks/releases/1.9.19/`
-- 修改：`审核器/rulepacks/active.json`
-- 新建：`审核器/tests/test_template_business_identity_1919.py`
+- 新建：`risk-audit/rulepacks/drafts/template-business-identity-1.9.19/baseline_registry.json`
+- 新建：`risk-audit/tools/publish_template_business_identity_1919.py`
+- 新建：`risk-audit/rulepacks/releases/1.9.19/`
+- 修改：`risk-audit/rulepacks/active.json`
+- 新建：`risk-audit/tests/test_template_business_identity_1919.py`
 
 **接口：**
 - 新规则包包含第一批 11 份模板和第二批 8 份模板。
@@ -135,12 +135,12 @@
 
 **文件：**
 - 修改：受新必填字段影响的测试夹具与断言。
-- 修改：`审核器/README.md`
-- 新建：`审核器/第二批模板业务识别说明-v1.9.19.md`
+- 修改：`risk-audit/README.md`
+- 新建：`risk-audit/第二批模板业务识别说明-v1.9.19.md`
 
-- [x] 运行 `pytest -q 审核器/tests/test_business_identity.py 审核器/tests/test_duplicate_business_codes.py 审核器/tests/test_template_business_identity_1919.py`，确认核心新行为全部通过。
-- [x] 运行 `pytest -q 审核器/tests`，记录测试总数、通过数和任何遗留失败。
-- [x] 运行 `python3 -m compileall -q 审核器/src 审核器/tools`，确认无语法错误。
+- [x] 运行 `pytest -q risk-audit/tests/test_business_identity.py risk-audit/tests/test_duplicate_business_codes.py risk-audit/tests/test_template_business_identity_1919.py`，确认核心新行为全部通过。
+- [x] 运行 `pytest -q risk-audit/tests`，记录测试总数、通过数和任何遗留失败。
+- [x] 运行 `python3 -m compileall -q risk-audit/src risk-audit/tools`，确认无语法错误。
 - [x] 使用真实第二批 8 份模板执行只读识别/加载验收，核对业务 ID、展示编号、变体、工作表和模板哈希。
 - [x] 检查 `git diff --check`、`git status --short` 和最终 diff，确认没有覆盖用户原有未跟踪文件、没有提交 Git。
 - [x] 输出建议提交信息：`feat: 支持重复序号的多批次风控模板`

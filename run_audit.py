@@ -8,7 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 # 解压包的源码是当前版本；直接运行时避免仍调用环境中安装的旧 wheel。
-sys.path.insert(0, str(ROOT / '审核器/src'))
+sys.path.insert(0, str(ROOT / 'risk-audit/src'))
 
 def configure_soffice(explicit=None):
     """定位 LibreOffice；explicit 为可选的可执行文件绝对路径。"""
@@ -48,7 +48,7 @@ def main(argv=None):
             from risk_audit.configuration.publisher import RulePackStore
             from risk_audit.checks.registry import build_registry
             from risk_audit.util import sha256_file
-            store = RulePackStore(ROOT / '审核器/rulepacks', build_registry())
+            store = RulePackStore(ROOT / 'risk-audit/rulepacks', build_registry())
             pack = store.validate(store.active_path())
             baseline_registry = pack['baseline_registry']
             # 1.9.19 的模板固定在业务及变体下；旧发布包仅保留诊断读取能力。
@@ -64,7 +64,7 @@ def main(argv=None):
             result = {'version': risk_audit.__version__, 'rulepack': pack['manifest']['version'],
                       'baseline_errors': missing, 'soffice': str(office) if office else None,
                       'embedding_enabled': pack['semantic_config']['enabled'],
-                      'entity_list_present': (ROOT / '审核/会计主体清单20260907.xlsx').is_file(),
+                      'entity_list_present': (ROOT / 'reference-data/会计主体清单20260907.xlsx').is_file(),
                       'note': 'Path discovery is not a conversion compatibility test.'}
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if office and not missing and result['entity_list_present'] else 2

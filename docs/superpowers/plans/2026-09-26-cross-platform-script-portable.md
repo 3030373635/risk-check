@@ -39,13 +39,13 @@
 ### Task 1: 便携运行根、平台路径与前台启动器
 
 **Files:**
-- Create: `审核器/packaging/启动审核器.bat`
-- Create: `审核器/packaging/启动审核器.command`
-- Modify: `审核器/src/risk_audit_web/task_paths.py`
-- Modify: `审核器/src/risk_audit_web/app.py`
-- Modify: `审核器/tests/web/test_task_paths.py`
-- Modify: `审核器/tests/web/test_app_lifecycle.py`
-- Create: `审核器/tests/web/test_launchers.py`
+- Create: `risk-audit/packaging/启动审核器.bat`
+- Create: `risk-audit/packaging/启动审核器.command`
+- Modify: `risk-audit/src/risk_audit_web/task_paths.py`
+- Modify: `risk-audit/src/risk_audit_web/app.py`
+- Modify: `risk-audit/tests/web/test_task_paths.py`
+- Modify: `risk-audit/tests/web/test_app_lifecycle.py`
+- Create: `risk-audit/tests/web/test_launchers.py`
 
 **Interfaces:**
 - Produces: `PortablePaths.from_app_root(app_root: Path, *, platform_name: str | None = None) -> PortablePaths`。
@@ -60,7 +60,7 @@
 
 - [ ] **Step 2: 运行测试并确认旧冻结分支导致失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_task_paths.py tests/web/test_app_lifecycle.py tests/web/test_launchers.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_task_paths.py tests/web/test_app_lifecycle.py tests/web/test_launchers.py -q`
 
   Expected: FAIL，原因包含 `from_app_root`/`resolve_application_paths` 或启动器文件不存在，而不是测试环境异常。
 
@@ -70,7 +70,7 @@
 
 - [ ] **Step 4: 运行相关回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_task_paths.py tests/web/test_app_lifecycle.py tests/web/test_launchers.py tests/web/test_worker.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_task_paths.py tests/web/test_app_lifecycle.py tests/web/test_launchers.py tests/web/test_worker.py -q`
 
   Expected: PASS。
 
@@ -81,16 +81,16 @@
 ### Task 2: 平台目录选择、单实例与打开文件适配
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/platform_runtime.py`
-- Delete: `审核器/src/risk_audit_web/platform_windows.py`
-- Modify: `审核器/src/risk_audit_web/directory_picker.py`
-- Modify: `审核器/src/risk_audit_web/single_instance.py`
-- Modify: `审核器/src/risk_audit_web/app.py`
-- Modify: `审核器/src/risk_audit_web/task_manager.py`
-- Modify: `审核器/tests/web/test_directory_picker.py`
-- Rename: `审核器/tests/web/test_platform_windows.py` to `审核器/tests/web/test_platform_runtime.py`
-- Modify: `审核器/tests/web/test_single_instance.py`
-- Modify: `审核器/tests/web/test_app_lifecycle.py`
+- Create: `risk-audit/src/risk_audit_web/platform_runtime.py`
+- Delete: `risk-audit/src/risk_audit_web/platform_windows.py`
+- Modify: `risk-audit/src/risk_audit_web/directory_picker.py`
+- Modify: `risk-audit/src/risk_audit_web/single_instance.py`
+- Modify: `risk-audit/src/risk_audit_web/app.py`
+- Modify: `risk-audit/src/risk_audit_web/task_manager.py`
+- Modify: `risk-audit/tests/web/test_directory_picker.py`
+- Rename: `risk-audit/tests/web/test_platform_windows.py` to `risk-audit/tests/web/test_platform_runtime.py`
+- Modify: `risk-audit/tests/web/test_single_instance.py`
+- Modify: `risk-audit/tests/web/test_app_lifecycle.py`
 
 **Interfaces:**
 - Consumes: Task 1 的 `PortablePaths` 与发布根解析。
@@ -105,7 +105,7 @@
 
 - [ ] **Step 2: 运行测试并确认 tkinter/O_EXCL 实现失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_directory_picker.py tests/web/test_platform_runtime.py tests/web/test_single_instance.py tests/web/test_app_lifecycle.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_directory_picker.py tests/web/test_platform_runtime.py tests/web/test_single_instance.py tests/web/test_app_lifecycle.py -q`
 
   Expected: FAIL，原因指向系统命令契约、`flock` 或模块重命名。
 
@@ -115,7 +115,7 @@
 
 - [ ] **Step 4: 运行平台与 API 回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_directory_picker.py tests/web/test_platform_runtime.py tests/web/test_single_instance.py tests/web/test_app_lifecycle.py tests/web/test_system_api.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_directory_picker.py tests/web/test_platform_runtime.py tests/web/test_single_instance.py tests/web/test_app_lifecycle.py tests/web/test_system_api.py -q`
 
   Expected: PASS。
 
@@ -126,15 +126,15 @@
 ### Task 3: 终端生命周期与子进程树清理
 
 **Files:**
-- Create: `审核器/src/risk_audit_web/process_supervisor.py`
-- Modify: `审核器/src/risk_audit_web/platform_runtime.py`
-- Modify: `审核器/src/risk_audit_web/task_manager.py`
-- Modify: `审核器/src/risk_audit_web/app.py`
-- Modify: `审核器/src/risk_audit_web/server.py`
-- Modify: `审核器/tests/web/test_task_manager.py`
-- Modify: `审核器/tests/web/test_shutdown_lifecycle.py`
-- Create: `审核器/tests/web/test_process_supervisor.py`
-- Modify: `审核器/tests/web/test_parallel_integration.py`
+- Create: `risk-audit/src/risk_audit_web/process_supervisor.py`
+- Modify: `risk-audit/src/risk_audit_web/platform_runtime.py`
+- Modify: `risk-audit/src/risk_audit_web/task_manager.py`
+- Modify: `risk-audit/src/risk_audit_web/app.py`
+- Modify: `risk-audit/src/risk_audit_web/server.py`
+- Modify: `risk-audit/tests/web/test_task_manager.py`
+- Modify: `risk-audit/tests/web/test_shutdown_lifecycle.py`
+- Create: `risk-audit/tests/web/test_process_supervisor.py`
+- Modify: `risk-audit/tests/web/test_parallel_integration.py`
 
 **Interfaces:**
 - Consumes: Task 2 的进程检查和终止函数。
@@ -150,7 +150,7 @@
 
 - [ ] **Step 2: 运行测试并确认缺少 supervisor**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_process_supervisor.py tests/web/test_task_manager.py tests/web/test_shutdown_lifecycle.py tests/web/test_parallel_integration.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_process_supervisor.py tests/web/test_task_manager.py tests/web/test_shutdown_lifecycle.py tests/web/test_parallel_integration.py -q`
 
   Expected: FAIL，原因是 supervisor/终端清理接口不存在。
 
@@ -160,7 +160,7 @@
 
 - [ ] **Step 4: 运行生命周期回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_process_supervisor.py tests/web/test_task_manager.py tests/web/test_shutdown_lifecycle.py tests/web/test_parallel_integration.py tests/web/test_app_lifecycle.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_process_supervisor.py tests/web/test_task_manager.py tests/web/test_shutdown_lifecycle.py tests/web/test_parallel_integration.py tests/web/test_app_lifecycle.py -q`
 
   Expected: PASS。
 
@@ -171,14 +171,14 @@
 ### Task 4: 锁定便携 Python 来源与纯运行依赖
 
 **Files:**
-- Create: `审核器/packaging/runtime-sources.json`
-- Create: `审核器/requirements-runtime.lock`
-- Delete: `审核器/requirements-web.lock`
-- Modify: `审核器/pyproject.toml`
-- Modify: `审核器/uv.lock`
-- Create: `审核器/tools/runtime_sources.py`
-- Create: `审核器/tests/web/test_runtime_sources.py`
-- Modify: `审核器/tests/web/test_repository_cleanup.py`
+- Create: `risk-audit/packaging/runtime-sources.json`
+- Create: `risk-audit/requirements-runtime.lock`
+- Delete: `risk-audit/requirements-web.lock`
+- Modify: `risk-audit/pyproject.toml`
+- Modify: `risk-audit/uv.lock`
+- Create: `risk-audit/tools/runtime_sources.py`
+- Create: `risk-audit/tests/web/test_runtime_sources.py`
+- Modify: `risk-audit/tests/web/test_repository_cleanup.py`
 
 **Interfaces:**
 - Consumes: 无运行代码接口。
@@ -198,7 +198,7 @@
 
 - [ ] **Step 2: 运行测试并确认清单和纯运行锁尚不存在**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_runtime_sources.py tests/web/test_repository_cleanup.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_runtime_sources.py tests/web/test_repository_cleanup.py -q`
 
   Expected: FAIL，原因是新文件或函数不存在。
 
@@ -208,7 +208,7 @@
 
 - [ ] **Step 4: 运行锁与安全解压回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_runtime_sources.py tests/web/test_repository_cleanup.py tests/web/test_runtime_imports.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_runtime_sources.py tests/web/test_repository_cleanup.py tests/web/test_runtime_imports.py -q`
 
   Expected: PASS。
 
@@ -219,15 +219,15 @@
 ### Task 5: 通用发布组装器、目标 Python 安装与许可证
 
 **Files:**
-- Create: `审核器/tools/portable_release.py`
-- Create: `审核器/tools/build_portable.py`
-- Delete: `审核器/tools/build_windows_web.py`
-- Modify: `审核器/tools/collect_python_licenses.py`
-- Modify: `审核器/src/risk_audit_web/diagnostics.py`
-- Modify: `审核器/src/risk_audit_web/services.py`
-- Modify: `审核器/tests/web/test_diagnostics.py`
-- Create: `审核器/tests/web/test_portable_builder.py`
-- Modify: `审核器/tests/web/test_portable_distribution.py`
+- Create: `risk-audit/tools/portable_release.py`
+- Create: `risk-audit/tools/build_portable.py`
+- Delete: `risk-audit/tools/build_windows_web.py`
+- Modify: `risk-audit/tools/collect_python_licenses.py`
+- Modify: `risk-audit/src/risk_audit_web/diagnostics.py`
+- Modify: `risk-audit/src/risk_audit_web/services.py`
+- Modify: `risk-audit/tests/web/test_diagnostics.py`
+- Create: `risk-audit/tests/web/test_portable_builder.py`
+- Modify: `risk-audit/tests/web/test_portable_distribution.py`
 
 **Interfaces:**
 - Consumes: Task 1 的启动器/目录结构，Task 4 的 `RuntimeSource`、下载和解压函数。
@@ -244,7 +244,7 @@
 
 - [ ] **Step 2: 运行测试并确认旧 onedir 组装器失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_portable_builder.py tests/web/test_portable_distribution.py tests/web/test_diagnostics.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_portable_builder.py tests/web/test_portable_distribution.py tests/web/test_diagnostics.py -q`
 
   Expected: FAIL，原因指向新组装接口不存在或旧 `_internal/EXE` 契约。
 
@@ -254,7 +254,7 @@
 
 - [ ] **Step 4: 运行组装和诊断回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_portable_builder.py tests/web/test_portable_distribution.py tests/web/test_diagnostics.py tests/web/test_services.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_portable_builder.py tests/web/test_portable_distribution.py tests/web/test_diagnostics.py tests/web/test_services.py -q`
 
   Expected: PASS。
 
@@ -265,10 +265,10 @@
 ### Task 6: 平台发布校验器与保真归档
 
 **Files:**
-- Modify: `审核器/tools/verify_portable_distribution.py`
-- Modify: `审核器/tools/portable_release.py`
-- Modify: `审核器/tests/web/test_portable_distribution.py`
-- Create: `审核器/tests/web/test_archive_round_trip.py`
+- Modify: `risk-audit/tools/verify_portable_distribution.py`
+- Modify: `risk-audit/tools/portable_release.py`
+- Modify: `risk-audit/tests/web/test_portable_distribution.py`
+- Create: `risk-audit/tests/web/test_archive_round_trip.py`
 
 **Interfaces:**
 - Consumes: Task 5 的目录结构和发布清单。
@@ -283,7 +283,7 @@
 
 - [ ] **Step 2: 运行测试并确认旧 Windows-only 校验失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_portable_distribution.py tests/web/test_archive_round_trip.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_portable_distribution.py tests/web/test_archive_round_trip.py -q`
 
   Expected: FAIL，原因包含旧 EXE/`_internal` 约束或 macOS 权限丢失。
 
@@ -293,7 +293,7 @@
 
 - [ ] **Step 4: 运行发布工具回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_portable_distribution.py tests/web/test_archive_round_trip.py tests/web/test_web_assets.py tests/web/test_frontend_contract.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_portable_distribution.py tests/web/test_archive_round_trip.py tests/web/test_web_assets.py tests/web/test_frontend_contract.py -q`
 
   Expected: PASS。
 
@@ -305,9 +305,9 @@
 
 **Files:**
 - Modify: `.github/workflows/build-windows-web.yml`
-- Create: `审核器/tools/build_macos_portable.command`
-- Modify: `审核器/tests/web/test_github_actions_workflow.py`
-- Create: `审核器/tests/web/test_build_entrypoints.py`
+- Create: `risk-audit/tools/build_macos_portable.command`
+- Modify: `risk-audit/tests/web/test_github_actions_workflow.py`
+- Create: `risk-audit/tests/web/test_build_entrypoints.py`
 
 **Interfaces:**
 - Consumes: Task 4 的来源清单、Task 5 的 `build_portable.py`、Task 6 的校验器。
@@ -320,7 +320,7 @@
 
 - [ ] **Step 2: 运行测试并确认旧工作流失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_github_actions_workflow.py tests/web/test_build_entrypoints.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_github_actions_workflow.py tests/web/test_build_entrypoints.py -q`
 
   Expected: FAIL，原因包含 PyInstaller 构建器引用或 macOS 入口缺失。
 
@@ -330,7 +330,7 @@
 
 - [ ] **Step 4: 运行构建契约与完整 Web 测试**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web -q`
 
   Expected: PASS。
 
@@ -342,12 +342,12 @@
 
 **Files:**
 - Modify: `使用说明.md`
-- Modify: `审核器/README.md`
-- Modify: `审核器/Windows Web版使用说明.md`
-- Create: `审核器/macOS Apple Silicon Web版使用说明.md`
-- Modify: `审核器/src/risk_audit_web/static/index.html`
-- Modify: `审核器/src/risk_audit_web/static/js/app.js`
-- Modify: `审核器/tests/web/test_frontend_contract.py`
+- Modify: `risk-audit/README.md`
+- Modify: `risk-audit/Windows Web版使用说明.md`
+- Create: `risk-audit/macOS Apple Silicon Web版使用说明.md`
+- Modify: `risk-audit/src/risk_audit_web/static/index.html`
+- Modify: `risk-audit/src/risk_audit_web/static/js/app.js`
+- Modify: `risk-audit/tests/web/test_frontend_contract.py`
 - Modify: `风控矩阵审核器使用说明.docx`
 
 **Interfaces:**
@@ -360,7 +360,7 @@
 
 - [ ] **Step 2: 运行前端契约测试并确认旧文案失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_frontend_contract.py tests/web/test_repository_cleanup.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_frontend_contract.py tests/web/test_repository_cleanup.py -q`
 
   Expected: FAIL，原因是旧 Windows-only/EXE 文案或 macOS 文档缺失。
 
@@ -370,7 +370,7 @@
 
 - [ ] **Step 4: 运行文档契约并渲染 DOCX 验收**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web/test_frontend_contract.py tests/web/test_repository_cleanup.py -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web/test_frontend_contract.py tests/web/test_repository_cleanup.py -q`
 
   Expected: PASS；DOCX 渲染页无截断、重叠、乱码或失效页码。
 
@@ -390,19 +390,19 @@
 
 - [ ] **Step 1: 运行 Web 专项回归**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest tests/web -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest tests/web -q`
 
   Expected: 全部通过。
 
 - [ ] **Step 2: 运行完整项目测试并区分既有核心失败**
 
-  Run: `cd 审核器 && .venv/bin/python -m pytest -q`
+  Run: `cd risk-audit && .venv/bin/python -m pytest -q`
 
   Expected: Web/本次改动相关测试全部通过；若仍存在已记录的核心业务基线失败，必须逐项与改造前名单比对，不得把新增失败归类为基线。
 
 - [ ] **Step 3: 在当前 Apple Silicon Mac 构建最终 ZIP**
 
-  Run: `cd 审核器 && ./tools/build_macos_portable.command`
+  Run: `cd risk-audit && ./tools/build_macos_portable.command`
 
   Expected: 生成 `release/风控矩阵审核器-v2.0.0-macOS-arm64.zip`，下载资源摘要、LibreOffice 25.2.6.2 arm64、代码签名、许可证和发布校验全部通过。
 
@@ -416,7 +416,7 @@
 
 - [ ] **Step 6: 运行发布校验器并记录摘要**
 
-  Run: `cd 审核器 && .venv/bin/python tools/verify_portable_distribution.py release/风控矩阵审核器-v2.0.0-macOS-arm64.zip --platform macos-arm64`
+  Run: `cd risk-audit && .venv/bin/python tools/verify_portable_distribution.py release/风控矩阵审核器-v2.0.0-macOS-arm64.zip --platform macos-arm64`
 
   Expected: `0` 个错误，并输出最终 ZIP SHA-256。
 

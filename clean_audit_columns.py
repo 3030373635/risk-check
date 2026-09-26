@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 # 交付包内的源码是当前版本，直接运行时不依赖环境中已安装的旧版本。
-sys.path.insert(0, str(ROOT / "审核器/src"))
+sys.path.insert(0, str(ROOT / "risk-audit/src"))
 
 from risk_audit.cleanup import clean_audit_directory
 
