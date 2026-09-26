@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import re
+import subprocess
 
 
 def static_root() -> Path:
@@ -37,3 +38,27 @@ def test_vendor_manifest_matches_downloaded_assets() -> None:
     manifest = json.loads((static_root() / "vendor-manifest.json").read_text(encoding="utf-8"))
     assert manifest["bootstrap_version"] == "5.3.8"
     assert manifest["bootstrap_icons_version"] == "1.13.1"
+
+
+def test_hashed_text_assets_checkout_with_lf_line_endings() -> None:
+    """按字节校验的文本资产必须在所有平台使用 LF；无参数。"""
+    project_root = Path(__file__).resolve().parents[2]
+    repository_root = project_root.parent
+    manifest = json.loads((static_root() / "vendor-manifest.json").read_text(encoding="utf-8"))
+    text_paths = [
+        (Path(project_root.name) / entry["path"]).as_posix()
+        for entry in manifest["assets"]
+        if Path(entry["path"]).suffix in {".css", ".js", ".txt"}
+    ]
+
+    # 直接查询 Git 实际属性，确保 Windows checkout 不会改写已哈希的字节。
+    result = subprocess.run(
+        ["git", "check-attr", "eol", "--", *text_paths],
+        cwd=repository_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [f"{path}: eol: lf" for path in text_paths]

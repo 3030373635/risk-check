@@ -1,1 +1,5 @@
 *.json text eol=lf
+risk-audit/src/risk_audit_web/static/**/*.css text eol=lf
+risk-audit/src/risk_audit_web/static/**/*.js text eol=lf
+risk-audit/licenses/web/*.txt text eol=lf
+risk-audit/src/risk_audit_web/static/**/*.woff2 binary
