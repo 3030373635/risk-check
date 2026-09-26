@@ -2,6 +2,7 @@
 
 import ctypes
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -58,6 +59,7 @@ def test_wait_for_live_session_returns_verified_session(tmp_path: Path) -> None:
     ) == session
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows 不提供 POSIX flock")
 def test_non_windows_lock_allows_only_one_holder(tmp_path: Path) -> None:
     """POSIX flock 必须拒绝第二实例并由内核在关闭后释放。"""
     from risk_audit_web.single_instance import SingleInstanceLock

@@ -3,6 +3,9 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +43,7 @@ def test_macos_build_entrypoint_passes_locked_builder_arguments() -> None:
 def test_portable_builder_direct_entrypoint_loads_project_modules(tmp_path: Path) -> None:
     """直接执行构建器必须能加载 tools 包；tmp_path 模拟任意当前目录。"""
     result = subprocess.run(
-        [str(PROJECT_ROOT / ".venv/bin/python"), str(BUILD_SCRIPT), "--help"],
+        [sys.executable, str(BUILD_SCRIPT), "--help"],
         cwd=tmp_path,
         check=False,
         capture_output=True,
@@ -54,7 +57,7 @@ def test_portable_builder_direct_entrypoint_loads_project_modules(tmp_path: Path
 def test_portable_verifier_direct_entrypoint_loads_source_modules(tmp_path: Path) -> None:
     """直接执行校验器必须能加载 src 包；tmp_path 模拟任意当前目录。"""
     result = subprocess.run(
-        [str(PROJECT_ROOT / ".venv/bin/python"), str(VERIFIER_SCRIPT), "--help"],
+        [sys.executable, str(VERIFIER_SCRIPT), "--help"],
         cwd=tmp_path,
         check=False,
         capture_output=True,
@@ -65,6 +68,7 @@ def test_portable_verifier_direct_entrypoint_loads_source_modules(tmp_path: Path
     assert "--platform" in result.stdout
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="需要 macOS 的 /bin/zsh 和执行权限")
 def test_macos_build_entrypoint_stages_bundle_then_publishes_zip(tmp_path: Path) -> None:
     """macOS 构建必须在仓库外暂存应用包，再只发布最终 ZIP；tmp_path 为假仓库。"""
     repository_root = tmp_path / "repository"

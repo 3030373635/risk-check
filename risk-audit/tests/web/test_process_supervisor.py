@@ -75,6 +75,8 @@ def test_macos_sighup_requests_exit_and_restore_reinstates_handler(monkeypatch) 
 
     installed = []
     original_handler = object()
+    sighup = getattr(signal, "SIGHUP", 1)
+    monkeypatch.setattr(signal, "SIGHUP", sighup, raising=False)
     monkeypatch.setattr(signal, "getsignal", lambda _signal: original_handler)
     monkeypatch.setattr(signal, "signal", lambda number, handler: installed.append((number, handler)))
     controller = ServerController()

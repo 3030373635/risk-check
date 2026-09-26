@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import plistlib
 import shutil
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -161,6 +162,7 @@ def test_build_release_manifest_is_verified_from_distribution_root(tmp_path: Pat
     assert any(item.code in {"size_mismatch", "hash_mismatch"} for item in report.items)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows 无法验证 POSIX 可执行位")
 def test_macos_assembly_verifies_version_architecture_and_signature(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

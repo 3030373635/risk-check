@@ -138,7 +138,12 @@ def test_snapshot_projects_cancel_marker_without_persisting_transition(tmp_path:
     record = write_task(store, tmp_path, "a", "running")
     (Path(record.output_root) / ".task/cancel.requested").touch()
 
-    state = TaskManager(store, tmp_path / "app.exe").snapshot().tasks[0].state
+    manager = TaskManager(
+        store,
+        tmp_path / "app.exe",
+        process_alive=lambda pid: pid == 123,
+    )
+    state = manager.snapshot().tasks[0].state
 
     assert state.status == "cancelling"
     assert store.read_state(record).status == "running"
@@ -205,7 +210,11 @@ def test_get_task_running_ids_and_wait_for_all(tmp_path: Path) -> None:
     store = TaskStore(tmp_path / "data")
     running = write_task(store, tmp_path, "running", "running")
     write_task(store, tmp_path, "completed", "completed")
-    manager = TaskManager(store, tmp_path / "app.exe")
+    manager = TaskManager(
+        store,
+        tmp_path / "app.exe",
+        process_alive=lambda pid: pid == 123,
+    )
 
     assert manager.get_task("running").record == running
     assert manager.get_task("missing") is None

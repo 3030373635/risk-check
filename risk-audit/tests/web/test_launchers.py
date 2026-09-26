@@ -3,12 +3,16 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACKAGING_ROOT = PROJECT_ROOT / "packaging"
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="需要 macOS 的 /bin/zsh 和执行权限")
 def test_macos_launcher_runs_packaged_python_in_foreground(tmp_path: Path) -> None:
     """macOS 启动器必须在中文空格路径中把发布环境原样交给包内 Python。"""
     app_root = tmp_path / "中文 发布目录"
