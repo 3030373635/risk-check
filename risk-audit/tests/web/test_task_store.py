@@ -81,6 +81,47 @@ def test_atomic_write_failure_preserves_previous_state(monkeypatch, tmp_path: Pa
     assert list(tmp_path.glob(".state.json.*.tmp")) == []
 
 
+def test_atomic_write_retries_transient_windows_permission_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Windows 短暂占用目标文件时，状态发布必须重试并最终成功。
+
+    Args:
+        monkeypatch: pytest 提供的补丁工具。
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    from risk_audit_web import task_store
+
+    target = tmp_path / "state.json"
+    target.write_text('{"status":"running"}\n', encoding="utf-8")
+    original_replace = task_store.os.replace
+    attempts = 0
+
+    def transient_permission_error(source: Path, destination: Path) -> None:
+        """前两次模拟 Windows 共享冲突，之后执行真实原子替换。
+
+        Args:
+            source: 已写完的临时文件。
+            destination: 状态文件目标路径。
+        """
+
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            raise PermissionError(13, "Permission denied", str(destination))
+        original_replace(source, destination)
+
+    monkeypatch.setattr(task_store.os, "replace", transient_permission_error)
+
+    task_store.atomic_write_json(target, {"status": "completed"})
+
+    assert attempts == 3
+    assert json.loads(target.read_text(encoding="utf-8")) == {"status": "completed"}
+    assert list(tmp_path.glob(".state.json.*.tmp")) == []
+
+
 def test_task_store_skips_one_invalid_index_record(tmp_path: Path) -> None:
     """单条损坏记录不能阻止其他任务恢复。"""
     from risk_audit_web.task_store import TaskStore

@@ -74,11 +74,14 @@ def test_two_workers_overlap_and_keep_directories_isolated(tmp_path: Path) -> No
     assert state_a.worker_pid != state_b.worker_pid
     barrier.touch()
     wait_until(lambda: store.read_state(a).status == store.read_state(b).status == "completed")
+    expected_task_store = Path(__file__).resolve().parents[2] / "src/risk_audit_web/task_store.py"
     for record in (a, b):
         task_dir = Path(record.output_root) / ".task"
         assert (task_dir / "work/owner.txt").read_text(encoding="utf-8") == record.task_id
         assert (task_dir / "lo-profile/owner.txt").read_text(encoding="utf-8") == record.task_id
-        assert record.task_id in (task_dir / "worker.log").read_text(encoding="utf-8")
+        worker_log = (task_dir / "worker.log").read_text(encoding="utf-8")
+        assert record.task_id in worker_log
+        assert f"module={expected_task_store}" in worker_log
         assert (Path(record.output_root) / "result.txt").read_text(encoding="utf-8") == record.task_id
 
 

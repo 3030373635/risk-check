@@ -32,10 +32,18 @@ from risk_audit_web.task_paths import (
 
 STATE_READ_ATTEMPTS = 5
 STATE_READ_RETRY_SECONDS = 0.01
+STATE_WRITE_ATTEMPTS = 10
+STATE_WRITE_RETRY_SECONDS = 0.01
 
 
 def atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
-    """原子写入 JSON；path 为目标文件，value 为可序列化映射。"""
+    """原子写入 JSON，并容忍 Windows 短暂的文件共享冲突。
+
+    Args:
+        path: JSON 目标文件。
+        value: 可序列化的映射数据。
+    """
+
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
@@ -53,8 +61,16 @@ def atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
             handle.flush()
             # 必须先把完整内容刷入磁盘，再用同目录原子替换发布新状态。
             os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-        temporary_path = None
+        for attempt in range(STATE_WRITE_ATTEMPTS):
+            try:
+                os.replace(temporary_path, path)
+                temporary_path = None
+                break
+            except PermissionError:
+                if attempt == STATE_WRITE_ATTEMPTS - 1:
+                    raise
+                # Windows 读取端可能短暂占用目标，保留同一临时文件后重试替换。
+                time.sleep(STATE_WRITE_RETRY_SECONDS)
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
