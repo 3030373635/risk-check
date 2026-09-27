@@ -30,6 +30,22 @@ def sha256_json(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
 
 
+def build_internal_workbook_path(work_dir: Path, stage: str, relative_path: Path) -> Path:
+    """构建不复制业务目录层级的内部工作簿路径。
+
+    Args:
+        work_dir: 当前业务的内部工作目录。
+        stage: 生成工作簿的处理阶段名称。
+        relative_path: 源文件在审核包中的相对路径。
+    """
+
+    relative_path_digest = hashlib.sha256(
+        relative_path.as_posix().encode("utf-8")
+    ).hexdigest()[:32]
+    # 内部副本仅需稳定区分源文件，避免在 Windows 下重复长目录导致 MAX_PATH 失败。
+    return work_dir / stage / f"{relative_path_digest}.xlsx"
+
+
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 

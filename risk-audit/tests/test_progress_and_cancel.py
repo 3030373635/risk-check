@@ -123,3 +123,63 @@ def test_explicit_model_root_is_forwarded_to_core(monkeypatch, tmp_path: Path) -
     )
 
     assert captured["model_root"] == model_root
+
+
+def test_audit_separates_explicit_report_and_work_directories(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """审核包装层必须将持久报告与临时工作目录分开。
+
+    Args:
+        monkeypatch: pytest 提供的补丁工具。
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    from risk_audit import runner
+
+    captured = {}
+
+    def capture(*args, **kwargs):
+        """记录审核核心收到的报告及工作目录。
+
+        Args:
+            args: 审核核心的位置参数。
+            kwargs: 审核核心的关键字参数。
+        """
+
+        captured["run_dir"] = args[5]
+        captured["work_root"] = kwargs["work_root"]
+        captured["history_root"] = kwargs["history_root"]
+        return {
+            "entity_results": [],
+            "findings": 0,
+            "warnings": 0,
+            "write_completed": True,
+        }
+
+    monkeypatch.setattr(runner, "_audit", capture)
+    report_directory = tmp_path / ".task/report"
+    work_root = tmp_path / ".task/work"
+
+    history_root = tmp_path / "unused-runs"
+    runner.audit(
+        tmp_path / "input",
+        tmp_path / "output",
+        tmp_path / "pack",
+        tmp_path / "entities.xlsx",
+        tmp_path,
+        history_root,
+        run_id="logical-task-id",
+        run_directory=report_directory,
+        work_root=work_root,
+    )
+
+    assert captured == {
+        "run_dir": report_directory.resolve(),
+        "work_root": work_root.resolve(),
+        "history_root": history_root.resolve(),
+    }
+    assert report_directory.is_dir()
+    assert work_root.is_dir()
+    assert not (tmp_path / "unused-runs/logical-task-id").exists()

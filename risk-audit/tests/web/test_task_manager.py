@@ -156,6 +156,12 @@ def test_force_stop_rechecks_pid_and_waits_for_exit(tmp_path: Path) -> None:
 
     store = TaskStore(tmp_path / "data")
     record = write_task(store, tmp_path, "a", "cancelling")
+    task_dir = Path(record.output_root) / ".task"
+    (task_dir / "work/e0001-b0001").mkdir(parents=True)
+    (task_dir / "work/e0001-b0001/temporary.xlsx").write_bytes(b"temporary")
+    (task_dir / "libreoffice-profile/user").mkdir(parents=True)
+    (task_dir / "report").mkdir()
+    (task_dir / "report/result.json").write_text("{}", encoding="utf-8")
     terminated = []
     alive_checks = 0
 
@@ -176,6 +182,9 @@ def test_force_stop_rechecks_pid_and_waits_for_exit(tmp_path: Path) -> None:
     assert terminated == [123]
     assert alive_checks >= 2
     assert store.read_state(record).status == "cancelled"
+    assert not (task_dir / "work").exists()
+    assert not (task_dir / "libreoffice-profile").exists()
+    assert (task_dir / "report/result.json").is_file()
 
 
 def test_force_stop_does_not_publish_cancelled_before_process_exit(tmp_path: Path) -> None:

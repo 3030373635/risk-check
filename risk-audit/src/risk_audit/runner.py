@@ -97,6 +97,8 @@ def audit(
     progress_callback: ProgressCallback | None = None,
     cancel_check: CancelCheck | None = None,
     model_root: str | Path | None = None,
+    run_directory: str | Path | None = None,
+    work_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """执行审核或试跑。
 
@@ -105,13 +107,27 @@ def audit(
     run_id 为可选运行标识，include_hidden 控制隐藏表，scope_file 为可选手动范围覆盖文件，
     config_file 为可选审核运行配置，enabled_rules 为仅本次运行启用的规则展示编号，
     progress_callback 为可选进度接收器，cancel_check 为安全取消检查器，model_root 为
-    可选语义模型目录；默认直接从实际上传的风控矩阵和三清单确定范围。
+    可选语义模型目录，run_directory 为可选持久报告目录，work_root 为可选临时
+    工作目录；默认直接从实际上传的风控矩阵和三清单确定范围。
     """
     input_resolved = Path(input_root).resolve(); output_resolved = Path(output_root).resolve()
     if write and (input_resolved == output_resolved or input_resolved in output_resolved.parents or output_resolved in input_resolved.parents):
         raise ValueError("输入目录与输出目录相同或相互包含，已在任何写入前拒绝")
     run_id = run_id or str(uuid.uuid4())
-    run_dir = Path(runs_root).resolve() / run_id; run_dir.mkdir(parents=True, exist_ok=False)
+    # 桌面任务可使用固定短报告路径，run_id 仍仅承担逻辑标识职责。
+    run_dir = (
+        Path(run_directory).resolve()
+        if run_directory is not None
+        else Path(runs_root).resolve() / run_id
+    )
+    run_dir.mkdir(parents=True, exist_ok=False)
+    # CLI 默认将工作区放在运行目录内；桌面 Worker 传入可在结束时清理的独立目录。
+    resolved_work_root = (
+        Path(work_root).resolve()
+        if work_root is not None
+        else run_dir / "work"
+    )
+    resolved_work_root.mkdir(parents=True, exist_ok=True)
     with audit_logging(run_dir, run_id) as logger:
         started = perf_counter()
         emit_progress(progress_callback, AuditProgressEvent(stage='startup', message='正在准备审核任务'))
@@ -126,6 +142,8 @@ def audit(
                 progress_callback=progress_callback,
                 cancel_check=cancel_check,
                 model_root=model_root,
+                work_root=resolved_work_root,
+                history_root=Path(runs_root).resolve(),
             )
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='completed',
@@ -233,14 +251,15 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
            include_hidden: bool, scope_file: str | Path | None,
            config_file: str | Path | None, enabled_rules: list[str] | None,
            progress_callback: ProgressCallback | None, cancel_check: CancelCheck | None,
-           model_root: str | Path | None) -> dict[str, Any]:
+           model_root: str | Path | None, work_root: Path, history_root: Path) -> dict[str, Any]:
     """按主体、业务及矩阵类型执行增量审核。
 
     input_root/output_root 为已校验目录，rulepack 为规则包，entity_file 为主体名册，
     project_root 为基准根目录，run_dir/run_id 为本次运行目录及标识，write 控制副本输出，
     include_hidden 控制隐藏表，scope_file 为可选手动范围文件，config_file 为运行配置，
     enabled_rules 为仅本次运行启用的规则展示编号，progress_callback/cancel_check
-    为桌面任务的进度和取消接口，model_root 为可选语义模型目录。
+    为桌面任务的进度和取消接口，model_root 为可选语义模型目录，work_root
+    为与持久报告分离的临时工作目录，history_root 为历史运行根目录。
     """
     input_resolved, output_resolved = input_root, output_root
     logger = logging.getLogger(__name__)
@@ -365,13 +384,19 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     if not configured_baselines:
         configured_baselines = len(pack['baseline_registry'].get('entries', []))
     logger.info('加载公共基准：%d份', configured_baselines)
-    baselines = load_baselines(Path(project_root).resolve(), pack["baseline_registry"], pack["field_aliases"], run_dir, include_hidden=include_hidden)
+    baselines = load_baselines(
+        Path(project_root).resolve(),
+        pack["baseline_registry"],
+        pack["field_aliases"],
+        work_root,
+        include_hidden=include_hidden,
+    )
     logger.debug('公共基准统一加载完成：基准=%d，审核主体=%d，后续主体共用已加载数据', len(baselines), len(scopes))
     limitations: list[dict[str, Any]] = []
     findings: list[Finding] = []
     statuses: list[CheckStatus] = []
     warnings: list[dict[str, Any]] = []
-    previous_ownership = _load_previous_ownership(run_dir.parent, output_resolved, run_dir) if write else {}
+    previous_ownership = _load_previous_ownership(history_root, output_resolved, run_dir) if write else {}
     output_state = OutputState(ownership=dict(previous_ownership), previous_ownership=previous_ownership)
     entity_results: list[dict[str, Any]] = []
     business_results: list[dict[str, Any]] = []
@@ -403,7 +428,9 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         for unit_index, (business_id, business_code, variant_id) in enumerate(unit_keys, 1):
             raise_if_cancelled(cancel_check)
             unit_started = perf_counter()
-            unit_dir = entity_dir / 'businesses' / f'{unit_index:04d}'
+            unit_report_dir = entity_dir / 'businesses' / f'{unit_index:04d}'
+            # 主体和业务编号已足以隔离临时文件，无需在工作区重复报告目录层级。
+            unit_work_dir = work_root / f'e{index:04d}-b{unit_index:04d}'
             unit_label = business_code or '未识别'
             if variant_id != 'default':
                 unit_label += f'（{variant_id}）'
@@ -420,13 +447,13 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             ))
             logger.info('业务%s [%d/%d]：解析%d份文件', unit_label, unit_index, len(unit_keys), len(unit_files))
             # 各业务的旧格式转换副本独立保存，下一业务不得覆盖已输出业务的读取结果。
-            parse_files(unit_files, pack['field_aliases'], unit_dir, include_hidden=include_hidden,
+            parse_files(unit_files, pack['field_aliases'], unit_work_dir, include_hidden=include_hidden,
                         input_overrides=pack.get('input_overrides'), entity_aliases=pack['entity_aliases'],
                         parser_policy=pack.get('parser_policy'), semantic_lexicon=pack.get('semantic_lexicon'))
             for file in unit_files:
                 if file.sheets and not file.parse_errors:
                     file._include_hidden = include_hidden
-                    preprocess_business_file(file, pack, baselines, unit_dir)
+                    preprocess_business_file(file, pack, baselines, unit_work_dir)
             if not scope_file:
                 scopes, scope_report = resolve_submission_scopes(input_resolved, files, entities, pack['entity_aliases'],
                                                                 pack['submission_scope'].get('batch', ''),
@@ -469,8 +496,15 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                            'entity_registry_message': identity['entity_registry_message'],
                            'input_files': len(unit_files), 'findings': len(unit_findings), 'warnings': len(unit_warnings),
                            'limitations': len(unit_limitations), 'write_completed': unit_completed,
-                           'run_dir': str(unit_dir), 'elapsed_seconds': round(perf_counter() - unit_started, 2)}
-            _write_audit_result(unit_dir, unit_result, unit_findings, unit_statuses, unit_limitations, unit_warnings)
+                           'run_dir': str(unit_report_dir), 'elapsed_seconds': round(perf_counter() - unit_started, 2)}
+            _write_audit_result(
+                unit_report_dir,
+                unit_result,
+                unit_findings,
+                unit_statuses,
+                unit_limitations,
+                unit_warnings,
+            )
             group_business_results.append(unit_result)
             business_results.append(unit_result)
             group_findings.extend(unit_findings); findings.extend(unit_findings)

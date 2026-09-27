@@ -105,6 +105,60 @@ def test_preprocessing_inserts_system_type_and_fills_known_owners(tmp_path: Path
     ]
 
 
+def test_preprocessing_uses_short_internal_path_on_windows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """系统类型预处理不得让内部工作文件超过 Windows 传统路径上限。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+
+    source_file, aliases = make_system_rule_file(
+        tmp_path,
+        [["M1", "财务系统", "总部", "规则1", "内容1"]],
+        ["控制措施编号", "系统名称", "系统规则管理主体", "规则名称", "规则内容"],
+    )
+    source_file.relative_path = Path(
+        "主业",
+        "国网湖南省电力有限公司郴州供电分公司本部",
+        "09 职工福利保障与薪酬管理",
+        "09“三清单”-职工福利保障与薪酬管理-郴州供电本部9.22.xlsx",
+    )
+    legacy_suffix = Path("preprocessed", "system_types") / source_file.relative_path
+    padding_length = 260 - len(str(tmp_path)) - len(str(legacy_suffix)) - 2
+    assert 0 < padding_length < 256
+    work_dir = tmp_path / ("w" * padding_length)
+    legacy_destination = work_dir / legacy_suffix
+    assert len(str(legacy_destination)) == 260
+
+    original_save = Workbook.save
+
+    def save_with_windows_path_limit(workbook: Workbook, filename: str | Path) -> None:
+        """在非 Windows 测试环境模拟传统 MAX_PATH 限制。
+
+        Args:
+            workbook: 待保存的工作簿。
+            filename: 工作簿目标路径。
+        """
+
+        if len(str(filename)) >= 260:
+            raise FileNotFoundError(2, "Windows 目标路径过长", str(filename))
+        original_save(workbook, filename)
+
+    monkeypatch.setattr(Workbook, "save", save_with_windows_path_limit)
+
+    from risk_audit.system_type_preprocessing import preprocess_system_types
+
+    preprocess_system_types(source_file, work_dir, aliases)
+
+    destination = Path(source_file._preprocessed_path)
+    assert len(str(destination)) < 260
+    assert destination.is_file()
+
+
 def test_adjust_workbook_references_keeps_sparse_sheets_sparse() -> None:
     """公式引用调整只得访问已存在单元格，不得展开稀疏工作表。"""
 

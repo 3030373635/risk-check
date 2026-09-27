@@ -190,10 +190,10 @@ def test_legacy_conversion_files_are_isolated_by_entity(tmp_path, monkeypatch):
     for code in ['A001', 'B001']:
         (input_root / code / '06风控矩阵.xls').write_bytes(bytes.fromhex('D0CF11E0A1B11AE1'))
 
-    def convert_fixture(source, directory):
-        """source 为旧格式输入，directory 为转换目录；以真实工作簿模拟外部转换器的输出。"""
-        directory.mkdir(parents=True, exist_ok=True)
-        path = directory / '06风控矩阵.xlsx'
+    def convert_fixture(source, destination):
+        """source 为旧格式输入，destination 为转换目标；以真实工作簿模拟外部转换器的输出。"""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        path = destination
         book = Workbook()
         book.active.title = '风控矩阵'
         book.active.append(['控制措施编号', '控制措施', '责任主体'])
@@ -206,6 +206,9 @@ def test_legacy_conversion_files_are_isolated_by_entity(tmp_path, monkeypatch):
     execute_batch(tmp_path, input_root, entities_path)
     assert converted['A001'] != converted['B001']
     for code, path in converted.items():
+        assert path.parent.name == 'converted'
+        assert len(path.stem) == 32
+        assert all(character in '0123456789abcdef' for character in path.stem)
         book = load_workbook(path)
         assert book.active['B2'].value == code
         book.close()

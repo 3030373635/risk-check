@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -242,24 +243,35 @@ def restore_biff_formula_caches(source: Path, converted: Path) -> int:
     return restored
 
 
-def convert_xls(source: Path, destination_dir: Path) -> tuple[Path, dict[str, Any]]:
-    """将真实 XLS 转换为 XLSX；参数为源文件和目标目录。"""
+def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
+    """将真实 XLS 转换到指定的短 XLSX 路径。
+
+    Args:
+        source: 原始 XLS 文件。
+        destination: 使用短文件名的 XLSX 目标路径。
+    """
+
     if not SOFFICE.exists(): raise RuntimeError(f"bundled soffice missing: {SOFFICE}")
-    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staged_source = destination.with_suffix(".xls")
+    # LibreOffice 按源文件名生成目标，因此先用短名副本避免 Windows MAX_PATH。
+    shutil.copy2(source, staged_source)
     profile_context = (nullcontext(PROFILE_PATH) if PROFILE_PATH is not None
                        else tempfile.TemporaryDirectory(prefix="risk-audit-lo-"))
-    with profile_context as profile_value:
-        profile = Path(profile_value).resolve()
-        prepare_conversion_profile(profile)
-        # 参数列表直接传给子进程，禁止 shell 插值中文路径或用户材料名。
-        cmd = [str(SOFFICE), f"-env:UserInstallation={profile.as_uri()}", "--headless", "--convert-to", "xlsx", "--outdir", str(destination_dir), str(source)]
-        env = dict(os.environ, SAL_DISABLE_OPENCL="1", SAL_DISABLE_MACROS="1")
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, timeout=120)
-        converted = destination_dir / f"{source.stem}.xlsx"
-        if proc.returncode or not converted.exists(): raise RuntimeError(f"xls conversion failed: {proc.stdout} {proc.stderr}")
-    restored = restore_biff_formula_caches(source, converted)
-    report = compare_conversion(source, converted)
+    try:
+        with profile_context as profile_value:
+            profile = Path(profile_value).resolve()
+            prepare_conversion_profile(profile)
+            # 参数列表直接传给子进程，禁止 shell 插值中文路径或用户材料名。
+            cmd = [str(SOFFICE), f"-env:UserInstallation={profile.as_uri()}", "--headless", "--convert-to", "xlsx", "--outdir", str(destination.parent), str(staged_source)]
+            env = dict(os.environ, SAL_DISABLE_OPENCL="1", SAL_DISABLE_MACROS="1")
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, timeout=120)
+            if proc.returncode or not destination.exists(): raise RuntimeError(f"xls conversion failed: {proc.stdout} {proc.stderr}")
+    finally:
+        staged_source.unlink(missing_ok=True)
+    restored = restore_biff_formula_caches(source, destination)
+    report = compare_conversion(source, destination)
     report["formula_caches_restored"] = restored
     report["conversion_profile"] = {"isolated": True, "macros_disabled": True, "active_content_disabled": True, "external_links_update": "never"}
     if not report["passed"]: raise RuntimeError(f"xls conversion preservation check failed: {report}")
-    return converted, report
+    return destination, report

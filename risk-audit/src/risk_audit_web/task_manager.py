@@ -19,6 +19,7 @@ from risk_audit_web.platform_runtime import (
 )
 from risk_audit_web.task_contracts import SCHEMA_VERSION, TaskEvent, TaskRecord, TaskState
 from risk_audit_web.task_store import TaskStore
+from risk_audit_web.worker import cleanup_task_runtime
 
 
 ACTIVE_STATUSES = frozenset({"running", "cancelling"})
@@ -222,6 +223,9 @@ class TaskManager:
             return False
         if not self._wait_for_process_exit(task_id, expected_pid):
             return False
+        task_dir = Path(record.output_root) / ".task"
+        # Worker 被强制结束时无法执行自身 finally，由主进程收回临时资源。
+        cleanup_task_runtime(task_dir, task_dir / "events.jsonl", task_id)
         latest_state = self.store.read_state(record)
         if latest_state.status not in ACTIVE_STATUSES:
             return True

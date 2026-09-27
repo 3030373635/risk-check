@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter, range_boundaries
 
 from risk_audit.checks.confirmed_v180 import measure_numbers
 from risk_audit.models import FileRecord, Finding
-from risk_audit.util import measure_id_key, natural_key, norm_text
+from risk_audit.util import build_internal_workbook_path, measure_id_key, natural_key, norm_text
 from risk_audit.writer import (MAIN, NS, PKGREL, _coord_col, _ensure_row, _index_rows, _inline_cell,
                                _select_output_header_row, _sheet_paths)
 
@@ -307,7 +307,7 @@ def sort_duties(file: FileRecord, baselines: dict, work_dir: Path, aliases: dict
                 _move_annotations(archive, paths[title], cell_map, replacements)
     if not replacements:
         return
-    destination = work_dir / 'preprocessed' / file.relative_path.with_suffix('.xlsx')
+    destination = build_internal_workbook_path(work_dir, 'preprocessed', file.relative_path)
     _save_zip(source, destination, replacements)
     file._preprocessed_path = str(destination)
     # 再读取排序副本，使审核证据、输出意见和业务记录使用相同的新坐标。

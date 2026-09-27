@@ -88,7 +88,7 @@ def test_conversion_accepts_equivalent_biff_error_cache(tmp_path, monkeypatch):
     source = create_error_formula_xls(tmp_path, soffice_path)
     monkeypatch.setattr(xls, 'SOFFICE', soffice_path)
 
-    converted, report = xls.convert_xls(source, tmp_path / 'converted')
+    converted, report = xls.convert_xls(source, tmp_path / 'converted/source.xlsx')
 
     workbook = load_workbook(converted, data_only=True)
     try:

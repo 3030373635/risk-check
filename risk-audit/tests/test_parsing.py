@@ -59,6 +59,5 @@ def test_rich_text_strike_removes_only_explicit_struck_run():
 def test_real_xls_signature_and_cache_preserving_conversion(tmp_path, project_root):
     source = project_root / "templates/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/国网湖南信通公司第一批风控矩阵应用落地资料-9.11初审/09 职工福利保障与薪酬管理-9.11初审/国网湖南信通公司 09风控矩阵-职工福利保障与薪酬管理.xls"
     assert true_format(source) == "xls"
-    converted, report = convert_xls(source, tmp_path)
+    converted, report = convert_xls(source, tmp_path / "converted.xlsx")
     assert converted.suffix == ".xlsx" and report["passed"] and report["formula_caches_restored"] > 0
-

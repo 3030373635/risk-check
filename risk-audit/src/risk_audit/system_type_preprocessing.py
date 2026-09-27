@@ -15,7 +15,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter, range_bo
 
 from risk_audit.models import FileRecord, ParsedSheet
 from risk_audit.readers.ooxml import load_compatible_workbook
-from risk_audit.util import norm_text
+from risk_audit.util import build_internal_workbook_path, norm_text
 
 
 SYSTEM_TYPE_HEADER = "系统类型"
@@ -468,7 +468,7 @@ def preprocess_system_types(file: FileRecord, work_dir: Path, aliases: dict[str,
                 if not worksheet.column_dimensions[column_letter].width:
                     worksheet.column_dimensions[column_letter].width = 16
 
-        destination = work_dir / "preprocessed" / "system_types" / file.relative_path.with_suffix(".xlsx")
+        destination = build_internal_workbook_path(work_dir, "system_types", file.relative_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         workbook.save(destination)
     finally:

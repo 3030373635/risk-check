@@ -14,7 +14,7 @@ from risk_audit.models import FieldValue, FileRecord, ParsedSheet, Record
 from risk_audit.readers.ooxml import load_compatible_workbook, prepare_oversized_workbook
 from risk_audit.readers.xls import convert_xls
 from risk_audit.readers.header_semantics import HEADER_REQUIREMENTS, header_row_matches, header_spec, unit_names, header_owner_names
-from risk_audit.util import norm_text
+from risk_audit.util import build_internal_workbook_path, norm_text
 
 
 AUDIT_HEADER = re.compile(r"(?:\d{1,2}[.月-]\d{1,2}.*初审|初审|审核意见|复审意见|省公司版本责任主体[（(]核对后删除|岗位清单已有的控制措施编号)")
@@ -498,7 +498,6 @@ def parse_files(files: list[FileRecord], aliases: dict, work_dir: Path, *, inclu
     解析失败写入文件记录并记录日志。
     """
     logger = logging.getLogger(__name__)
-    conversion_dir = work_dir / "converted"
     for i, file in enumerate(files):
         # 公共基准与报送材料共用读取器，但日志必须明确当前处理的材料来源。
         phase = '公共基准加载' if file.entity_code == 'BASELINE' else '报送材料解析'
@@ -514,7 +513,10 @@ def parse_files(files: list[FileRecord], aliases: dict, work_dir: Path, *, inclu
         try:
             path = file.source
             if file.true_format == "xls":
-                path, report = convert_xls(file.source, conversion_dir / f"{i:03d}")
+                path, report = convert_xls(
+                    file.source,
+                    build_internal_workbook_path(work_dir, "converted", file.relative_path),
+                )
                 file.converted_from = str(file.source)
                 # 转换诊断追加到现有元数据，保留扫描阶段的主体匹配状态。
                 file.preservation.update(report)
@@ -523,7 +525,7 @@ def parse_files(files: list[FileRecord], aliases: dict, work_dir: Path, *, inclu
                 # 仅对临时副本移除真实内容右侧的空白样式单元格，防止 openpyxl 构造数千万对象。
                 prepared, cleanup = prepare_oversized_workbook(
                     path,
-                    work_dir / 'sanitized' / file.relative_path.with_suffix('.xlsx'),
+                    build_internal_workbook_path(work_dir, 'sanitized', file.relative_path),
                 )
                 if cleanup:
                     path = prepared

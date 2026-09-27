@@ -60,9 +60,12 @@ def test_worker_maps_audit_result_to_terminal_state(
         from risk_audit.progress import AuditProgressEvent
 
         captured.update(kwargs)
-        report = kwargs["runs_root"] / kwargs["run_id"] / "_risk_audit/未审核文件.json"
+        report = kwargs["run_directory"] / "_risk_audit/未审核文件.json"
         report.parent.mkdir(parents=True)
         report.write_text("[]", encoding="utf-8")
+        temporary_file = kwargs["work_root"] / "e0001-b0001/system_types/source.xlsx"
+        temporary_file.parent.mkdir(parents=True)
+        temporary_file.write_bytes(b"temporary")
         statistics = Path(request.output_root) / "审核统计表.xlsx"
         statistics.write_bytes(b"xlsx")
         kwargs["progress_callback"](AuditProgressEvent(
@@ -77,7 +80,7 @@ def test_worker_maps_audit_result_to_terminal_state(
             "warnings": 1,
             "limitations": 0,
             "business_results": [{}, {}],
-            "run_dir": str(kwargs["runs_root"] / kwargs["run_id"]),
+            "run_dir": str(kwargs["run_directory"]),
             "audit_statistics_report": str(statistics),
         }
 
@@ -96,11 +99,15 @@ def test_worker_maps_audit_result_to_terminal_state(
     assert Path(state.result_summary["audit_statistics_report"]).is_file()
     assert Path(state.result_summary["unaudited_files_report"]).is_file()
     assert "review_report" not in state.result_summary
-    assert captured["runs_root"] == Path(request.output_root) / ".task/reports"
+    task_directory = Path(request.output_root) / ".task"
+    assert captured["runs_root"] == task_directory
+    assert captured["run_directory"] == task_directory / "report"
+    assert captured["work_root"] == task_directory / "work"
+    assert captured["run_id"] == request.task_id
     assert "model_root" not in captured
-    assert not (Path(request.output_root) / ".task/work").exists()
-    assert not (Path(request.output_root) / ".task/libreoffice-profile").exists()
-    assert (Path(request.output_root) / ".task/reports").is_dir()
+    assert not (task_directory / "work").exists()
+    assert not (task_directory / "libreoffice-profile").exists()
+    assert (task_directory / "report").is_dir()
 
 
 def test_worker_maps_audit_cancel_to_cancelled(tmp_path: Path) -> None:
@@ -113,16 +120,25 @@ def test_worker_maps_audit_cancel_to_cancelled(tmp_path: Path) -> None:
 
     def cancel(*args, **kwargs):
         """模拟核心在安全边界响应停止。"""
+        temporary_file = kwargs["work_root"] / "e0001-b0001/cancelled.xlsx"
+        temporary_file.parent.mkdir(parents=True)
+        temporary_file.write_bytes(b"temporary")
+        report = kwargs["run_directory"] / "cancelled.json"
+        report.parent.mkdir(parents=True)
+        report.write_text("{}", encoding="utf-8")
         raise AuditCancelled("用户已请求停止审核")
 
     code = run_worker(request_path, audit_func=cancel)
+    task_directory = Path(request.output_root) / ".task"
     state = TaskState.from_dict(json.loads(
-        (Path(request.output_root) / ".task/state.json").read_text(encoding="utf-8")
+        (task_directory / "state.json").read_text(encoding="utf-8")
     ))
 
     assert code == 0
     assert state.status == "cancelled"
     assert state.error_code is None
+    assert not (task_directory / "work").exists()
+    assert (task_directory / "report/cancelled.json").is_file()
 
 
 def test_worker_failure_writes_failed_state_and_traceback(tmp_path: Path) -> None:
@@ -134,6 +150,12 @@ def test_worker_failure_writes_failed_state_and_traceback(tmp_path: Path) -> Non
 
     def fail(*args, **kwargs):
         """模拟不可恢复异常。"""
+        temporary_file = kwargs["work_root"] / "e0001-b0001/failed.xlsx"
+        temporary_file.parent.mkdir(parents=True)
+        temporary_file.write_bytes(b"temporary")
+        report = kwargs["run_directory"] / "failed.json"
+        report.parent.mkdir(parents=True)
+        report.write_text("{}", encoding="utf-8")
         raise RuntimeError("模拟审核崩溃")
 
     code = run_worker(request_path, audit_func=fail)
@@ -145,6 +167,91 @@ def test_worker_failure_writes_failed_state_and_traceback(tmp_path: Path) -> Non
     assert state.error_code == "AUDIT_FAILED"
     log_text = (task_dir / "worker.log").read_text(encoding="utf-8")
     assert "RuntimeError: 模拟审核崩溃" in log_text
+    assert not (task_dir / "work").exists()
+    assert (task_dir / "report/failed.json").is_file()
+
+
+def test_worker_startup_failure_cleans_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LibreOffice 配置失败也必须发布失败态并清理临时资源。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+
+    from risk_audit_web import worker
+    from risk_audit_web.task_contracts import TaskState
+
+    request, request_path = create_request(tmp_path)
+
+    def fail_configuration(*args, **kwargs) -> None:
+        """模拟 Worker 进入核心审核前的转换运行时失败。
+
+        Args:
+            args: 转换运行时位置参数。
+            kwargs: 转换运行时关键字参数。
+        """
+
+        raise RuntimeError("转换运行时配置失败")
+
+    monkeypatch.setattr(worker, "configure_conversion_runtime", fail_configuration)
+
+    code = worker.run_worker(request_path)
+    task_dir = Path(request.output_root) / ".task"
+    state = TaskState.from_dict(json.loads((task_dir / "state.json").read_text(encoding="utf-8")))
+
+    assert code == 1
+    assert state.status == "failed"
+    assert "RuntimeError: 转换运行时配置失败" in (task_dir / "worker.log").read_text(encoding="utf-8")
+    assert not (task_dir / "work").exists()
+    assert not (task_dir / "libreoffice-profile").exists()
+
+
+def test_worker_log_open_failure_cleans_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker 日志无法打开时仍必须发布失败态并清理临时资源。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+
+    from risk_audit_web import worker
+    from risk_audit_web.task_contracts import TaskState
+
+    request, request_path = create_request(tmp_path)
+    task_dir = Path(request.output_root) / ".task"
+    log_path = task_dir / "worker.log"
+    original_open = Path.open
+
+    def fail_worker_log(path: Path, *args, **kwargs):
+        """仅拒绝 Worker 日志打开，其他文件操作保持真实行为。
+
+        Args:
+            path: 当前打开的路径对象。
+            args: Path.open 位置参数。
+            kwargs: Path.open 关键字参数。
+        """
+
+        if path == log_path:
+            raise OSError("日志目录不可写")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_worker_log)
+
+    code = worker.run_worker(request_path)
+    state = TaskState.from_dict(json.loads((task_dir / "state.json").read_text(encoding="utf-8")))
+
+    assert code == 1
+    assert state.status == "failed"
+    assert state.message == "日志目录不可写"
+    assert not (task_dir / "work").exists()
+    assert not (task_dir / "libreoffice-profile").exists()
 
 
 def test_worker_cancel_check_reads_only_own_marker(tmp_path: Path) -> None:

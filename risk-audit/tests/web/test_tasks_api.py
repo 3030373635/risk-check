@@ -109,8 +109,7 @@ def test_read_unaudited_files_returns_customer_friendly_json_resource(
     task = web_services.get_task(created["task_id"])
     report_path = (
         Path(task.record.output_root)
-        / ".task/reports"
-        / task.record.task_id
+        / ".task/report"
         / "_risk_audit/未审核文件.json"
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)

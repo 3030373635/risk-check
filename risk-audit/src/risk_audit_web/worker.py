@@ -62,7 +62,7 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _cleanup_task_runtime(task_dir: Path, events_path: Path, task_id: str) -> None:
+def cleanup_task_runtime(task_dir: Path, events_path: Path, task_id: str) -> None:
     """清理任务临时资源；参数为任务目录、事件文件和任务编号。"""
     for path in (task_dir / "work", task_dir / "libreoffice-profile"):
         try:
@@ -164,89 +164,99 @@ def run_worker(
             message=event.message or state.message,
         ))
 
-    write_state(state)
-    append_event(events_path, TaskEvent(SCHEMA_VERSION, request.task_id, "started", _now(), {}))
-    configure_conversion_runtime(Path(request.soffice_path), profile_dir)
-    previous_environment = {name: os.environ.get(name) for name in ("TMP", "TEMP", "TMPDIR")}
-    for name in previous_environment:
-        os.environ[name] = str(work_dir)
-    heartbeat_stop = threading.Event()
-    heartbeat_thread = threading.Thread(
-        target=refresh_heartbeat,
-        args=(heartbeat_stop,),
-        name=f"task-heartbeat-{request.task_id}",
-        daemon=True,
-    )
-    heartbeat_thread.start()
-
+    previous_environment: dict[str, str | None] = {}
+    heartbeat_stop: threading.Event | None = None
+    heartbeat_thread: threading.Thread | None = None
     exit_code = 0
-    with log_path.open("a", encoding="utf-8") as worker_log:
-        worker_log.write(f"{_now()} Worker 启动，PID={os.getpid()}\n")
-        worker_log.flush()
-        try:
-            result = selected_audit(
-                input_root=Path(request.input_root),
-                output_root=output_root,
-                rulepack=Path(request.rulepack),
-                entity_file=Path(request.entity_file),
-                project_root=Path(request.baseline_root),
-                # 诊断与集中复核报告是任务结果，必须与可清理临时目录分离。
-                runs_root=task_dir / "reports",
-                write=True,
-                run_id=request.task_id,
-                config_file=Path(request.config_file) if request.config_file else None,
-                progress_callback=report_progress,
-                cancel_check=lambda: is_cancel_requested(task_dir),
-            )
-            terminal_status = "completed" if result.get("write_completed") else "partial"
-            terminal_message = "审核已完成" if terminal_status == "completed" else "审核已结束，存在未完成项"
-            total_units = state.total_units if state.total_units is not None else len(result.get("business_results", []))
-            write_state(state.with_updates(
-                status=terminal_status,
-                stage="completed",
-                completed_units=total_units,
-                total_units=total_units,
-                progress_percent=100,
-                message=terminal_message,
-                worker_pid=None,
-                result_summary=_result_summary(result),
-            ))
-            append_event(events_path, TaskEvent(
-                SCHEMA_VERSION, request.task_id, terminal_status, _now(), _result_summary(result),
-            ))
-        except AuditCancelled as error:
-            write_state(state.with_updates(
-                status="cancelled",
-                stage="cancelled",
-                message=str(error),
-                worker_pid=None,
-                error_code=None,
-            ))
-            append_event(events_path, TaskEvent(
-                SCHEMA_VERSION, request.task_id, "cancelled", _now(), {"message": str(error)},
-            ))
-        except BaseException as error:
-            exit_code = 1
-            traceback.print_exc(file=worker_log)
+    try:
+        write_state(state)
+        append_event(events_path, TaskEvent(SCHEMA_VERSION, request.task_id, "started", _now(), {}))
+        with log_path.open("a", encoding="utf-8") as worker_log:
+            worker_log.write(f"{_now()} Worker 启动，PID={os.getpid()}\n")
             worker_log.flush()
-            write_state(state.with_updates(
-                status="failed",
-                stage="failed",
-                message=str(error),
-                worker_pid=None,
-                error_code="AUDIT_FAILED",
-            ))
-            append_event(events_path, TaskEvent(
-                SCHEMA_VERSION, request.task_id, "failed", _now(),
-                {"error_code": "AUDIT_FAILED", "message": str(error)},
-            ))
-        finally:
+        configure_conversion_runtime(Path(request.soffice_path), profile_dir)
+        previous_environment = {name: os.environ.get(name) for name in ("TMP", "TEMP", "TMPDIR")}
+        for name in previous_environment:
+            os.environ[name] = str(work_dir)
+        heartbeat_stop = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=refresh_heartbeat,
+            args=(heartbeat_stop,),
+            name=f"task-heartbeat-{request.task_id}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+        result = selected_audit(
+            input_root=Path(request.input_root),
+            output_root=output_root,
+            rulepack=Path(request.rulepack),
+            entity_file=Path(request.entity_file),
+            project_root=Path(request.baseline_root),
+            # 诊断与集中复核报告是任务结果，必须与可清理临时目录分离。
+            runs_root=task_dir,
+            write=True,
+            run_id=request.task_id,
+            run_directory=task_dir / "report",
+            work_root=work_dir,
+            config_file=Path(request.config_file) if request.config_file else None,
+            progress_callback=report_progress,
+            cancel_check=lambda: is_cancel_requested(task_dir),
+        )
+        terminal_status = "completed" if result.get("write_completed") else "partial"
+        terminal_message = "审核已完成" if terminal_status == "completed" else "审核已结束，存在未完成项"
+        total_units = state.total_units if state.total_units is not None else len(result.get("business_results", []))
+        write_state(state.with_updates(
+            status=terminal_status,
+            stage="completed",
+            completed_units=total_units,
+            total_units=total_units,
+            progress_percent=100,
+            message=terminal_message,
+            worker_pid=None,
+            result_summary=_result_summary(result),
+        ))
+        append_event(events_path, TaskEvent(
+            SCHEMA_VERSION, request.task_id, terminal_status, _now(), _result_summary(result),
+        ))
+    except AuditCancelled as error:
+        write_state(state.with_updates(
+            status="cancelled",
+            stage="cancelled",
+            message=str(error),
+            worker_pid=None,
+            error_code=None,
+        ))
+        append_event(events_path, TaskEvent(
+            SCHEMA_VERSION, request.task_id, "cancelled", _now(), {"message": str(error)},
+        ))
+    except BaseException as error:
+        exit_code = 1
+        try:
+            with log_path.open("a", encoding="utf-8") as worker_log:
+                traceback.print_exc(file=worker_log)
+                worker_log.flush()
+        except OSError:
+            pass
+        write_state(state.with_updates(
+            status="failed",
+            stage="failed",
+            message=str(error),
+            worker_pid=None,
+            error_code="AUDIT_FAILED",
+        ))
+        append_event(events_path, TaskEvent(
+            SCHEMA_VERSION, request.task_id, "failed", _now(),
+            {"error_code": "AUDIT_FAILED", "message": str(error)},
+        ))
+    finally:
+        if heartbeat_stop is not None:
             heartbeat_stop.set()
+        if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=max(1.0, heartbeat_interval_seconds + 0.5))
-            for name, previous_value in previous_environment.items():
-                if previous_value is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = previous_value
-            _cleanup_task_runtime(task_dir, events_path, request.task_id)
+        for name, previous_value in previous_environment.items():
+            if previous_value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous_value
+        cleanup_task_runtime(task_dir, events_path, request.task_id)
     return exit_code
