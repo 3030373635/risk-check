@@ -24,12 +24,18 @@ PLATFORM_LAYOUTS = {
     "windows-x64": {
         "launcher": "启动审核器.bat",
         "python": "runtime/python/python.exe",
+        "python_dependencies": (
+            "runtime/python/python311.dll",
+            "runtime/python/vcruntime140.dll",
+            "runtime/python/vcruntime140_1.dll",
+        ),
         "soffice": "runtime/libreoffice/program/soffice.exe",
         "architecture": "x86_64",
     },
     "macos-arm64": {
         "launcher": "启动审核器.command",
         "python": "runtime/python/bin/python3",
+        "python_dependencies": (),
         "soffice": "runtime/libreoffice/LibreOffice.app/Contents/MacOS/soffice",
         "architecture": "arm64",
     },
@@ -113,7 +119,7 @@ def _verify_web_runtime(runtime_root: Path) -> list[str]:
 
 def binary_architectures(path: Path) -> set[str]:
     """读取 PE 或 Mach-O 架构；path 为平台可执行文件。"""
-    if path.suffix.lower() == ".exe":
+    if path.suffix.lower() in {".exe", ".dll", ".pyd"}:
         try:
             content = path.read_bytes()
             if content[:2] != b"MZ" or len(content) < 0x40:
@@ -159,6 +165,15 @@ def _verify_platform_layout(distribution_root: Path, platform_id: str) -> list[s
             errors.append(f"{label} 架构不匹配：需要 {expected}；{path.relative_to(distribution_root)}")
         if platform_id == "macos-arm64" and not path.stat().st_mode & 0o111:
             errors.append(f"{label} 缺少可执行权限：{path.relative_to(distribution_root)}")
+    # Windows Python 启动前必须能在运行时根目录找到核心 DLL。
+    for relative_path in layout["python_dependencies"]:
+        dependency_path = distribution_root / str(relative_path)
+        if not dependency_path.is_file():
+            errors.append(f"Python 运行依赖缺失：{relative_path}")
+            continue
+        expected = str(layout["architecture"])
+        if expected not in binary_architectures(dependency_path):
+            errors.append(f"Python 运行依赖架构不匹配：需要 {expected}；{relative_path}")
     if platform_id == "macos-arm64" and launcher.is_file() and not launcher.stat().st_mode & 0o111:
         errors.append(f"平台启动器缺少可执行权限：{launcher.name}")
     return errors

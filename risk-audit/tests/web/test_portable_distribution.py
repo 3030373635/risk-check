@@ -120,6 +120,15 @@ def pe_x64_bytes() -> bytes:
     return bytes(content)
 
 
+def test_binary_architectures_reads_windows_dll(tmp_path: Path) -> None:
+    """Windows DLL 必须按 PE 头识别架构；tmp_path 为临时目录。"""
+    from tools.verify_portable_distribution import binary_architectures
+
+    dll_path = write_file(tmp_path / "python311.dll", pe_x64_bytes())
+
+    assert binary_architectures(dll_path) == {"x86_64"}
+
+
 def _write_rulepack(root: Path) -> None:
     """创建有效规则包；root 为发布根。"""
     rulepacks = root / "runtime/resources/rulepacks"
@@ -200,6 +209,9 @@ def make_valid_distribution(tmp_path: Path, platform_id: str) -> Path:
             b'@echo off\r\nset "APP_ROOT=%~dp0"\r\n"%APP_ROOT%runtime\\python\\python.exe" -m risk_audit_web.app\r\n',
         )
         write_file(root / "runtime/python/python.exe", pe_x64_bytes())
+        write_file(root / "runtime/python/python311.dll", pe_x64_bytes())
+        write_file(root / "runtime/python/vcruntime140.dll", pe_x64_bytes())
+        write_file(root / "runtime/python/vcruntime140_1.dll", pe_x64_bytes())
         write_file(root / "runtime/libreoffice/program/soffice.exe", pe_x64_bytes())
     else:
         write_file(
@@ -323,3 +335,23 @@ def test_distribution_requires_only_matching_launcher_and_licenses(tmp_path: Pat
 
     assert any("启动器" in error for error in errors)
     assert any("Python" in error and "许可证" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "dll_name",
+    ["python311.dll", "vcruntime140.dll", "vcruntime140_1.dll"],
+)
+def test_windows_distribution_requires_python_runtime_dlls(
+    tmp_path: Path,
+    dll_name: str,
+) -> None:
+    """Windows 发布必须携带 Python 必需 DLL；dll_name 为待删除的依赖名。"""
+    from tools.verify_portable_distribution import verify_distribution
+
+    root = make_valid_distribution(tmp_path, "windows-x64")
+    (root / "runtime/python" / dll_name).unlink()
+    refresh_release_manifest(root)
+
+    errors = verify_distribution(root, "windows-x64")
+
+    assert any(dll_name in error and "缺失" in error for error in errors)

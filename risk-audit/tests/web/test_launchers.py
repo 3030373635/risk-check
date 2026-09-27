@@ -69,6 +69,10 @@ def test_windows_launcher_has_foreground_offline_contract() -> None:
     assert "pythondontwritebytecode" in normalized
     assert "pythonutf8" in normalized
     assert "-m risk_audit_web.app" in normalized
+    assert "python311.dll" in normalized
+    assert "vcruntime140.dll" in normalized
+    assert "vcruntime140_1.dll" in normalized
+    assert "请完整解压 zip" in normalized
     assert " start " not in f" {executable_lines} "
     assert "pythonw.exe" not in executable_lines
     assert "http://" not in executable_lines and "https://" not in executable_lines
