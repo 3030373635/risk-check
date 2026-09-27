@@ -1,8 +1,10 @@
 """验证 REST 应用服务边界。"""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -14,8 +16,22 @@ def create_request(input_root: Path):
     return TaskCreateRequest(input_root=str(input_root))
 
 
-def test_concurrent_tasks_reserve_distinct_output_directories(web_services, input_root: Path) -> None:
-    """同秒并发任务必须获得不同输出目录；services/input_root 为真实边界。"""
+def test_concurrent_tasks_reserve_distinct_output_directories(
+    web_services,
+    input_root: Path,
+    monkeypatch,
+) -> None:
+    """同秒并发任务必须获得不同输出目录；参数为真实服务、输入目录和补丁工具。"""
+    from risk_audit_web import task_store
+
+    fixed_created_at = datetime(2026, 9, 27, 10, 30, 15, tzinfo=timezone.utc)
+    # 固定任务时间，确保测试真正覆盖同秒目录冲突，不受 CI 跨秒调度影响。
+    monkeypatch.setattr(
+        task_store,
+        "datetime",
+        SimpleNamespace(now=Mock(return_value=fixed_created_at)),
+    )
+
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
             executor.submit(web_services.create_task, create_request(input_root))
