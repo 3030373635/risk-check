@@ -282,7 +282,12 @@ def test_duty_sorting_continues_from_sanitized_copy(tmp_path, pack, monkeypatch)
     create_style_expanded_duty_workbook(source)
     source_book = load_workbook(source)
     source_sheet = source_book["岗位职责清单"]
-    source_sheet.append(["财务部", "出纳", "李四", "经办", "负责资金支付", "M0"])
+    # 本测试验证净化副本衔接，排序数据使用产品要求的标准控制措施编号。
+    source_sheet["F2"] = "设备业务-1.控制点-控制措施01"
+    source_sheet.append([
+        "财务部", "出纳", "李四", "经办", "负责资金支付",
+        "设备业务-0.控制点-控制措施01",
+    ])
     source_sheet["XFD3"].font = copy(source_sheet["A3"].font)
     source_book.save(source)
     source_book.close()
@@ -316,5 +321,8 @@ def test_duty_sorting_continues_from_sanitized_copy(tmp_path, pack, monkeypatch)
     prepared = load_workbook(file._preprocessed_path)
     sheet = prepared["岗位职责清单"]
     assert sheet.max_column == 6
-    assert [sheet[f"F{row}"].value for row in (2, 3)] == ["M0", "M1"]
+    assert [sheet[f"F{row}"].value for row in (2, 3)] == [
+        "设备业务-0.控制点-控制措施01",
+        "设备业务-1.控制点-控制措施01",
+    ]
     prepared.close()

@@ -335,6 +335,42 @@ def test_sort_rejects_oversized_merge_crossing_real_content(tmp_path):
         module().sort_duties(file, {}, tmp_path / 'work', aliases)
 
 
+def test_sort_ignores_merged_template_instructions_between_details(tmp_path):
+    """验证岗位排序不移动合并的模板说明区；tmp_path 为隔离目录。"""
+    path = tmp_path / '29施工建设模板说明三清单.xlsx'
+    book = Workbook(); ws = book.active; ws.title = '岗位内控责任清单（）'
+    ws.append(['岗位内控责任清单'])
+    ws.append(['部门', '岗位名称', '人员姓名', '岗位职责编号', '角色', '岗位职责', '控制措施编号'])
+    for number in (12, 2, 1):
+        ws.append(['市场经营部', '工程技经专责', '张三', 1, '经办',
+                   '对资料真实性负有主体责任。', f'施工建设业务-{number}.控制点-控制措施01'])
+    ws['A6'] = '模板使用说明：'
+    instruction = ('1.梳理岗位责任；2.按岗位维度填写；3.参照标准句式；'
+                   '4.G-I列仅为编制样例。')
+    ws['A7'] = instruction
+    ws.merge_cells('A7:G10')
+    # 复现实际材料：说明区之后仍存在一条需要参与排序的业务明细。
+    trailing_values = ['市场经营部', '工程技经专责', '李四', 2, '经办',
+                       '对资料完整性负有主体责任。', '施工建设业务-3.控制点-控制措施01']
+    for column, value in enumerate(trailing_values, 1):
+        ws.cell(12, column, value)
+    book.save(path)
+    file, aliases = file_record(path)
+
+    module().sort_duties(file, {}, tmp_path / 'work', aliases)
+
+    output = load_workbook(file._preprocessed_path).active
+    assert [output.cell(row, 7).value for row in (3, 4, 5, 12)] == [
+        '施工建设业务-1.控制点-控制措施01',
+        '施工建设业务-2.控制点-控制措施01',
+        '施工建设业务-3.控制点-控制措施01',
+        '施工建设业务-12.控制点-控制措施01',
+    ]
+    assert output['A6'].value == '模板使用说明：'
+    assert output['A7'].value == instruction
+    assert 'A7:G10' in {str(cell_range) for cell_range in output.merged_cells.ranges}
+
+
 def test_sort_moves_merged_department_when_fill_department_header_conflicts(tmp_path):
     """tmp_path 为隔离目录；负责填表部门造成字段冲突时，合并部门仍须随整行排序。"""
     path = tmp_path / '03株洲公司三清单.xlsx'
@@ -432,7 +468,9 @@ def test_sort_expands_shared_formulas_including_stationary_group_members(tmp_pat
     path = tmp_path / '09信通公司三清单.xlsx'
     book = Workbook(); ws = book.active; ws.title = '岗位内控责任清单'
     ws.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色', '拼接'])
-    for measure in ('M1', 'M12', 'M2'):
+    for measure in ('薪酬业务-1.控制点-控制措施01',
+                    '薪酬业务-12.控制点-控制措施01',
+                    '薪酬业务-2.控制点-控制措施01'):
         ws.append([measure, '财务部', '核算专责', '张三', '对资料真实性负主体责任', '经办'])
     for row in range(2, 6):
         ws.cell(row, 7, f'=C{row}&$D{row}&E$2&$F$2')
@@ -458,7 +496,11 @@ def test_sort_expands_shared_formulas_including_stationary_group_members(tmp_pat
     module().sort_duties(file, {}, tmp_path / 'work', aliases)
     output_path = Path(file._preprocessed_path)
     output = load_workbook(output_path).active
-    assert [output.cell(row, 1).value for row in (2, 3, 4)] == ['M1', 'M2', 'M12']
+    assert [output.cell(row, 1).value for row in (2, 3, 4)] == [
+        '薪酬业务-1.控制点-控制措施01',
+        '薪酬业务-2.控制点-控制措施01',
+        '薪酬业务-12.控制点-控制措施01',
+    ]
     assert [output.cell(row, 7).value for row in (2, 3, 4, 5)] == [
         '=C2&$D2&E$2&$F$2', '=C3&$D3&E$2&$F$2',
         '=C4&$D4&E$2&$F$2', '=C5&$D5&E$2&$F$2',

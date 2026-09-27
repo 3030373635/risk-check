@@ -17,7 +17,8 @@ from openpyxl.utils import get_column_letter, range_boundaries
 
 from risk_audit.checks.confirmed_v180 import measure_numbers
 from risk_audit.models import FileRecord, Finding
-from risk_audit.util import build_internal_workbook_path, measure_id_key, natural_key, norm_text
+from risk_audit.util import (MEASURE_ID_PATTERN, build_internal_workbook_path, measure_id_key,
+                             natural_key, norm_text)
 from risk_audit.writer import (MAIN, NS, PKGREL, _coord_col, _ensure_row, _index_rows, _inline_cell,
                                _select_output_header_row, _sheet_paths)
 
@@ -95,6 +96,13 @@ def _sort_key(row: Any) -> tuple:
     return (0, numbers) if all(isinstance(value, int) for value in numbers) else (1, natural_key(row.value('measure_id')))
 
 
+def _is_sortable_duty_row(row: Any) -> bool:
+    """判断岗位记录是否具有标准控制措施编号；row 为待判断的岗位清单记录。"""
+    measure_id = norm_text(row.value('measure_id'))
+    # 只移动标准业务编号，避免把合并的模板说明、标题或空白行当成岗位明细。
+    return MEASURE_ID_PATTERN.search(measure_id) is not None
+
+
 def _cell_has_content(cell: Any) -> bool:
     """判断 OOXML 单元格是否包含值或公式；cell 为工作表 XML 单元格节点。"""
     if cell.find(f'{{{MAIN}}}f') is not None:
@@ -167,7 +175,7 @@ def sort_duties(file: FileRecord, baselines: dict, work_dir: Path, aliases: dict
             cells = {cell.get('r'): cell for row in data for cell in row.findall(f'{{{MAIN}}}c')}
             cell_map = {}
             for sheet in (part for part in file.sheets if part.title == title and part.sheet_type == 'position_duty'):
-                details = [row for row in sheet.records if not re.match(r'^(?:填表说明|填报说明|说明[:：]|注[:：]|合计)', row.value('measure_id'))]
+                details = [row for row in sheet.records if _is_sortable_duty_row(row)]
                 if len(details) < 2:
                     continue
                 # 0916-4 明确按编号数字排序，旧基准清单的行次不再覆盖数字顺序。
