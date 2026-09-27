@@ -76,3 +76,21 @@ def test_windows_launcher_has_foreground_offline_contract() -> None:
     assert " start " not in f" {executable_lines} "
     assert "pythonw.exe" not in executable_lines
     assert "http://" not in executable_lines and "https://" not in executable_lines
+
+
+def test_windows_launcher_switches_to_utf8_before_chinese_output() -> None:
+    """Windows 启动器必须在输出中文前将 CMD 切换为 UTF-8。"""
+    content = (PACKAGING_ROOT / "启动审核器.bat").read_text(encoding="utf-8")
+    executable_lines = [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.lstrip().lower().startswith("rem ")
+    ]
+    code_page_index = executable_lines.index("chcp 65001 >nul")
+    first_chinese_output_index = next(
+        index
+        for index, line in enumerate(executable_lines)
+        if line.lower().startswith("echo ") and any(ord(character) > 127 for character in line)
+    )
+
+    assert code_page_index < first_chinese_output_index

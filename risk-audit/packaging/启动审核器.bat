@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 
 rem 只以脚本所在目录为发布根，支持中文和空格路径。
