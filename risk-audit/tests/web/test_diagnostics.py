@@ -120,6 +120,49 @@ def test_startup_diagnostics_lists_missing_required_resource(tmp_path: Path) -> 
     assert any(str(paths.entity_file) in item.message for item in report.items)
 
 
+def test_startup_diagnostics_does_not_require_release_manifest(tmp_path: Path) -> None:
+    """启动时不得全量校验发布清单，否则会阻塞 Web 页面打开。"""
+    from risk_audit_web.diagnostics import run_startup_diagnostics
+    from risk_audit_web.task_paths import PortablePaths
+
+    paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="win32")
+    paths.soffice.parent.mkdir(parents=True)
+    paths.soffice.write_bytes(b"exe")
+
+    release_root = paths.rulepacks / "releases/2.0.0"
+    rule_path = release_root / "rules/R01.json"
+    rule_path.parent.mkdir(parents=True)
+    rule_path.write_text('{"id":"R01"}\n', encoding="utf-8")
+    rule_hash = hashlib.sha256(rule_path.read_bytes()).hexdigest()
+    content_hash = hashlib.sha256(
+        json.dumps(
+            {"rules/R01.json": rule_hash},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    (release_root / "manifest.json").write_text(json.dumps({
+        "version": "2.0.0",
+        "status": "released",
+        "content_hash": content_hash,
+    }), encoding="utf-8")
+    (paths.rulepacks / "active.json").write_text(json.dumps({
+        "version": "2.0.0",
+        "content_hash": content_hash,
+    }), encoding="utf-8")
+    paths.config_file.write_text('{"mode":"desktop"}', encoding="utf-8")
+    paths.entity_file.parent.mkdir(parents=True)
+    paths.entity_file.write_bytes(b"entity")
+    paths.baseline_root.mkdir(parents=True)
+
+    # 故意不创建 runtime/manifest.json，证明启动不再依赖全包哈希。
+    report = run_startup_diagnostics(paths)
+
+    assert report.can_start
+    assert all(item.relative_path != "runtime/manifest.json" for item in report.items)
+
+
 def test_startup_diagnostics_succeeds_without_removed_semantic_model(tmp_path: Path) -> None:
     """本地语义模型已停用并删除时，其他运行资源完整即可创建任务。"""
     from risk_audit_web.diagnostics import run_startup_diagnostics

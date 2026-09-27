@@ -100,8 +100,8 @@ class ApplicationServices:
     _startup_report: DiagnosticReport = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """在服务启动时缓存一次完整资源诊断；无参数。"""
-        # LibreOffice 文件数量大，状态轮询不应重复读取和哈希。
+        """在服务启动时缓存一次必要资源诊断；无参数。"""
+        # 状态轮询只复用诊断结果，不重复读取规则包或检查资源路径。
         self._startup_report = run_startup_diagnostics(self.paths)
 
     def system_status(self) -> dict[str, Any]:

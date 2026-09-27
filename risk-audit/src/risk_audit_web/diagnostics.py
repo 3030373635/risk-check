@@ -249,8 +249,8 @@ def verify_active_rulepack(rulepacks_root: Path) -> DiagnosticItem:
 
 
 def run_startup_diagnostics(paths: PortablePaths) -> DiagnosticReport:
-    """执行创建任务前资源诊断；paths 为便携程序路径集合。"""
-    manifest_report = verify_release_manifest(paths.app_root)
+    """执行快速启动诊断；paths 为便携程序路径集合。"""
+    # 全包 SHA-256 校验仅在构建交付阶段执行，避免启动时读取整套 Python 和 LibreOffice。
     required = [
         _required_path_item(paths.soffice),
         verify_active_rulepack(paths.rulepacks),
@@ -258,7 +258,7 @@ def run_startup_diagnostics(paths: PortablePaths) -> DiagnosticReport:
         _required_path_item(paths.entity_file),
         _required_path_item(paths.baseline_root, expect_directory=True),
     ]
-    return DiagnosticReport([*manifest_report.items, *required])
+    return DiagnosticReport(required)
 
 
 def load_active_rulepack(rulepacks_root: Path) -> Path:
