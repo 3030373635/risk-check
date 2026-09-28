@@ -14,8 +14,8 @@
     },
     {
       "path": "src/risk_audit_web/static/css/bootstrap-icons.min.css",
-      "sha256": "a5d6387a32ca3baec4d02336b5b3edab50c9dd518355576a011ea3dd9c1d884e",
-      "size": 87008,
+      "sha256": "fa0be018da977b00a6372fb72dbe8224174ad1d557eb47af1aeff223d443217d",
+      "size": 87011,
       "url": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css"
     },
     {

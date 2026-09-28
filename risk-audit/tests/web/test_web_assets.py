@@ -28,6 +28,18 @@ def test_frontend_has_no_remote_runtime_resources() -> None:
     assert "innerHTML" not in owned_scripts
 
 
+def test_bootstrap_icon_font_reference_resolves_locally() -> None:
+    """Bootstrap Icons 的 WOFF2 引用必须指向实际存在的本地字体；无参数。"""
+    stylesheet = static_root() / "css/bootstrap-icons.min.css"
+    content = stylesheet.read_text(encoding="utf-8")
+    match = re.search(r'url\("([^"?]*bootstrap-icons\.woff2)(?:\?[^"?]*)?"\)', content)
+
+    assert match is not None
+    # 按浏览器的 CSS 相对路径解析规则定位字体文件。
+    font_path = (stylesheet.parent / match.group(1)).resolve()
+    assert font_path.is_file(), f"图标字体不存在：{font_path}"
+
+
 def test_vendor_manifest_matches_downloaded_assets() -> None:
     """固定版本资产必须与清单哈希一致；无参数。"""
     from tools.vendor_web_assets import verify_assets

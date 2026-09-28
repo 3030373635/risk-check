@@ -40,7 +40,15 @@ def _sha256(data: bytes) -> str:
 def _normalize_asset(relative_path: str, content: bytes) -> bytes:
     """调整下载资产的本地引用；relative_path/content 为目标和原始内容。"""
     if relative_path.endswith("bootstrap-icons.min.css"):
-        return content.replace(b"./fonts/bootstrap-icons.woff2", b"../fonts/bootstrap-icons.woff2")
+        # Bootstrap Icons 上游样式可能省略相对路径前的 ./，两种写法均映射到本地字体目录。
+        content = content.replace(
+            b"./fonts/bootstrap-icons.woff2",
+            b"../fonts/bootstrap-icons.woff2",
+        )
+        return content.replace(
+            b'url("fonts/bootstrap-icons.woff2',
+            b'url("../fonts/bootstrap-icons.woff2',
+        )
     return content
 
 
