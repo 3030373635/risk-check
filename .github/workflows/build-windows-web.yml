@@ -85,15 +85,73 @@ jobs:
           }
           "LIBREOFFICE_ROOT=$libreOfficeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: 定位官方 VC++ x64 应用本地运行库
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere -PathType Leaf)) {
+            throw "Visual Studio vswhere.exe 缺失"
+          }
+          $visualStudioRoot = & $vswhere -latest -products * -property installationPath
+          if (-not $visualStudioRoot) {
+            throw "未找到 Visual Studio 安装目录"
+          }
+          $redistRoot = Join-Path $visualStudioRoot "VC\Redist\MSVC"
+          $vcRuntimeRoot = Get-ChildItem -Path $redistRoot -Directory |
+            Sort-Object -Property Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
+            Where-Object { Test-Path (Join-Path $_ "msvcp140.dll") -PathType Leaf } |
+            Select-Object -First 1
+          if (-not $vcRuntimeRoot) {
+            throw "Microsoft.VC143.CRT x64 运行库缺失：$redistRoot"
+          }
+          foreach ($dllName in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            if (-not (Test-Path (Join-Path $vcRuntimeRoot $dllName) -PathType Leaf)) {
+              throw "VC++ x64 运行库文件缺失：$dllName"
+            }
+          }
+          "VC_RUNTIME_ROOT=$vcRuntimeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: 构建离线便携版
         run: |
           python ".\risk-audit\tools\build_portable.py" `
             --platform windows-x64 `
             --project-root "." `
             --libreoffice "$env:LIBREOFFICE_ROOT" `
+            --vc-runtime "$env:VC_RUNTIME_ROOT" `
             --licenses ".\risk-audit\licenses" `
             --usage-guide ".\risk-audit\Windows Web版使用说明.md" `
             --output ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.0.0"
+
+      - name: 验证包内 LibreOffice 启动与 XLS 转换
+        run: |
+          $distributionRoot = Resolve-Path ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.0.0"
+          $soffice = Join-Path $distributionRoot "runtime\libreoffice\program\soffice.com"
+          if (-not (Test-Path $soffice -PathType Leaf)) {
+            throw "包内 LibreOffice 命令行入口缺失：$soffice"
+          }
+
+          $versionOutput = & $soffice --headless --version 2>&1
+          $versionExitCode = $LASTEXITCODE
+          $versionOutput | Write-Host
+          if ($versionExitCode -ne 0) {
+            throw "包内 LibreOffice 启动失败，退出码：$versionExitCode"
+          }
+
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "risk-audit-libreoffice-smoke"
+          New-Item -ItemType Directory -Path $smokeRoot -Force | Out-Null
+          $profileRoot = Join-Path $smokeRoot "profile"
+          New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
+          $profileUri = ([System.Uri]::new($profileRoot)).AbsoluteUri
+          $sourcePath = Join-Path $distributionRoot "runtime\resources\baselines\templates\第一批省公司通用版本整合0818\第一批省公司通用版本整合9.4\09 职工福利保障与薪酬管理\09风控矩阵-职工福利保障与薪酬管理-省公司（审定）8.13.xls"
+          $stagedSource = Join-Path $smokeRoot "baseline.xls"
+          Copy-Item -Path $sourcePath -Destination $stagedSource
+          $conversionOutput = & $soffice "-env:UserInstallation=$profileUri" --headless --convert-to xlsx --outdir $smokeRoot $stagedSource 2>&1
+          $conversionExitCode = $LASTEXITCODE
+          $conversionOutput | Write-Host
+          $convertedPath = Join-Path $smokeRoot "baseline.xlsx"
+          if ($conversionExitCode -ne 0 -or -not (Test-Path $convertedPath -PathType Leaf)) {
+            throw "包内 LibreOffice XLS 转换失败，退出码：$conversionExitCode"
+          }
 
       - name: 验证最终归档
         run: |

@@ -105,6 +105,7 @@ def build_portable_release(inputs: BuildInputs, lock_file: Path) -> Path:
             licenses_root=combined_licenses,
             output_root=inputs.output_root,
             usage_guide=inputs.usage_guide,
+            vc_runtime_root=inputs.vc_runtime_root,
         )
         return assemble_distribution(combined_inputs)
 
@@ -116,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--python-archive", type=Path)
     parser.add_argument("--libreoffice", type=Path, required=True)
+    parser.add_argument("--vc-runtime", type=Path)
     parser.add_argument("--licenses", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--usage-guide", type=Path, required=True)
@@ -139,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
                 licenses_root=(arguments.licenses or auditor_root / "licenses").resolve(),
                 output_root=output_root,
                 usage_guide=arguments.usage_guide.resolve(),
+                vc_runtime_root=(
+                    arguments.vc_runtime.resolve()
+                    if arguments.vc_runtime is not None
+                    else None
+                ),
             )
             result = build_portable_release(inputs, auditor_root / "requirements-runtime.lock")
             archive = create_distribution_archive(result, arguments.platform)

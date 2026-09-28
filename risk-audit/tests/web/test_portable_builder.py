@@ -20,6 +20,19 @@ def write_file(path: Path, content: bytes = b"x") -> Path:
     return path
 
 
+def pe_bytes(machine: int = 0x8664) -> bytes:
+    """创建最小 PE 头。
+
+    参数 machine 为 PE 机器类型，返回可供架构校验的测试字节。
+    """
+    content = bytearray(0x88)
+    content[:2] = b"MZ"
+    content[0x3C:0x40] = (0x80).to_bytes(4, "little")
+    content[0x80:0x84] = b"PE\0\0"
+    content[0x84:0x86] = machine.to_bytes(2, "little")
+    return bytes(content)
+
+
 def make_build_inputs(tmp_path: Path):
     """创建最小 Windows 组装输入；tmp_path 为测试根目录。"""
     from tools.portable_release import BuildInputs
@@ -47,6 +60,14 @@ def make_build_inputs(tmp_path: Path):
     write_file(python_root / "Lib/site-packages/__pycache__/package.pyc")
     libreoffice_root = tmp_path / "LibreOffice"
     write_file(libreoffice_root / "program/soffice.exe", b"office")
+    vc_runtime_root = tmp_path / "Microsoft.VC143.CRT"
+    for dll_name in (
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "concrt140.dll",
+    ):
+        write_file(vc_runtime_root / dll_name, pe_bytes())
     licenses_root = tmp_path / "licenses"
     write_file(licenses_root / "Python.txt", b"license")
     usage_guide = write_file(tmp_path / "使用说明.md", b"guide")
@@ -58,6 +79,7 @@ def make_build_inputs(tmp_path: Path):
         licenses_root=licenses_root,
         output_root=tmp_path / "风控矩阵审核器-v2.0.0",
         usage_guide=usage_guide,
+        vc_runtime_root=vc_runtime_root,
     )
 
 
@@ -81,6 +103,11 @@ def test_assemble_distribution_uses_script_layout_and_single_web_copy(tmp_path: 
     assert not list((result / "runtime/python").rglob("__pycache__"))
     assert not list((result / "runtime/python").rglob("*.pyc"))
     assert (result / "runtime/libreoffice/program/soffice.exe").is_file()
+    assert (result / "runtime/libreoffice/program/vcruntime140.dll").is_file()
+    assert (result / "runtime/libreoffice/program/vcruntime140_1.dll").is_file()
+    assert (result / "runtime/libreoffice/program/msvcp140.dll").is_file()
+    # 复制完整 CRT 目录，避免仅列出当前显性依赖而遗漏动态加载的库。
+    assert (result / "runtime/libreoffice/program/concrt140.dll").is_file()
     assert list((result / "data").iterdir()) == []
     assert list((result / "outputs").iterdir()) == []
 
@@ -88,10 +115,39 @@ def test_assemble_distribution_uses_script_layout_and_single_web_copy(tmp_path: 
     paths = {item["path"] for item in payload["resources"]}
     assert "app/risk_audit/__init__.py" in paths
     assert "runtime/python/python.exe" in paths
+    assert "runtime/libreoffice/program/msvcp140.dll" in paths
     assert "启动审核器.bat" in paths
     assert "使用说明.md" in paths
     assert "runtime/manifest.json" not in paths
     assert not any(path.startswith(("data/", "outputs/")) for path in paths)
+
+
+def test_windows_assembly_rejects_missing_vc_runtime_dll(tmp_path: Path) -> None:
+    """Windows 组装必须拒绝不完整的 VC++ x64 运行库。"""
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    assert inputs.vc_runtime_root is not None
+    (inputs.vc_runtime_root / "msvcp140.dll").unlink()
+
+    with pytest.raises(portable_release.BuildError, match="msvcp140.dll.*缺失"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
+
+
+def test_windows_assembly_rejects_non_x64_vc_runtime_dll(tmp_path: Path) -> None:
+    """Windows 组装必须拒绝非 x64 的 VC++ 运行库。"""
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    assert inputs.vc_runtime_root is not None
+    (inputs.vc_runtime_root / "vcruntime140.dll").write_bytes(pe_bytes(0x014C))
+
+    with pytest.raises(portable_release.BuildError, match="vcruntime140.dll.*x64"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
 
 
 def test_assemble_distribution_refuses_overwrite_and_removes_partial_output(

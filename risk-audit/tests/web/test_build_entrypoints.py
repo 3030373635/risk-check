@@ -52,6 +52,7 @@ def test_portable_builder_direct_entrypoint_loads_project_modules(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     assert "--platform" in result.stdout
+    assert "--vc-runtime" in result.stdout
 
 
 def test_portable_verifier_direct_entrypoint_loads_source_modules(tmp_path: Path) -> None:

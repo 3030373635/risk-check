@@ -213,6 +213,12 @@ def make_valid_distribution(tmp_path: Path, platform_id: str) -> Path:
         write_file(root / "runtime/python/vcruntime140.dll", pe_x64_bytes())
         write_file(root / "runtime/python/vcruntime140_1.dll", pe_x64_bytes())
         write_file(root / "runtime/libreoffice/program/soffice.exe", pe_x64_bytes())
+        for dll_name in (
+            "vcruntime140.dll",
+            "vcruntime140_1.dll",
+            "msvcp140.dll",
+        ):
+            write_file(root / "runtime/libreoffice/program" / dll_name, pe_x64_bytes())
     else:
         write_file(
             root / "启动审核器.command",
@@ -355,3 +361,40 @@ def test_windows_distribution_requires_python_runtime_dlls(
     errors = verify_distribution(root, "windows-x64")
 
     assert any(dll_name in error and "缺失" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "dll_name",
+    ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"],
+)
+def test_windows_distribution_requires_libreoffice_vc_runtime_dlls(
+    tmp_path: Path,
+    dll_name: str,
+) -> None:
+    """Windows LibreOffice 必须携带应用本地 VC++ DLL。"""
+    from tools.verify_portable_distribution import verify_distribution
+
+    root = make_valid_distribution(tmp_path, "windows-x64")
+    (root / "runtime/libreoffice/program" / dll_name).unlink()
+    refresh_release_manifest(root)
+
+    errors = verify_distribution(root, "windows-x64")
+
+    assert any(dll_name in error and "缺失" in error for error in errors)
+
+
+def test_windows_distribution_rejects_non_x64_libreoffice_vc_runtime_dll(
+    tmp_path: Path,
+) -> None:
+    """Windows 发布校验必须拒绝非 x64 的 LibreOffice VC++ DLL。"""
+    from tools.verify_portable_distribution import verify_distribution
+
+    root = make_valid_distribution(tmp_path, "windows-x64")
+    wrong_architecture = bytearray(pe_x64_bytes())
+    wrong_architecture[0x84:0x86] = (0x014C).to_bytes(2, "little")
+    (root / "runtime/libreoffice/program/msvcp140.dll").write_bytes(wrong_architecture)
+    refresh_release_manifest(root)
+
+    errors = verify_distribution(root, "windows-x64")
+
+    assert any("msvcp140.dll" in error and "架构不匹配" in error for error in errors)

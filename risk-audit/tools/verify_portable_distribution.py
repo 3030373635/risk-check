@@ -30,6 +30,11 @@ PLATFORM_LAYOUTS = {
             "runtime/python/vcruntime140_1.dll",
         ),
         "soffice": "runtime/libreoffice/program/soffice.exe",
+        "libreoffice_dependencies": (
+            "runtime/libreoffice/program/vcruntime140.dll",
+            "runtime/libreoffice/program/vcruntime140_1.dll",
+            "runtime/libreoffice/program/msvcp140.dll",
+        ),
         "architecture": "x86_64",
     },
     "macos-arm64": {
@@ -37,6 +42,7 @@ PLATFORM_LAYOUTS = {
         "python": "runtime/python/bin/python3",
         "python_dependencies": (),
         "soffice": "runtime/libreoffice/LibreOffice.app/Contents/MacOS/soffice",
+        "libreoffice_dependencies": (),
         "architecture": "arm64",
     },
 }
@@ -174,6 +180,17 @@ def _verify_platform_layout(distribution_root: Path, platform_id: str) -> list[s
         expected = str(layout["architecture"])
         if expected not in binary_architectures(dependency_path):
             errors.append(f"Python 运行依赖架构不匹配：需要 {expected}；{relative_path}")
+    for relative_path in layout["libreoffice_dependencies"]:
+        dependency_path = distribution_root / str(relative_path)
+        if not dependency_path.is_file():
+            errors.append(f"LibreOffice VC++ 运行依赖缺失：{relative_path}")
+            continue
+        expected = str(layout["architecture"])
+        if expected not in binary_architectures(dependency_path):
+            errors.append(
+                f"LibreOffice VC++ 运行依赖架构不匹配："
+                f"需要 {expected}；{relative_path}"
+            )
     if platform_id == "macos-arm64" and launcher.is_file() and not launcher.stat().st_mode & 0o111:
         errors.append(f"平台启动器缺少可执行权限：{launcher.name}")
     return errors

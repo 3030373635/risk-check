@@ -75,6 +75,19 @@ def test_web_build_workflow_pins_libreoffice_and_uploads_zip() -> None:
     assert "if-no-files-found: error" in workflow
 
 
+def test_windows_workflow_bundles_vc_runtime_and_smoke_tests_xls_conversion() -> None:
+    """Windows 工作流必须携带 VC++ CRT 并用包内 LibreOffice 转换真实 XLS。"""
+    workflow = read_workflow()
+
+    assert "Microsoft.VC143.CRT" in workflow
+    assert "--vc-runtime" in workflow
+    assert "soffice.com" in workflow
+    assert "--headless --version" in workflow
+    assert "--convert-to xlsx" in workflow
+    assert "09风控矩阵-职工福利保障与薪酬管理-省公司（审定）8.13.xls" in workflow
+    assert "$LASTEXITCODE" in workflow
+
+
 def test_web_build_workflow_uploads_only_final_archive() -> None:
     """上传步骤必须只匹配最终 ZIP，不得上传半成品目录。"""
     workflow = read_workflow()

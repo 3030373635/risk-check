@@ -23,6 +23,11 @@ PLATFORM_LAUNCHERS = {
     "windows-x64": "启动审核器.bat",
     "macos-arm64": "启动审核器.command",
 }
+WINDOWS_VC_RUNTIME_REQUIRED_DLLS = (
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+    "msvcp140.dll",
+)
 
 
 class BuildError(RuntimeError):
@@ -40,6 +45,7 @@ class BuildInputs:
     licenses_root: Path
     output_root: Path
     usage_guide: Path
+    vc_runtime_root: Path | None = None
 
 
 def _copy_tree(source: Path, destination: Path, *, ignored_names: set[str] | None = None) -> None:
@@ -192,13 +198,59 @@ def _copy_macos_libreoffice(source: Path, destination: Path, expected_version: s
     )
 
 
+def _windows_pe_architecture(path: Path) -> str | None:
+    """读取 Windows PE 文件架构。
+
+    参数 path 为待检查的 EXE 或 DLL，返回架构名；无效 PE 返回 None。
+    """
+    try:
+        content = path.read_bytes()
+        if content[:2] != b"MZ" or len(content) < 0x40:
+            return None
+        pe_offset = int.from_bytes(content[0x3C:0x40], "little")
+        if content[pe_offset:pe_offset + 4] != b"PE\0\0":
+            return None
+        machine = int.from_bytes(content[pe_offset + 4:pe_offset + 6], "little")
+    except OSError:
+        return None
+    return {0x8664: "x86_64", 0xAA64: "arm64", 0x014C: "x86"}.get(machine, "unknown")
+
+
+def _copy_windows_vc_runtime(source: Path | None, destination: Path) -> None:
+    """复制 Windows x64 VC++ 应用本地运行库。
+
+    参数 source 为 Microsoft.VC143.CRT x64 目录，destination 为
+    LibreOffice program 目录；函数校验后复制全部 DLL。
+    """
+    if source is None or not source.is_dir():
+        raise BuildError(f"Windows VC++ x64 运行库目录缺失：{source}")
+    dll_paths = sorted(source.glob("*.dll"), key=lambda item: item.name.lower())
+    dll_by_name = {path.name.lower(): path for path in dll_paths}
+    for dll_name in WINDOWS_VC_RUNTIME_REQUIRED_DLLS:
+        if dll_name not in dll_by_name:
+            raise BuildError(f"Windows VC++ x64 运行库 {dll_name} 缺失：{source}")
+    for path in dll_paths:
+        architecture = _windows_pe_architecture(path)
+        if architecture != "x86_64":
+            raise BuildError(
+                f"Windows VC++ 运行库 {path.name} 不是 x64：{architecture or '无效 PE'}"
+            )
+        # LibreOffice 必须从自身 program 目录加载 CRT，不依赖目标电脑 System32。
+        shutil.copy2(path, destination / path.name)
+
+
 def _copy_platform_runtime(inputs: BuildInputs, distribution_root: Path) -> None:
     """复制目标 Python 和 LibreOffice；inputs 为构建输入。"""
     _copy_tree(inputs.python_root, distribution_root / "runtime/python")
     if inputs.platform_id == "windows-x64":
         if not (inputs.libreoffice_root / "program/soffice.exe").is_file():
             raise BuildError(f"Windows LibreOffice 缺失：{inputs.libreoffice_root}")
-        _copy_tree(inputs.libreoffice_root, distribution_root / "runtime/libreoffice")
+        libreoffice_target = distribution_root / "runtime/libreoffice"
+        _copy_tree(inputs.libreoffice_root, libreoffice_target)
+        _copy_windows_vc_runtime(
+            inputs.vc_runtime_root,
+            libreoffice_target / "program",
+        )
     elif inputs.platform_id == "macos-arm64":
         _copy_macos_libreoffice(
             inputs.libreoffice_root,
