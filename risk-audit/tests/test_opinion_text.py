@@ -25,7 +25,7 @@ def test_responsibility_opinion_explains_missing_quality_with_document_example()
     assert responsibility_opinion("对申请资料负有主体责任") == (
         "岗位职责责任句式不完整：已识别“负有主体责任”和责任对象，但未明确责任属性。"
         "请结合实际补充“一致性、准确性、真实性、完整性、有效性、及时性、合规性”等至少一项责任属性。"
-        "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/templates/审批责任。”"
+        "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/审核/审批责任。”"
     )
 
 

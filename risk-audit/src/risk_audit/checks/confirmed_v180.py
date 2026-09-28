@@ -415,7 +415,7 @@ def responsibility_phrase_v7(ctx: Any, p: dict[str, Any]) -> list[dict[str, Any]
             continue
         facts = _responsibility_facts(row.value("duty"), tuple(p["attributes"]))
         positive = _own_responsibility(facts)
-        # 明确肯定本岗位主体/templates/审批责任即可，不额外强制对象属性或“性”字。
+        # 明确肯定本岗位主体/审核/审批责任即可，不额外强制对象属性或“性”字。
         if not contradiction(facts) and any((statement["qualities"] and statement["object_present"])
                                             or set(statement["roles"]) & {"主体责任", "审核责任", "审批责任"}
                                             for statement in positive):

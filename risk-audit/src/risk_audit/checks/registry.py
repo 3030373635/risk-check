@@ -322,7 +322,7 @@ def roles_disjoint(ctx: CheckContext, p: dict[str, Any]) -> list[dict[str, Any]]
             inferred = [role for role, marker in (("经办", "主体责任"), ("审核", "审核责任"), ("审批", "审批责任")) if marker in duty]
             return inferred[0] if len(inferred) == 1 else ""
         for row in [r for r in rows if not resolved_role(r)]:
-            out.append(_issue(row, "review", unavailable_reason="角色字段为空且职责中没有唯一明确的主体/templates/审批责任类型，未从岗位或普通动作词推断"))
+            out.append(_issue(row, "review", unavailable_reason="角色字段为空且职责中没有唯一明确的主体/审核/审批责任类型，未从岗位或普通动作词推断"))
         for left, right in p["role_pairs"]:
             lrows = [r for r in rows if resolved_role(r) == norm_text(left)]
             rrows = [r for r in rows if resolved_role(r) == norm_text(right)]

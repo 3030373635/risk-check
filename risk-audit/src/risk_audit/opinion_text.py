@@ -11,7 +11,7 @@ def _responsibility_phrase_opinion(evidence: dict[str, Any]) -> str:
     if evidence.get("fixed_rule_0917_9"):
         return (
             "岗位职责请按照国网标准句式编制，“对……的一致性/准确性/真实性/"
-            "完整性/有效性/及时性/合规性负主体/templates/审批责任。”"
+            "完整性/有效性/及时性/合规性负主体/审核/审批责任。”"
         )
     facts = evidence.get("responsibility_facts", {})
     statements = facts.get("statements", [])
@@ -71,7 +71,7 @@ def _responsibility_phrase_opinion(evidence: dict[str, Any]) -> str:
         return (
             f"岗位职责责任句式不完整：已识别“{predicate}”和责任对象，但未明确责任属性。"
             "请结合实际补充“一致性、准确性、真实性、完整性、有效性、及时性、合规性”等至少一项责任属性。"
-            "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/templates/审批责任。”"
+            "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/审核/审批责任。”"
         )
 
     if not statements:

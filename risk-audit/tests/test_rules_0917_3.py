@@ -51,7 +51,7 @@ def test_historical_rulepack_renders_diagnostic_responsibility_opinion(registry)
     assert [finding.message for finding in findings] == [
         "【第10条】岗位职责责任句式不完整：已识别“负有主体责任”和责任对象，但未明确责任属性。"
         "请结合实际补充“一致性、准确性、真实性、完整性、有效性、及时性、合规性”等至少一项责任属性。"
-        "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/templates/审批责任。”"
+        "建议句式：“对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性负主体/审核/审批责任。”"
     ]
     assert pack["manifest"]["source_document_sha256"] == sha256_file(ROOT / "规则来源/0917-3.docx")
 

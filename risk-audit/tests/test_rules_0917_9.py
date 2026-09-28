@@ -18,7 +18,7 @@ from test_rules_0917_6 import active_pack_for, execute, make_file, make_record
 ROOT = Path(__file__).resolve().parents[1]
 STANDARD_OPINION = (
     "岗位职责请按照国网标准句式编制，“对……的一致性/准确性/真实性/"
-    "完整性/有效性/及时性/合规性负主体/templates/审批责任。”"
+    "完整性/有效性/及时性/合规性负主体/审核/审批责任。”"
 )
 
 
