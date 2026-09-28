@@ -371,6 +371,35 @@ def test_sort_ignores_merged_template_instructions_between_details(tmp_path):
     assert 'A7:G10' in {str(cell_range) for cell_range in output.merged_cells.ranges}
 
 
+def test_sort_accepts_mixed_measure_id_formats_in_merged_detail_rows(tmp_path):
+    """验证合并明细内的控制措施编号仅按数字排序。
+
+    tmp_path 为隔离目录；编号文本可以同时包含标准格式和无“控制措施”字样的简写格式。
+    """
+    path = tmp_path / '06安仁公司混合编号三清单.xlsx'
+    book = Workbook(); sheet = book.active; sheet.title = '岗位职责清单'
+    sheet.append(['部门', '岗位名称', '人员姓名', '岗位职责编号', '角色', '岗位职责', '控制措施编号'])
+    measures = [
+        '设备（资产）管理-12.年度盘点-控制措施03',
+        '设备（资产）管理-2.用户资产卡片创建01',
+        '设备（资产）管理-1.验收盘点-控制措施04',
+    ]
+    for number, measure in enumerate(measures, 1):
+        sheet.append(['综合管理部', '资产管理专责', '张三', number, '审核', '对资料准确性负审核责任。', measure])
+    sheet.merge_cells('A2:A4')
+    book.save(path)
+    file, aliases = file_record(path)
+
+    module().sort_duties(file, {}, tmp_path / 'work', aliases)
+
+    output = load_workbook(file._preprocessed_path).active
+    assert [output.cell(row, 7).value for row in (2, 3, 4)] == [
+        '设备（资产）管理-1.验收盘点-控制措施04',
+        '设备（资产）管理-2.用户资产卡片创建01',
+        '设备（资产）管理-12.年度盘点-控制措施03',
+    ]
+
+
 def test_sort_moves_merged_department_when_fill_department_header_conflicts(tmp_path):
     """tmp_path 为隔离目录；负责填表部门造成字段冲突时，合并部门仍须随整行排序。"""
     path = tmp_path / '03株洲公司三清单.xlsx'

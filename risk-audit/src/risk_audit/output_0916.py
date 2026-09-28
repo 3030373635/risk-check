@@ -17,8 +17,7 @@ from openpyxl.utils import get_column_letter, range_boundaries
 
 from risk_audit.checks.confirmed_v180 import measure_numbers
 from risk_audit.models import FileRecord, Finding
-from risk_audit.util import (MEASURE_ID_PATTERN, build_internal_workbook_path, measure_id_key,
-                             natural_key, norm_text)
+from risk_audit.util import build_internal_workbook_path, measure_id_key, natural_key, norm_text
 from risk_audit.writer import (MAIN, NS, PKGREL, _coord_col, _ensure_row, _index_rows, _inline_cell,
                                _select_output_header_row, _sheet_paths)
 
@@ -97,10 +96,17 @@ def _sort_key(row: Any) -> tuple:
 
 
 def _is_sortable_duty_row(row: Any) -> bool:
-    """判断岗位记录是否具有标准控制措施编号；row 为待判断的岗位清单记录。"""
+    """判断岗位记录是否包含可排序的数字编号；row 为待判断的岗位清单记录。"""
     measure_id = norm_text(row.value('measure_id'))
-    # 只移动标准业务编号，避免把合并的模板说明、标题或空白行当成岗位明细。
-    return MEASURE_ID_PATTERN.search(measure_id) is not None
+    # 编号只要含数字即可排序，不限定横线、控制点或“控制措施”等文本格式。
+    if not re.findall(r'\d+', measure_id):
+        return False
+    identity_fields = ('department', 'position', 'person_names', 'duty_id', 'role')
+    # 横向合并的模板说明会在多个字段重复同一文本，不属于真实业务明细。
+    return any(
+        value and value != measure_id
+        for value in (norm_text(row.value(field)) for field in identity_fields)
+    )
 
 
 def _cell_has_content(cell: Any) -> bool:
