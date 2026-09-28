@@ -25,12 +25,32 @@ class DirectoryPickerError(RuntimeError):
 
 WINDOWS_DIRECTORY_SCRIPT = r"""
 Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$owner = New-Object System.Windows.Forms.Form
+$owner.Text = '风控矩阵审核器'
+$owner.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$owner.ClientSize = New-Object System.Drawing.Size -ArgumentList 1, 1
+$owner.ShowInTaskbar = $false
+$owner.TopMost = $true
+$owner.Opacity = 0
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = '请选择待审核材料目录'
 $dialog.ShowNewFolderButton = $false
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    [Console]::WriteLine($dialog.SelectedPath)
+try {
+    # 用不可见的置顶窗口承接焦点，避免目录框被浏览器遮挡。
+    $owner.Show()
+    $owner.Activate()
+    $owner.BringToFront()
+    if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::WriteLine($dialog.SelectedPath)
+    }
+}
+finally {
+    # 选择结束后立即释放原生窗口，不在后台留下隐藏句柄。
+    $dialog.Dispose()
+    $owner.Close()
+    $owner.Dispose()
 }
 """.strip()
 

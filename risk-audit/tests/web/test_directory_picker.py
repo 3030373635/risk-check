@@ -64,6 +64,30 @@ def test_windows_dialog_runs_fixed_powershell_script() -> None:
     assert options == {"check": False, "capture_output": True, "text": True}
 
 
+def test_windows_dialog_uses_foreground_owner_window() -> None:
+    """验证 Windows 目录框绑定置顶宿主窗口。
+
+    无参数；宿主窗口必须在打开目录框前激活，并在结束后释放。
+    """
+    from risk_audit_web.directory_picker import run_directory_dialog
+
+    calls = []
+
+    def runner(arguments, **options):
+        """记录系统命令；arguments 为命令参数，options 为子进程选项。"""
+        calls.append((arguments, options))
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    assert run_directory_dialog("win32", runner=runner) == ""
+
+    script = calls[0][0][-1]
+    assert "$owner.TopMost = $true" in script
+    assert "$owner.Show()" in script
+    assert "$owner.Activate()" in script
+    assert "$dialog.ShowDialog($owner)" in script
+    assert "$owner.Dispose()" in script
+
+
 def test_macos_dialog_returns_selection_and_treats_cancel_as_empty() -> None:
     """macOS 选择器必须调用 osascript，并把用户取消转换为空选择。"""
     from risk_audit_web.directory_picker import run_directory_dialog
