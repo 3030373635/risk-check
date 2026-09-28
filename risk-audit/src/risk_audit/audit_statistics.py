@@ -18,6 +18,7 @@ from risk_audit.writer import _output_path
 
 
 RULE_LABEL_PATTERN = re.compile(r'【第(\d+)条】')
+PREPROCESSING_LABEL = '【预处理】'
 COUNT_SUFFIX_PATTERN = re.compile(r'\s+\d+\s*条[.。]?\s*$')
 
 
@@ -80,11 +81,41 @@ def _rule_numbers(message: str) -> tuple[int, ...]:
     return tuple(sorted(set(numbers)))
 
 
-def _normalized_message(message: str, rules: tuple[int, ...]) -> str:
-    """统一审核意见展示文本；message 为原意见，rules 为排序后的规则组合。"""
+def _opinion_group(message: str) -> tuple[str, tuple[int, ...]] | None:
+    """返回统计分组。
+
+    Args:
+        message: 一条程序生成的审核意见。
+    """
+
+    rules = _rule_numbers(message)
+    if rules:
+        return "rule", rules
+    if message.startswith(PREPROCESSING_LABEL):
+        return "preprocessing", ()
+    return None
+
+
+def _normalized_message(
+    message: str,
+    group: tuple[str, tuple[int, ...]],
+) -> str:
+    """统一审核意见展示文本。
+
+    Args:
+        message: 原始程序意见。
+        group: 意见类别及排序后的规则编号组合。
+    """
+
+    category, rules = group
     body = RULE_LABEL_PATTERN.sub('', message).strip()
+    body = body.removeprefix(PREPROCESSING_LABEL).strip()
     body = COUNT_SUFFIX_PATTERN.sub('', body).strip()
-    prefix = ''.join(f'【第{number}条】' for number in rules)
+    prefix = (
+        PREPROCESSING_LABEL
+        if category == "preprocessing"
+        else ''.join(f'【第{number}条】' for number in rules)
+    )
     return f'{prefix}{body}'
 
 
@@ -93,7 +124,10 @@ def _program_opinions(program_text: str) -> list[str]:
     text = program_text.strip()
     if not text:
         return []
-    starts = [match.start() for match in re.finditer(r'(?m)^【第\d+条】', text)]
+    starts = [
+        match.start()
+        for match in re.finditer(r'(?m)^(?:【第\d+条】|【预处理】)', text)
+    ]
     if not starts:
         return [text]
     return [text[start:starts[index + 1] if index + 1 < len(starts) else len(text)].strip()
@@ -124,14 +158,14 @@ def _collect_statistics(files: list[FileRecord], ownership: dict[str, list[dict]
         unit_name, business_name = location
         for state in states:
             for message in _program_opinions(state.get('program_text', '')):
-                rules = _rule_numbers(message)
-                if not rules:
+                group = _opinion_group(message)
+                if group is None:
                     logger.warning('审核统计表未能识别意见规则序号：文件=%s，意见=%s',
                                    output_path, message)
                     continue
                 item = grouped[unit_name][business_name].setdefault(
-                    rules,
-                    {'message': _normalized_message(message, rules), 'occurrences': set()},
+                    group,
+                    {'message': _normalized_message(message, group), 'occurrences': set()},
                 )
                 occurrence = (output_path, state.get('sheet', ''), state.get('cell', ''), message)
                 # ownership 是最终写回结果，相同单元格内的完全相同意见只计一次。

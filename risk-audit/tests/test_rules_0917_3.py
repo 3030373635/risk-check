@@ -70,4 +70,4 @@ def test_0917_3_publish_script_rebuilds_release() -> None:
     payload = json.loads(result.stdout)
     assert payload["verified"] is True
     assert payload["activated"] is False
-    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.19"
+    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.20"

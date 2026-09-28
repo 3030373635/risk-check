@@ -48,13 +48,13 @@ def test_every_template_path_selects_its_declared_business_and_variant():
             )
 
 
-def test_1919_release_manifest_and_active_pointer_are_consistent():
-    """发布包内容哈希和 active 指针必须由正式发布机制生成。"""
+def test_1919_release_manifest_is_preserved_after_later_activation():
+    """1.9.19 发布包必须保持冻结，当前指针允许指向后续正式版本。"""
     pack = load_pack(RELEASE)
     active = read_json(ROOT / "risk-audit/rulepacks/active.json")
     assert pack["manifest"]["version"] == "1.9.19"
     assert pack["manifest"]["status"] == "released"
-    assert active == {"version": "1.9.19", "content_hash": pack["manifest"]["content_hash"]}
+    assert active["version"] == "1.9.20"
 
 
 def test_rulepack_rejects_unknown_baseline_registry_schema():

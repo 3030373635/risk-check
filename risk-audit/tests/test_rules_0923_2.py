@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from copy import copy
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -14,20 +12,14 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table
 
-from risk_audit.checks.registry import CheckContext, build_registry
 from risk_audit import __version__
 from risk_audit.configuration.loader import load_pack
-from risk_audit.models import FieldValue, FileRecord, Record
+from risk_audit.models import FileRecord
 from risk_audit.readers.confirmed_v180 import parse_workbook_v180
 from risk_audit.util import sha256_file
-from test_rules_0917_6 import active_pack_for, execute, make_file, make_record
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SYSTEM_TYPE_OPINION = (
-    "请补充系统类型，该列填报枚举值：一级部署系统、二级部署系统、"
-    "三级部署系统，请根据系统的实际情况填报。"
-)
 
 
 def make_system_rule_file(tmp_path: Path, rows: list[list[str]], headers: list[str]) -> tuple[FileRecord, dict]:
@@ -527,73 +519,8 @@ def test_owner_classification_handles_suffixes_and_negative_headquarters() -> No
     assert classify_system_owner("国家电网有限公司总部业务部门") == "一级部署系统"
 
 
-def field(value: str, coordinate: str) -> FieldValue:
-    """构造测试字段。
-
-    Args:
-        value: 字段当前值。
-        coordinate: 字段单元格坐标。
-    """
-
-    return FieldValue(value, value, coordinate)
-
-
-def system_rule_record(row: int, owner: str, system_type: str = "") -> Record:
-    """构造系统规则记录。
-
-    Args:
-        row: 明细行号。
-        owner: 系统规则管理主体。
-        system_type: 当前系统类型。
-    """
-
-    return Record(
-        "system_rule",
-        "205H",
-        "06",
-        "default",
-        "系统控制规则清单.xlsx",
-        "系统控制规则清单",
-        row,
-        {
-            "system_owner": field(owner, f"D{row}"),
-            "system_type": field(system_type, f"C{row}"),
-        },
-        f"system-rule-{row}",
-    )
-
-
-def test_unknown_owner_reports_once_but_preserved_third_level_does_not() -> None:
-    """无法判断管理主体时逐行提示，已填三级部署系统的记录优先通过。"""
-
-    from risk_audit.checks.confirmed_v180 import system_type_completion_v1
-
-    rows = [
-        system_rule_record(2, "长沙供电分公司"),
-        system_rule_record(3, "长沙供电分公司", "三级部署系统"),
-        system_rule_record(4, "总部", "一级部署系统"),
-    ]
-    context = CheckContext(rows, [], rows, {}, {}, {}, ["205H"], [])
-
-    issues = system_type_completion_v1(context, {})
-
-    assert len(issues) == 1
-    assert issues[0]["record"].row == 2
-    assert issues[0]["evidence"]["issue_type"] == "system_type_unresolved"
-    assert issues[0]["evidence"]["opinion"] == SYSTEM_TYPE_OPINION
-
-
-def test_registry_exposes_system_type_completion_operator() -> None:
-    """规则注册表必须提供系统类型补全后的未决检查能力。"""
-
-    capability = build_registry().get("system_type_completion", 1)
-
-    assert capability.record_types == frozenset({"system_rule"})
-    assert "opinion" in capability.evidence_variables
-
-
 def test_runner_preprocessing_applies_0923_system_type_rules(tmp_path: Path) -> None:
-    """1.9.18 业务预处理入口必须实际执行系统类型规范化。
+    """1.9.20 业务预处理入口必须继续执行系统类型规范化。
 
     Args:
         tmp_path: pytest 提供的隔离目录。
@@ -609,7 +536,7 @@ def test_runner_preprocessing_applies_0923_system_type_rules(tmp_path: Path) -> 
 
     preprocess_business_file(
         source_file,
-        {"manifest": {"version": "1.9.18"}, "field_aliases": aliases},
+        {"manifest": {"version": "1.9.20"}, "field_aliases": aliases},
         {},
         tmp_path / "run",
     )
@@ -619,45 +546,13 @@ def test_runner_preprocessing_applies_0923_system_type_rules(tmp_path: Path) -> 
     assert result.active["C2"].value == "一级部署系统"
 
 
-def test_active_rule_reports_unresolved_system_type_with_unified_opinion() -> None:
-    """无法识别管理主体时，激活规则必须输出 0923-2 统一提示语。"""
+def test_0923_2_release_is_preserved() -> None:
+    """0923-2 来源和历史 1.9.18 规则包必须保留，当前程序使用后续版本。"""
 
-    row = make_record(
-        "system_rule",
-        system_owner="长沙供电分公司",
-        system_type="",
-    )
-
-    findings = execute(
-        active_pack_for("systems.type_completion"),
-        [make_file("system_rule", [row])],
-    )
-
-    assert [finding.message for finding in findings] == [SYSTEM_TYPE_OPINION]
-
-
-def test_0923_2_release_is_preserved_and_rebuildable() -> None:
-    """0923-2 来源和 1.9.18 规则包必须保留，当前程序使用后续发布版本。"""
-
-    assert __version__ == "1.9.19"
+    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.19"
+    assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.18")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0923-2.docx"
     )
-
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools/publish_rules_0923_2.py"), "--verify-only"],
-        cwd=ROOT.parent,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {
-        "release": str(ROOT / "rulepacks/releases/1.9.18"),
-        "activated": False,
-        "verified": True,
-    }

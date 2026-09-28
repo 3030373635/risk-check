@@ -58,7 +58,7 @@ def responsibility_file(records: list[Record]) -> list[FileRecord]:
 
 def test_historical_1911_rulepack_accepts_normativity_only_as_a_responsibility_attribute(registry) -> None:
     """历史1.9.11规则包识别规范性责任属性，但不误认普通业务名词。"""
-    assert __version__ == "1.9.19"
+    assert __version__ == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.11")
     selected = copy.deepcopy(pack)
     selected["rules"] = [
@@ -99,7 +99,7 @@ def test_0917_4_publish_script_rebuilds_release() -> None:
     payload = json.loads(result.stdout)
     assert payload["verified"] is True
     assert payload["activated"] is False
-    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.19"
+    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.20"
 
 
 def test_active_0917_4_rulepack_uses_current_audit_pipeline(tmp_path) -> None:

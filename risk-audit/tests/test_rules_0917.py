@@ -128,7 +128,7 @@ def test_0917_duplicate_rows_do_not_cross_sheet(boundary: str) -> None:
 def test_active_0917_rulepack_executes_new_boundaries() -> None:
     """激活规则包必须继承0917第5条和第15条新版能力。"""
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.19"
+    assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases" / active["version"])
 
     rule_5 = next(rule for rule in pack["rules"] if rule["rule_id"] == "duties.completeness")

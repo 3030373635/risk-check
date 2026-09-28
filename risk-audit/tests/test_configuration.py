@@ -42,7 +42,7 @@ def test_released_pack_hash_is_independent_of_windows_path_separator(
         return builtins.str(value).replace("/", "\\")
 
     monkeypatch.setattr(loader, "str", windows_path_string, raising=False)
-    release_path = project_root / "risk-audit/rulepacks/releases/1.9.19"
+    release_path = project_root / "risk-audit/rulepacks/releases/1.9.20"
 
     pack = loader.load_pack(release_path)
 

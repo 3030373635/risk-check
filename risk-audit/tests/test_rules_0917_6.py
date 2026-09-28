@@ -179,9 +179,9 @@ def test_active_rule_accepts_attribute_and_responsibility_type_without_sentence_
 
 def test_0917_6_release_is_rebuildable() -> None:
     """0917-6源文档必须冻结，1.9.12历史发布包必须可重建。"""
-    assert __version__ == "1.9.19"
+    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.19"
+    assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.12")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0917-6.docx"

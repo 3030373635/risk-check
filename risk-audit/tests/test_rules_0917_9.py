@@ -85,9 +85,9 @@ def test_active_rule_uses_0917_9_standard_opinion() -> None:
 
 def test_0917_9_release_is_rebuildable() -> None:
     """0917-9源文档必须冻结，1.9.13历史发布包必须可重建。"""
-    assert __version__ == "1.9.19"
+    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.19"
+    assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.13")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0917-9.docx"

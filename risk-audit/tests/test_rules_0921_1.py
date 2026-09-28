@@ -74,9 +74,9 @@ def test_other_entity_duty_does_not_satisfy_current_matrix() -> None:
 
 def test_0921_1_release_is_active_and_rebuildable() -> None:
     """0921-1来源必须冻结，1.9.17历史规则包必须可重建且不改变当前激活版本。"""
-    assert __version__ == "1.9.19"
+    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.19"
+    assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.17")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0921-1.docx"

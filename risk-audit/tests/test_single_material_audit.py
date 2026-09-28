@@ -7,7 +7,6 @@ from risk_audit.checks.confirmed_v180 import (
     reference_exists_v2,
     responsibility_department_alignment_v1,
     roles_same_duty_v4,
-    system_rule_changes_v1,
 )
 from risk_audit.checks.materials_v180 import required_documents_v3
 from risk_audit.checks.registry import CheckContext, sheet_exists
@@ -328,59 +327,6 @@ def test_reference_rule_reports_unreliable_source_scope_before_carrier_check() -
 
     assert len(issues) == 1
     assert issues[0]["evidence"]["issue_type"] == "reference_field_unavailable"
-
-
-def test_system_change_rule_skips_when_system_rules_are_absent() -> None:
-    """没有系统规则清单时，矩阵依赖三清单的第7条检查不得生成意见。"""
-    matrix = make_record(
-        "matrix",
-        measure_id="职工福利保障与薪酬管理业务-1.员工信息管理-控制措施01",
-        control_system="人资2.0",
-    )
-    matrix.fields["control_system"].red_spans = [{"text": "人资2.0"}]
-
-    issues = system_rule_changes_v1(make_context([matrix]), {})
-
-    assert issues == []
-
-
-def test_system_change_rule_still_checks_when_system_rules_exist() -> None:
-    """已报送系统规则清单时，第7条仍须核对矩阵修订与系统规则是否对应。"""
-    matrix = make_record(
-        "matrix",
-        measure_id="职工福利保障与薪酬管理业务-1.员工信息管理-控制措施01",
-        control_system="人资2.0",
-    )
-    matrix.fields["control_system"].red_spans = [{"text": "人资2.0"}]
-    system_rule = make_record(
-        "system_rule",
-        row=4,
-        measure_id="职工福利保障与薪酬管理业务-2.工资总额计划管理-控制措施01",
-        system_name="智慧人资",
-    )
-
-    issues = system_rule_changes_v1(make_context([matrix, system_rule]), {})
-
-    assert len(issues) == 1
-    assert issues[0]["evidence"]["issue_type"] == "system_rule_change_mismatch"
-
-
-def test_system_change_rule_checks_when_empty_system_rule_sheet_exists() -> None:
-    """系统规则清单工作表已报送但为空时，第7条仍应核对并提示。"""
-    matrix = make_record(
-        "matrix",
-        measure_id="控制措施01",
-        control_system="人资2.0",
-    )
-    matrix.fields["control_system"].red_spans = [{"text": "人资2.0"}]
-
-    issues = system_rule_changes_v1(
-        make_context([matrix], [make_file("three_lists", ["system_rule"])]),
-        {},
-    )
-
-    assert len(issues) == 1
-    assert issues[0]["evidence"]["issue_type"] == "system_rule_change_mismatch"
 
 
 def test_matrix_only_skips_position_duty_dependent_checks() -> None:

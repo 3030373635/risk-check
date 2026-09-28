@@ -187,3 +187,31 @@ def test_statistics_splits_actual_program_opinions_from_one_written_cell(tmp_pat
         'd：\n【第3条】【第5条】请核实必需字段。 1条。\n'
         '【第10条】请修改岗位职责。 1条。'
     )
+
+
+def test_statistics_includes_preprocessing_opinions(tmp_path):
+    """系统类型预处理提示必须按单位和业务写入审核统计表。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    file = _file(tmp_path, 'a/b/c/d/三清单.xlsx', 'three_lists', '09')
+    ownership = {
+        str(file.relative_path): [{
+            'sheet': '系统控制规则清单',
+            'cell': 'G2',
+            'program_text': (
+                '【预处理】请补充系统类型，该列填报枚举值：一级部署系统、'
+                '二级部署系统、三级部署系统，请根据系统的实际情况填报。'
+            ),
+        }],
+    }
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(target, files=[file], ownership=ownership, package_name='包名')
+
+    assert load_workbook(target)['审核统计表']['B2'].value == (
+        'd：\n【预处理】请补充系统类型，该列填报枚举值：一级部署系统、'
+        '二级部署系统、三级部署系统，请根据系统的实际情况填报。 1条。'
+    )

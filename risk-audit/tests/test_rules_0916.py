@@ -395,7 +395,7 @@ def test_active_duplicate_rule_renders_counterpart_rows_through_engine():
 
 
 def test_delivery_launcher_accepts_current_source_and_rulepack():
-    """交付入口必须接受当前1.9.19源码，并能校验新版业务模板目录。"""
+    """交付入口必须接受当前1.9.20源码，并能校验新版业务模板目录。"""
     result = subprocess.run(
         [sys.executable, str(ROOT.parent / 'run_audit.py'), '--doctor'],
         cwd=ROOT.parent,
@@ -406,8 +406,8 @@ def test_delivery_launcher_accepts_current_source_and_rulepack():
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload['version'] == '1.9.19'
-    assert payload['rulepack'] == '1.9.19'
+    assert payload['version'] == '1.9.20'
+    assert payload['rulepack'] == '1.9.20'
 
 
 def test_missing_duties_match_numeric_measure_parts():
@@ -440,19 +440,6 @@ def test_measure_number_extraction_uses_one_dirty_tolerant_rule():
     for value, expected in samples.items():
         assert measure_id_key(value) == expected
         assert measure_numbers(value) == expected
-
-
-def test_system_rule_changes_require_matching_measure_and_system_name():
-    """矩阵控制系统出现红字时，对应系统规则必须存在且系统名称一致；无参数。"""
-    matrix = record('matrix', measure_id='业务-2.名称-控制措施02', control_system='ERP系统')
-    matrix.fields['control_system'].red_spans = [{'text': 'ERP系统', 'start': 0, 'end': 5}]
-    mismatched = record('system_rule', measure_id='业务-02.其他名称-控制措施2', system_name='财务管控系统')
-
-    issues = run('system_rule_changes_v1', [matrix], {}, [mismatched])
-
-    assert [item['evidence']['issue_type'] for item in issues] == ['system_rule_change_mismatch']
-    matching = record('system_rule', measure_id='业务-02.其他名称-控制措施2', system_name='ERP系统')
-    assert not run('system_rule_changes_v1', [matrix], {}, [matching])
 
 
 @pytest.mark.parametrize(('applicability', 'has_duty', 'expected'), [

@@ -637,10 +637,10 @@ def build_registry() -> CapabilityRegistry:
     reg('responsibility_applicability', ['matrix'], ['restrictions'], ['known_entity_patterns'], [], evidence | {'issue_type'}, ['row'], responsibility_applicability_check)
     from risk_audit.checks.confirmed_v180 import (field_constraints_v4, field_constraints_v5, field_constraints_v6, roles_same_duty_v4,
         responsibility_phrase_v8, responsibility_phrase_v9, value_mapping_v5, duplicate_duties, duplicate_duties_v2, missing_duty_measures, ordered_records_v4,
-        system_rule_changes_v1, system_type_header_v1, system_type_completion_v1,
         measure_applicability_alignment_v1,
         measure_applicability_alignment_v2, measure_applicability_alignment_v3,
         responsibility_department_alignment_v1)
+    from risk_audit.checks.preprocessing import system_type_notice_v1
     for name, old_version, new_version, runner in [
         ('field_constraints', 2, 4, field_constraints_v4),
         ('roles_same_duty', 3, 4, roles_same_duty_v4),
@@ -658,12 +658,8 @@ def build_registry() -> CapabilityRegistry:
     reg('duplicate_duties', ['position_duty'], [], [], [], ['issue_type', 'duplicate_locations'], ['row'], duplicate_duties)
     r.register(replace(r.get('duplicate_duties', 1), version=2, runner=duplicate_duties_v2))
     reg('missing_duty_measures', ['matrix'], [], [], [], ['issue_type', 'measure_id'], ['row'], missing_duty_measures)
-    reg('system_rule_changes', ['matrix'], [], [], [],
-        ['issue_type', 'measure_id', 'matrix_system', 'system_rule_names'], ['row'], system_rule_changes_v1)
-    reg('system_type_header', ['package'], [], [], [],
-        ['issue_type', 'missing_fields'], ['row'], system_type_header_v1)
-    reg('system_type_completion', ['system_rule'], [], [], [],
-        ['issue_type', 'opinion'], ['row'], system_type_completion_v1)
+    reg('system_type_preprocessing_notice', ['system_rule'], [], [], [],
+        ['issue_type'], ['row'], system_type_notice_v1)
     reg('measure_applicability_alignment', ['matrix'], [], [], [],
         ['issue_type', 'measure_id', 'measure_present', 'applicability_text', 'applicability_state', 'applicability_decision'],
         ['row'], measure_applicability_alignment_v1)

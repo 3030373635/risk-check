@@ -93,8 +93,6 @@ def _responsibility_phrase_opinion(evidence: dict[str, Any]) -> str:
 def advice_v2(check_id: str, kind: str, e: dict[str, Any]) -> str:
     """生成审核意见；check_id 为检查编号，kind 为结果类别，e 为检查证据。"""
     category = e.get('issue_type')
-    if check_id == 'system_rule_changes' and category == 'system_rule_change_mismatch':
-        return '请核实与矩阵对应的系统规则是否应该做出修改。'
     if check_id == 'measure_applicability_alignment' and category == 'measure_applicability_mismatch':
         return '请核实适用性。'
     if check_id == 'responsibility_department_alignment' and category == 'responsibility_department_mismatch':
