@@ -51,8 +51,12 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
     statistics_report = result.get("audit_statistics_report")
     run_dir = result.get("run_dir")
+    log_reference = result.get("log_reference")
     if isinstance(statistics_report, str):
         summary["audit_statistics_report"] = statistics_report
+    if isinstance(log_reference, str):
+        # 仅传递可移动的展示路径，不在界面状态中泄露本机绝对目录。
+        summary["log_reference"] = log_reference
     if isinstance(run_dir, str):
         summary["run_dir"] = run_dir
         unaudited_files_report = Path(run_dir) / "_risk_audit/未审核文件.json"

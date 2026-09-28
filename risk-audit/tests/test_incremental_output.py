@@ -238,6 +238,7 @@ def test_trial_records_each_entity_without_output(tmp_path):
     assert len(result['entity_results']) == 2
     assert all(item['write_completed'] is False for item in result['entity_results'])
     assert Path(result['log_file']).is_file()
+    assert result['log_reference'] == 'runs/incremental/audit.log'
 
 
 def test_output_state_accumulates_pending_and_unparsed_files(tmp_path):

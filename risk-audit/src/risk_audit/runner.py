@@ -25,7 +25,7 @@ from risk_audit.readers.excel import parse_files
 from risk_audit.snapshot import build_snapshot, save_snapshot
 from risk_audit.util import sha256_file, write_json
 from risk_audit.writer import OutputState, validate_output_paths, write_outputs
-from risk_audit.program_logging import audit_logging
+from risk_audit.program_logging import audit_logging, build_log_reference
 from risk_audit.models import CheckStatus, FileRecord, Finding
 from risk_audit.review_tasks import build_review_tasks, write_review_tasks
 from risk_audit.issue_routing import build_internal_diagnostics, write_internal_diagnostics
@@ -634,7 +634,10 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     }
     result['entity_results'] = entity_results
     result['business_results'] = business_results
-    result['log_file'] = str(run_dir / 'audit.log')
+    log_file = run_dir / 'audit.log'
+    result['log_file'] = str(log_file)
+    # 展示路径不携带本机绝对目录，输出整体移动后仍可按目录结构定位。
+    result['log_reference'] = build_log_reference(log_file, output_resolved, history_root)
     if write:
         result['audit_statistics_report'] = str(audit_statistics_report)
         result['audit_metadata_dir'] = str(audit_directory)

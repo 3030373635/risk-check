@@ -81,6 +81,7 @@ def test_worker_maps_audit_result_to_terminal_state(
             "limitations": 0,
             "business_results": [{}, {}],
             "run_dir": str(kwargs["run_directory"]),
+            "log_reference": ".task/report/audit.log",
             "audit_statistics_report": str(statistics),
         }
 
@@ -96,6 +97,7 @@ def test_worker_maps_audit_result_to_terminal_state(
     assert state.result_summary["findings"] == 3
     assert state.result_summary["warnings"] == 1
     assert state.result_summary["limitations"] == 0
+    assert state.result_summary["log_reference"] == ".task/report/audit.log"
     assert Path(state.result_summary["audit_statistics_report"]).is_file()
     assert Path(state.result_summary["unaudited_files_report"]).is_file()
     assert "review_report" not in state.result_summary
