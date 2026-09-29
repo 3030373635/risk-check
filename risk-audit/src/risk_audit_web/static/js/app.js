@@ -124,9 +124,12 @@ function unauditedFileCard(item) {
   const reason = document.createElement("p");
   reason.textContent = item.message || "该文件未进入自动审核流程";
   card.append(title, reason);
+  appendUnauditedDetail(card, "失败阶段", item.failure_stage);
+  appendUnauditedDetail(card, "异常类型", item.error_type);
   appendUnauditedDetail(card, "工作表", item.sheet);
   appendUnauditedDetail(card, "数据范围", item.range);
   appendUnauditedDetail(card, "技术信息", item.error);
+  appendUnauditedDetail(card, "详细日志", item.log_reference);
   if (Array.isArray(item.parse_errors) && item.parse_errors.length > 0) {
     const heading = document.createElement("span");
     heading.className = "unaudited-error-title";

@@ -100,7 +100,12 @@ def test_first_entity_is_written_before_second_starts(tmp_path, monkeypatch, cap
 
 
 def test_later_failure_keeps_first_output_and_logs_traceback(tmp_path, monkeypatch):
-    """参数为隔离目录和替换工具；后续主体异常不能丢失已完成副本，日志须及时关闭。"""
+    """后续主体的业务异常必须跳过，且不能丢失已完成副本。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
     input_root, entities_path = create_batch(tmp_path)
     original_engine = runner.run_engine
     logger = logging.getLogger('risk_audit')
@@ -108,18 +113,24 @@ def test_later_failure_keeps_first_output_and_logs_traceback(tmp_path, monkeypat
 
     def fail_second(pack, *args):
         """模拟第二主体引擎异常；pack 为规则包，args 为其余引擎参数。"""
-        if pack['submission_scope']['entity_codes'] == ['B001']:
+        if any('B001' in code for code in pack['submission_scope']['entity_codes']):
             raise RuntimeError('测试第二主体异常')
         return original_engine(pack, *args)
 
     monkeypatch.setattr(runner, 'run_engine', fail_second)
-    with pytest.raises(RuntimeError, match='测试第二主体异常'):
-        execute_batch(tmp_path, input_root, entities_path)
+    result = execute_batch(tmp_path, input_root, entities_path)
+
     assert list((tmp_path / 'output/A001').glob('*.xlsx'))
+    assert not list((tmp_path / 'output/B001').glob('*.xlsx'))
+    assert result['write_completed'] is False
+    assert result['skipped_businesses'] == 1
+    assert result['business_failures'][0]['stage'] == '规则审核'
+    assert result['business_failures'][0]['reason'] == '测试第二主体异常'
     log_text = (tmp_path / 'runs/incremental/audit.log').read_text()
     assert 'B001' in log_text
     assert 'Traceback' in log_text
-    assert '审核异常终止' in log_text
+    assert '处理失败，已跳过' in log_text
+    assert '审核异常终止' not in log_text
     assert logger.handlers == previous_handlers
 
 
@@ -139,24 +150,33 @@ def use_small_baseline(input_root, monkeypatch):
 
 
 def test_second_entity_parse_failure_keeps_first_output(tmp_path, monkeypatch):
-    """tmp_path 为测试目录，monkeypatch 为替换工具；后续主体读取异常仍保留第一主体副本与结果。"""
+    """后续主体读取异常必须跳过业务并保留第一主体结果。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
     input_root, entities_path = create_batch(tmp_path)
     use_small_baseline(input_root, monkeypatch)
     original_parse = runner.parse_files
 
     def fail_second(files, *args, **kwargs):
         """files 为本主体材料，args/kwargs 为读取配置；模拟第二主体读取器不可恢复异常。"""
-        if any(file.entity_code == 'B001' for file in files):
+        if any(file.relative_path.parts[0] == 'B001' for file in files):
             assert list((tmp_path / 'output/A001').glob('*.xlsx'))
             raise RuntimeError('第二主体解析异常')
         return original_parse(files, *args, **kwargs)
 
     monkeypatch.setattr(runner, 'parse_files', fail_second)
-    with pytest.raises(RuntimeError, match='第二主体解析异常'):
-        execute_batch(tmp_path, input_root, entities_path)
+    result = execute_batch(tmp_path, input_root, entities_path)
+
     assert list((tmp_path / 'output/A001').glob('*.xlsx'))
     assert (tmp_path / 'runs/incremental/entities/0001/result.json').is_file()
-    assert not (tmp_path / 'output/B001').exists()
+    assert not list((tmp_path / 'output/B001').glob('*.xlsx'))
+    assert result['write_completed'] is False
+    assert result['skipped_businesses'] == 1
+    assert result['business_failures'][0]['stage'] == '材料解析'
+    assert result['business_failures'][0]['reason'] == '第二主体解析异常'
 
 
 @pytest.mark.parametrize('manual', [False, True])

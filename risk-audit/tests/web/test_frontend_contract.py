@@ -81,6 +81,9 @@ def test_frontend_uses_automatic_name_and_readable_unaudited_files_modal() -> No
     assert 'id="view-unaudited-files-button"' in html
     assert 'id="unaudited-files-modal"' in html
     assert "/unaudited-files" in app_source
+    assert 'appendUnauditedDetail(card, "失败阶段", item.failure_stage)' in app_source
+    assert 'appendUnauditedDetail(card, "异常类型", item.error_type)' in app_source
+    assert 'appendUnauditedDetail(card, "详细日志", item.log_reference)' in app_source
     assert "display_name:" not in app_source
     assert "review-openings" not in app_source
 

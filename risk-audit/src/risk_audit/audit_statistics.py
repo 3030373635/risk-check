@@ -134,8 +134,20 @@ def _program_opinions(program_text: str) -> list[str]:
             for index, start in enumerate(starts)]
 
 
-def _collect_statistics(files: list[FileRecord], ownership: dict[str, list[dict]], package_name: str) -> dict:
-    """归集审核统计；files 为文件，ownership 为实际写回单元格，package_name 为审核包名。"""
+def _collect_statistics(
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    business_failures: list[dict] | None = None,
+) -> dict:
+    """归集审核统计。
+
+    Args:
+        files: 本次审核扫描到的文件。
+        ownership: 实际写回审核意见的单元格归属。
+        package_name: 审核包名称。
+        business_failures: 已跳过业务的结构化失败信息。
+    """
     logger = logging.getLogger(__name__)
     grouped = defaultdict(lambda: defaultdict(dict))
     file_by_output = {
@@ -170,13 +182,40 @@ def _collect_statistics(files: list[FileRecord], ownership: dict[str, list[dict]
                 occurrence = (output_path, state.get('sheet', ''), state.get('cell', ''), message)
                 # ownership 是最终写回结果，相同单元格内的完全相同意见只计一次。
                 item['occurrences'].add(occurrence)
+    file_by_relative_path = {str(file.relative_path): file for file in files}
+    for index, failure in enumerate(business_failures or []):
+        failure_files = failure.get('files') or []
+        failed_file = next(
+            (file_by_relative_path[path] for path in failure_files if path in file_by_relative_path),
+            None,
+        )
+        location = _unit_and_business(failed_file, package_name) if failed_file is not None else None
+        if location is None:
+            logger.warning('审核统计表未能定位跳过业务：%s', failure)
+            continue
+        unit_name, business_name = location
+        # 序号保证同一业务出现多条失败记录时不会互相覆盖。
+        grouped[unit_name][business_name][('failure', index)] = {'failure': failure}
     return grouped
 
 
-def write_audit_statistics(path: Path, files: list[FileRecord], ownership: dict[str, list[dict]],
-                           package_name: str) -> None:
-    """写入审核统计表；path 为目标，files 为材料，ownership 为写回结果，package_name 为包名。"""
-    grouped = _collect_statistics(files, ownership, package_name)
+def write_audit_statistics(
+    path: Path,
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    business_failures: list[dict] | None = None,
+) -> None:
+    """写入审核统计表。
+
+    Args:
+        path: 审核统计表输出路径。
+        files: 本次审核扫描到的文件。
+        ownership: 实际写回审核意见的单元格归属。
+        package_name: 审核包名称。
+        business_failures: 已跳过业务的结构化失败信息。
+    """
+    grouped = _collect_statistics(files, ownership, package_name, business_failures)
     book = Workbook()
     sheet = book.active
     sheet.title = '审核统计表'
@@ -186,7 +225,18 @@ def write_audit_statistics(path: Path, files: list[FileRecord], ownership: dict[
         business_sections = []
         for business_name in sorted(grouped[unit_name], key=natural_key):
             opinion_lines = []
-            for rules, item in sorted(grouped[unit_name][business_name].items()):
+            for group, item in sorted(grouped[unit_name][business_name].items()):
+                if group[0] == 'failure':
+                    failure = item['failure']
+                    opinion_lines.extend([
+                        '【审核状态】已跳过，未完成审核',
+                        f'【失败阶段】{failure["stage"]}',
+                        f'【涉及文件】{"；".join(failure.get("files") or ["未定位具体文件"])}',
+                        f'【异常类型】{failure["error_type"]}',
+                        f'【跳过原因】{failure["reason"]}',
+                        f'【详细日志】{failure["log_reference"]}',
+                    ])
+                    continue
                 opinion_lines.append(f'{item["message"]} {len(item["occurrences"])}条。')
             business_sections.append(f'{business_name}：\n' + ('\n'.join(opinion_lines) or '无'))
         sheet.append([_safe_excel_text(unit_name), _safe_excel_text('\n\n'.join(business_sections))])

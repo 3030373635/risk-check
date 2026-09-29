@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from risk_audit import runner
 from risk_audit.util import sha256_file
@@ -121,8 +121,13 @@ def test_businesses_are_parsed_audited_and_written_independently(tmp_path, monke
     assert len(snapshot['submission_scopes']['A001']['businesses']) == 2
 
 
-def test_later_business_failure_preserves_finished_business(tmp_path, monkeypatch):
-    """tmp_path/monkeypatch 为测试工具；后续业务异常不能丢失同一主体已完成的业务副本。"""
+def test_later_business_failure_is_skipped_and_audit_continues(tmp_path, monkeypatch):
+    """后续业务异常必须落表并结束为部分完成。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
     units = [('06', 'default'), ('07', 'default')]
     input_root, entities_path, sources = create_business_batch(tmp_path, units)
     use_business_baseline(input_root, sources, monkeypatch)
@@ -135,12 +140,139 @@ def test_later_business_failure_preserves_finished_business(tmp_path, monkeypatc
         return original(files, *args, **kwargs)
 
     monkeypatch.setattr(runner, 'parse_files', fail_second)
-    with pytest.raises(RuntimeError, match='第二业务解析异常'):
-        runner.audit(input_root, tmp_path / 'output', ROOT / 'risk-audit/rulepacks/releases/1.8.0',
-                     entities_path, ROOT, tmp_path / 'runs', run_id='business')
+    result = runner.audit(
+        input_root,
+        tmp_path / 'output',
+        ROOT / 'risk-audit/rulepacks/releases/1.8.0',
+        entities_path,
+        ROOT,
+        tmp_path / 'runs',
+        run_id='business',
+    )
+
     assert all((tmp_path / 'output' / source.relative_to(input_root)).exists() for source in sources[units[0]])
+    assert not any((tmp_path / 'output' / source.relative_to(input_root)).exists() for source in sources[units[1]])
     progress = json.loads((tmp_path / 'runs/business/entities/0001/result.json').read_text())
-    assert progress['completed_businesses'] == 1 and progress['write_completed'] is False
+    assert progress['completed_businesses'] == 2 and progress['write_completed'] is False
+    assert result['write_completed'] is False
+    assert result['skipped_businesses'] == 1
+    skipped = result['business_results'][1]
+    assert skipped['status'] == 'skipped'
+    assert skipped['failure_stage'] == '材料解析'
+    assert skipped['error_type'] == 'RuntimeError'
+    assert skipped['skip_reason'] == '第二业务解析异常'
+    assert skipped['log_reference'] == 'runs/business/audit.log'
+    statistics = load_workbook(result['audit_statistics_report'])['审核统计表']
+    statistics_text = '\n'.join(str(cell.value or '') for row in statistics.iter_rows() for cell in row)
+    assert '【审核状态】已跳过，未完成审核' in statistics_text
+    assert '【失败阶段】材料解析' in statistics_text
+    assert '【异常类型】RuntimeError' in statistics_text
+    assert '【跳过原因】第二业务解析异常' in statistics_text
+    assert '【详细日志】runs/business/audit.log' in statistics_text
+    assert all(source.name in statistics_text for source in sources[units[1]])
+    log_text = (tmp_path / 'runs/business/audit.log').read_text(encoding='utf-8')
+    assert '业务07处理失败，已跳过' in log_text and 'Traceback' in log_text
+
+
+def test_business_failure_does_not_swallow_audit_cancel(tmp_path, monkeypatch):
+    """用户取消必须立即终止，不能被业务异常隔离转换为跳过。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
+
+    from risk_audit.progress import AuditCancelled
+
+    units = [('06', 'default'), ('07', 'default')]
+    input_root, entities_path, sources = create_business_batch(tmp_path, units)
+    use_business_baseline(input_root, sources, monkeypatch)
+
+    def cancel_business(files, *args, **kwargs):
+        """模拟业务处理中收到取消；参数为当前文件及读取配置。"""
+        del files, args, kwargs
+        raise AuditCancelled('用户已请求停止审核')
+
+    monkeypatch.setattr(runner, 'parse_files', cancel_business)
+    with pytest.raises(AuditCancelled, match='用户已请求停止审核'):
+        runner.audit(
+            input_root,
+            tmp_path / 'output',
+            ROOT / 'risk-audit/rulepacks/releases/1.8.0',
+            entities_path,
+            ROOT,
+            tmp_path / 'runs',
+            run_id='business',
+        )
+
+
+def test_preprocessing_failure_records_exact_stage_and_file(tmp_path, monkeypatch):
+    """预处理异常必须保留原始类型，并只记录实际报错文件。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
+
+    units = [('06', 'default'), ('07', 'default')]
+    input_root, entities_path, sources = create_business_batch(tmp_path, units)
+    use_business_baseline(input_root, sources, monkeypatch)
+    original_preprocess = runner.preprocess_business_file
+
+    def fail_three_lists(file, pack, baselines, work_dir):
+        """在业务07三清单模拟岗位排序失败；参数与生产预处理入口一致。"""
+        if file.business_code == '07' and file.material_type == 'three_lists':
+            raise runner.BusinessStageError(
+                '岗位排序预处理',
+                file,
+                ValueError('岗位排序合并范围跨越有效明细或其他区域：岗位职责清单!A247:A254'),
+            )
+        return original_preprocess(file, pack, baselines, work_dir)
+
+    monkeypatch.setattr(runner, 'preprocess_business_file', fail_three_lists)
+    result = runner.audit(
+        input_root,
+        tmp_path / 'output',
+        ROOT / 'risk-audit/rulepacks/releases/1.8.0',
+        entities_path,
+        ROOT,
+        tmp_path / 'runs',
+        run_id='business',
+    )
+
+    failure = result['business_failures'][0]
+    assert failure['stage'] == '岗位排序预处理'
+    assert failure['error_type'] == 'ValueError'
+    assert failure['files'] == [str(sources[units[1]][1].relative_to(input_root))]
+    assert 'A247:A254' in failure['reason']
+    unaudited = json.loads(
+        (Path(result['audit_metadata_dir']) / '未审核文件.json').read_text(encoding='utf-8')
+    )
+    unaudited_by_file = {item['file']: item for item in unaudited}
+    matrix_path = str(sources[units[1]][0].relative_to(input_root))
+    lists_path = str(sources[units[1]][1].relative_to(input_root))
+
+    assert set(unaudited_by_file) == {matrix_path, lists_path}
+    assert unaudited_by_file[lists_path] == {
+        'type': 'business_processing_failed',
+        'file': lists_path,
+        'message': '岗位排序预处理失败，当前业务已跳过，该文件未完成审核。',
+        'business_code': '07',
+        'failure_stage': '岗位排序预处理',
+        'error_type': 'ValueError',
+        'error': '岗位排序合并范围跨越有效明细或其他区域：岗位职责清单!A247:A254',
+        'log_reference': 'runs/business/audit.log',
+    }
+    assert unaudited_by_file[matrix_path] == {
+        'type': 'business_skipped_file',
+        'file': matrix_path,
+        'message': '所属业务因其他文件在岗位排序预处理阶段失败而整体跳过，该文件未完成审核。',
+        'business_code': '07',
+        'failure_stage': '岗位排序预处理',
+        'error_type': 'ValueError',
+        'error': '岗位排序合并范围跨越有效明细或其他区域：岗位职责清单!A247:A254',
+        'log_reference': 'runs/business/audit.log',
+    }
 
 
 @pytest.mark.parametrize('fail_copy', [False, True])

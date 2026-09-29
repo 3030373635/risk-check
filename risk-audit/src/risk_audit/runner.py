@@ -24,7 +24,7 @@ from risk_audit.inventory import scan_package
 from risk_audit.readers.excel import parse_files
 from risk_audit.snapshot import build_snapshot, save_snapshot
 from risk_audit.util import sha256_file, write_json
-from risk_audit.writer import OutputState, validate_output_paths, write_outputs
+from risk_audit.writer import OutputState, record_business_failure, validate_output_paths, write_outputs
 from risk_audit.program_logging import audit_logging, build_log_reference
 from risk_audit.models import CheckStatus, FileRecord, Finding
 from risk_audit.review_tasks import build_review_tasks, write_review_tasks
@@ -53,6 +53,23 @@ PREPROCESSING_RULE_VERSIONS = frozenset({
 })
 
 
+class BusinessStageError(RuntimeError):
+    """封装单个业务处理阶段的原始异常。"""
+
+    def __init__(self, stage: str, file: FileRecord, error: Exception) -> None:
+        """保存失败阶段、具体文件和原始异常。
+
+        Args:
+            stage: 面向审核人员展示的失败阶段。
+            file: 触发异常的业务文件。
+            error: 原始异常。
+        """
+        super().__init__(str(error))
+        self.stage = stage
+        self.file = file
+        self.error = error
+
+
 def preprocess_business_file(
     file: FileRecord,
     pack: dict[str, Any],
@@ -73,11 +90,21 @@ def preprocess_business_file(
     if version in PREPROCESSING_RULE_VERSIONS:
         from risk_audit.output_0916 import sort_duties
 
-        sort_duties(file, baselines, work_dir, aliases)
+        try:
+            sort_duties(file, baselines, work_dir, aliases)
+        except AuditCancelled:
+            raise
+        except Exception as error:
+            raise BusinessStageError('岗位排序预处理', file, error) from error
     if version in {'1.9.18', '1.9.19', '1.9.20'}:
         from risk_audit.system_type_preprocessing import preprocess_system_types
 
-        preprocess_system_types(file, work_dir, aliases)
+        try:
+            preprocess_system_types(file, work_dir, aliases)
+        except AuditCancelled:
+            raise
+        except Exception as error:
+            raise BusinessStageError('系统类型预处理', file, error) from error
 
 
 def audit(
@@ -168,7 +195,9 @@ def _has_failures(files: list[FileRecord], statuses: list[CheckStatus], warnings
     business_files = [file for file in files if file.material_type != 'explanation']
     return (any(not file.sheets or file.parse_errors for file in business_files)
             or any(status.status == 'failed' for status in statuses)
-            or any(warning.get('type') in {'no_writable_sheet', 'output_incompatible_file'} for warning in warnings))
+            or any(warning.get('type') in {
+                'no_writable_sheet', 'output_incompatible_file', 'business_processing_failed',
+            } for warning in warnings))
 
 
 def _remove_legacy_opinion_outputs(output_root: Path) -> None:
@@ -396,6 +425,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     findings: list[Finding] = []
     statuses: list[CheckStatus] = []
     warnings: list[dict[str, Any]] = []
+    business_failures: list[dict[str, Any]] = []
+    log_reference = build_log_reference(run_dir / 'audit.log', output_resolved, history_root)
     previous_ownership = _load_previous_ownership(history_root, output_resolved, run_dir) if write else {}
     output_state = OutputState(ownership=dict(previous_ownership), previous_ownership=previous_ownership)
     entity_results: list[dict[str, Any]] = []
@@ -446,49 +477,127 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 message='正在执行审核规则',
             ))
             logger.info('业务%s [%d/%d]：解析%d份文件', unit_label, unit_index, len(unit_keys), len(unit_files))
-            # 各业务的旧格式转换副本独立保存，下一业务不得覆盖已输出业务的读取结果。
-            parse_files(unit_files, pack['field_aliases'], unit_work_dir, include_hidden=include_hidden,
-                        input_overrides=pack.get('input_overrides'), entity_aliases=pack['entity_aliases'],
-                        parser_policy=pack.get('parser_policy'), semantic_lexicon=pack.get('semantic_lexicon'))
-            for file in unit_files:
-                if file.sheets and not file.parse_errors:
-                    file._include_hidden = include_hidden
-                    preprocess_business_file(file, pack, baselines, unit_work_dir)
-            if not scope_file:
-                scopes, scope_report = resolve_submission_scopes(input_resolved, files, entities, pack['entity_aliases'],
-                                                                pack['submission_scope'].get('batch', ''),
-                                                                include_hidden=include_hidden, source_report=scope_report,
-                                                                business_registry=pack['baseline_registry'])
-            snapshot['submission_scopes'] = scopes
-            snapshot['scope_source'] = scope_report
-            snapshot.pop('snapshot_hash'); snapshot['snapshot_hash'] = sha256_json(snapshot)
-            save_snapshot(run_dir / 'snapshot.json', snapshot)
-            write_submission_scope_report(report_directory, scope_report, entities)
-            local = deepcopy(pack)
-            # 主体是否已报送材料由扫描名单确定；缺报某个业务不能被当作整个主体未报送。
-            local['_submitted_entity_codes'] = [entity_key] if any(
-                file.material_type != 'explanation' for file in group_files) else []
-            local['submission_scope'] = {**deepcopy(scopes[entity_key]), 'businesses': [
-                business for business in scopes[entity_key]['businesses']
-                if (business.get('business_id') or business['business_code'], business.get('variant_id', 'default'))
-                == (business_id, variant_id)]}
-            # 清单外主体也执行资料完整性检查，分组标识不表示正式会计主体代码。
-            local['submission_scope']['entity_codes'] = [entity_key]
-            # 规则上下文只包含当前业务的矩阵和三清单；主体说明仅用于说明存在性检查。
-            unit_baselines = {key: value for key, value in baselines.items() if key == (business_id, variant_id)}
+            unit_findings: list[Finding] = []
+            unit_statuses: list[CheckStatus] = []
             unit_limitations: list[dict[str, Any]] = []
-            unit_findings, unit_statuses = run_engine(local, registry, unit_files + explanation_files,
-                                                     entities, unit_baselines, run_id, unit_limitations)
-            unit_warnings = []
-            if write:
-                unit_warnings, _ = write_outputs(unit_files, unit_findings, output_resolved,
-                    entities=entities if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS else None,
-                    output_state=output_state,
-                    baselines=unit_baselines if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None,
-                    metadata_dir=audit_directory)
-            for warning in unit_warnings:
-                logger.warning('业务%s输出告警：%s', unit_label, warning)
-            unit_completed = write and not _has_failures(unit_files, unit_statuses, unit_warnings)
+            unit_warnings: list[dict[str, Any]] = []
+            unit_failure_error: Exception | None = None
+            unit_failure_stage = '材料解析'
+            unit_failure_file: FileRecord | None = None
+            try:
+                # 各业务的旧格式转换副本独立保存，下一业务不得覆盖已输出业务的读取结果。
+                parse_files(unit_files, pack['field_aliases'], unit_work_dir, include_hidden=include_hidden,
+                            input_overrides=pack.get('input_overrides'), entity_aliases=pack['entity_aliases'],
+                            parser_policy=pack.get('parser_policy'), semantic_lexicon=pack.get('semantic_lexicon'))
+                unit_failure_stage = '数据预处理'
+                for file in unit_files:
+                    if file.sheets and not file.parse_errors:
+                        unit_failure_file = file
+                        file._include_hidden = include_hidden
+                        preprocess_business_file(file, pack, baselines, unit_work_dir)
+                unit_failure_file = None
+            except AuditCancelled:
+                raise
+            except Exception as error:
+                unit_failure_error = error
+
+            if unit_failure_error is None:
+                if not scope_file:
+                    scopes, scope_report = resolve_submission_scopes(input_resolved, files, entities, pack['entity_aliases'],
+                                                                    pack['submission_scope'].get('batch', ''),
+                                                                    include_hidden=include_hidden, source_report=scope_report,
+                                                                    business_registry=pack['baseline_registry'])
+                snapshot['submission_scopes'] = scopes
+                snapshot['scope_source'] = scope_report
+                snapshot.pop('snapshot_hash'); snapshot['snapshot_hash'] = sha256_json(snapshot)
+                save_snapshot(run_dir / 'snapshot.json', snapshot)
+                write_submission_scope_report(report_directory, scope_report, entities)
+                local = deepcopy(pack)
+                # 主体是否已报送材料由扫描名单确定；缺报某个业务不能被当作整个主体未报送。
+                local['_submitted_entity_codes'] = [entity_key] if any(
+                    file.material_type != 'explanation' for file in group_files) else []
+                local['submission_scope'] = {**deepcopy(scopes[entity_key]), 'businesses': [
+                    business for business in scopes[entity_key]['businesses']
+                    if (business.get('business_id') or business['business_code'], business.get('variant_id', 'default'))
+                    == (business_id, variant_id)]}
+                # 清单外主体也执行资料完整性检查，分组标识不表示正式会计主体代码。
+                local['submission_scope']['entity_codes'] = [entity_key]
+                # 规则上下文只包含当前业务的矩阵和三清单；主体说明仅用于说明存在性检查。
+                unit_baselines = {key: value for key, value in baselines.items() if key == (business_id, variant_id)}
+                try:
+                    unit_failure_stage = '规则审核'
+                    unit_findings, unit_statuses = run_engine(
+                        local,
+                        registry,
+                        unit_files + explanation_files,
+                        entities,
+                        unit_baselines,
+                        run_id,
+                        unit_limitations,
+                    )
+                    unit_failure_stage = '结果写回'
+                    if write:
+                        unit_warnings, _ = write_outputs(
+                            unit_files,
+                            unit_findings,
+                            output_resolved,
+                            entities=entities if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS else None,
+                            output_state=output_state,
+                            baselines=(unit_baselines
+                                       if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
+                            metadata_dir=audit_directory,
+                        )
+                except AuditCancelled:
+                    raise
+                except Exception as error:
+                    unit_failure_error = error
+
+            unit_failure = None
+            if unit_failure_error is not None:
+                source_error = unit_failure_error
+                if isinstance(unit_failure_error, BusinessStageError):
+                    unit_failure_stage = unit_failure_error.stage
+                    unit_failure_file = unit_failure_error.file
+                    source_error = unit_failure_error.error
+                failed_files = (
+                    [str(unit_failure_file.relative_path)]
+                    if unit_failure_file is not None
+                    else [str(file.relative_path) for file in unit_files]
+                )
+                unit_failure = {
+                    'entity_key': entity_key,
+                    'business_id': business_id,
+                    'business_code': business_code,
+                    'variant_id': variant_id,
+                    'stage': unit_failure_stage,
+                    'files': failed_files,
+                    'error_type': type(source_error).__name__,
+                    'reason': str(source_error) or type(source_error).__name__,
+                    'log_reference': log_reference,
+                }
+                business_failures.append(unit_failure)
+                unit_findings = []
+                unit_statuses = []
+                unit_limitations = []
+                unit_warnings = [{'type': 'business_processing_failed', **unit_failure}]
+                if write:
+                    record_business_failure(output_state, audit_directory, unit_files, unit_failure)
+                logger.error(
+                    '业务%s处理失败，已跳过：阶段=%s，文件=%s，原因=%s',
+                    unit_label,
+                    unit_failure_stage,
+                    failed_files,
+                    source_error,
+                    exc_info=(type(unit_failure_error), unit_failure_error, unit_failure_error.__traceback__),
+                )
+            else:
+                for warning in unit_warnings:
+                    logger.warning('业务%s输出告警：%s', unit_label, warning)
+            unit_completed = (
+                write
+                and unit_failure is None
+                and not _has_failures(unit_files, unit_statuses, unit_warnings)
+            )
             unit_result = {'entity_key': entity_key, 'entity_code': entity_result['entity_code'],
                            'entity_name': entity_name, 'business_id': business_id,
                            'business_code': business_code, 'variant_id': variant_id,
@@ -496,7 +605,16 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                            'entity_registry_message': identity['entity_registry_message'],
                            'input_files': len(unit_files), 'findings': len(unit_findings), 'warnings': len(unit_warnings),
                            'limitations': len(unit_limitations), 'write_completed': unit_completed,
+                           'status': 'skipped' if unit_failure is not None else 'completed',
                            'run_dir': str(unit_report_dir), 'elapsed_seconds': round(perf_counter() - unit_started, 2)}
+            if unit_failure is not None:
+                unit_result.update({
+                    'failure_stage': unit_failure['stage'],
+                    'failed_files': unit_failure['files'],
+                    'error_type': unit_failure['error_type'],
+                    'skip_reason': unit_failure['reason'],
+                    'log_reference': unit_failure['log_reference'],
+                })
             _write_audit_result(
                 unit_report_dir,
                 unit_result,
@@ -527,7 +645,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 total_units=total_units,
                 current_entity=entity_name,
                 current_business=unit_label,
-                message='业务审核已完成',
+                message='业务处理失败，已跳过' if unit_failure is not None else '业务审核已完成',
             ))
             raise_if_cancelled(cancel_check)
         if write and explanation_files:
@@ -588,7 +706,13 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     if write:
         audit_statistics_report = output_resolved / '审核统计表.xlsx'
         # 统计表是独立代码产物，不依赖已删除的意见反馈规则或报告。
-        write_audit_statistics(audit_statistics_report, files, output_state.ownership, input_resolved.name)
+        write_audit_statistics(
+            audit_statistics_report,
+            files,
+            output_state.ownership,
+            input_resolved.name,
+            business_failures=business_failures,
+        )
     warnings.extend({'type': 'hidden_sheets_notice', 'file': a['file'], 'sheets': a['sheets'],
                      'message': '存在隐藏工作表，请按需查看处理提示；未默认纳入审核。' if not include_hidden else '本次明确选择纳入隐藏表，请查看实际处理结果。',
                      'report': hidden_summary['report']} for a in hidden_alerts)
@@ -618,6 +742,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     result['unparsed_files'] = len(unparsed_file_paths)
     result['unparsed_file_paths'] = unparsed_file_paths
     result["limitations"] = len(limitations)
+    result['skipped_businesses'] = len(business_failures)
+    result['business_failures'] = business_failures
     result['internal_diagnostics'] = internal_summary
     if capability_summary is not None:
         result['capability_diagnostics'] = capability_summary
@@ -637,7 +763,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     log_file = run_dir / 'audit.log'
     result['log_file'] = str(log_file)
     # 展示路径不携带本机绝对目录，输出整体移动后仍可按目录结构定位。
-    result['log_reference'] = build_log_reference(log_file, output_resolved, history_root)
+    result['log_reference'] = log_reference
     if write:
         result['audit_statistics_report'] = str(audit_statistics_report)
         result['audit_metadata_dir'] = str(audit_directory)

@@ -47,6 +47,48 @@ class WorkbookOutputCompatibilityError(ValueError):
         self.cell_range = cell_range
 
 
+def record_business_failure(
+    output_state: OutputState,
+    metadata_dir: Path,
+    files: list[FileRecord],
+    failure: dict[str, Any],
+) -> None:
+    """把整个跳过业务的文件登记为未审核。
+
+    Args:
+        output_state: 本次审核的累计输出状态。
+        metadata_dir: 审核诊断文件输出目录。
+        files: 当前跳过业务包含的全部文件。
+        failure: 当前业务的结构化失败信息。
+    """
+
+    failed_files = set(failure.get('files') or [])
+    existing_files = {item.get('file') for item in output_state.unparsed}
+    for file in files:
+        relative_path = str(file.relative_path)
+        if relative_path in existing_files:
+            continue
+        is_failure_source = relative_path in failed_files
+        message = (
+            f'{failure["stage"]}失败，当前业务已跳过，该文件未完成审核。'
+            if is_failure_source
+            else f'所属业务因其他文件在{failure["stage"]}阶段失败而整体跳过，该文件未完成审核。'
+        )
+        output_state.unparsed.append({
+            'type': 'business_processing_failed' if is_failure_source else 'business_skipped_file',
+            'file': relative_path,
+            'message': message,
+            'business_code': failure.get('business_code', ''),
+            'failure_stage': failure['stage'],
+            'error_type': failure['error_type'],
+            'error': failure['reason'],
+            'log_reference': failure['log_reference'],
+        })
+        existing_files.add(relative_path)
+    # 异常业务不会进入常规写回流程，因此必须在捕获点立即持久化。
+    write_json(metadata_dir / '未审核文件.json', output_state.unparsed)
+
+
 def _sheet_paths(zf: zipfile.ZipFile) -> dict[str, str]:
     wb = etree.fromstring(zf.read("xl/workbook.xml"))
     rels = etree.fromstring(zf.read("xl/_rels/workbook.xml.rels"))

@@ -215,3 +215,44 @@ def test_statistics_includes_preprocessing_opinions(tmp_path):
         'd：\n【预处理】请补充系统类型，该列填报枚举值：一级部署系统、'
         '二级部署系统、三级部署系统，请根据系统的实际情况填报。 1条。'
     )
+
+
+def test_statistics_includes_skipped_business_failure_details(tmp_path):
+    """跳过业务必须在统计表中展示阶段、文件、异常、原因和实际日志引用。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    matrix = _file(tmp_path, '测试主体/07物资采购/07风控矩阵.xlsx', 'matrix', '07')
+    lists = _file(tmp_path, '测试主体/07物资采购/07三清单.xlsx', 'three_lists', '07')
+    failure = {
+        'entity_key': '205H',
+        'business_id': 'material_procurement',
+        'business_code': '07',
+        'variant_id': 'default',
+        'stage': '岗位排序预处理',
+        'files': [str(lists.relative_path)],
+        'error_type': 'ValueError',
+        'reason': '岗位排序合并范围跨越有效明细或其他区域：岗位职责清单!A32:A82',
+        'log_reference': '.task/report/audit.log',
+    }
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(
+        target,
+        files=[matrix, lists],
+        ownership={},
+        package_name='报送包',
+        business_failures=[failure],
+    )
+
+    assert load_workbook(target)['审核统计表']['B2'].value == (
+        '07物资采购：\n'
+        '【审核状态】已跳过，未完成审核\n'
+        '【失败阶段】岗位排序预处理\n'
+        '【涉及文件】测试主体/07物资采购/07三清单.xlsx\n'
+        '【异常类型】ValueError\n'
+        '【跳过原因】岗位排序合并范围跨越有效明细或其他区域：岗位职责清单!A32:A82\n'
+        '【详细日志】.task/report/audit.log'
+    )
