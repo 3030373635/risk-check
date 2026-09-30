@@ -72,18 +72,19 @@ def web_services(portable_paths):
     from risk_audit_web.server import ServerController
     from risk_audit_web.services import ApplicationServices
     from risk_audit_web.task_manager import TaskManager
-    from risk_audit_web.task_store import TaskStore
+    from risk_audit_web.task_repository import TaskRepository
 
-    store = TaskStore(portable_paths.data_root)
+    repository = TaskRepository(portable_paths.task_database)
+    repository.initialize()
     manager = TaskManager(
-        store,
+        repository,
         portable_paths.app_root / "风控矩阵审核器.exe",
         popen_factory=lambda *args, **kwargs: SimpleNamespace(pid=700, poll=lambda: None),
     )
     opened = []
     services = ApplicationServices(
         paths=portable_paths,
-        store=store,
+        repository=repository,
         manager=manager,
         directory_picker=DirectoryPicker(dialog=lambda: ""),
         server_controller=ServerController(),

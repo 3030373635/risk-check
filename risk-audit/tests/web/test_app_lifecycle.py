@@ -11,7 +11,7 @@ def test_worker_dispatch_does_not_import_fastapi_or_uvicorn(monkeypatch, tmp_pat
     """Worker 模式必须在导入 Web 服务前分流；monkeypatch/tmp_path 隔离依赖。"""
     from risk_audit_web.app import main
 
-    request = tmp_path / "request.json"
+    database = tmp_path / "tasks.sqlite3"
     imported = []
     original_import = builtins.__import__
 
@@ -21,9 +21,9 @@ def test_worker_dispatch_does_not_import_fastapi_or_uvicorn(monkeypatch, tmp_pat
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", record_import)
-    monkeypatch.setattr("risk_audit_web.worker.run_worker", lambda path: 7)
+    monkeypatch.setattr("risk_audit_web.worker.run_worker", lambda path, task_id: 7)
 
-    assert main(["--worker", str(request)]) == 7
+    assert main(["--worker", str(database), "task-1"]) == 7
     assert not any(name.startswith(("fastapi", "uvicorn")) for name in imported)
 
 
@@ -32,10 +32,10 @@ def test_worker_arguments_always_use_packaged_python_module(tmp_path: Path) -> N
     from risk_audit_web.app import worker_arguments
 
     executable = tmp_path / "python.exe"
-    request = tmp_path / "request.json"
+    database = tmp_path / "tasks.sqlite3"
 
-    assert worker_arguments(executable, request) == [
-        str(executable), "-m", "risk_audit_web.app", "--worker", str(request),
+    assert worker_arguments(executable, database, "task-1") == [
+        str(executable), "-m", "risk_audit_web.app", "--worker", str(database), "task-1",
     ]
 
 

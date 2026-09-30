@@ -13,7 +13,7 @@ from tempfile import gettempdir
 import time
 from typing import Any
 
-from risk_audit_web.task_store import atomic_write_json
+from risk_audit_web.atomic_files import atomic_write_json
 
 
 SESSION_SCHEMA_VERSION = "1.0"

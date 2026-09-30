@@ -109,3 +109,18 @@ def test_task_state_round_trip_keeps_progress_context() -> None:
     assert TaskState.from_dict({**state.to_dict(), "future": True}) == state
 
 
+def test_task_record_has_no_file_state_path(tmp_path: Path) -> None:
+    """公开任务记录不得再包含状态文件路径；tmp_path 为绝对路径根。"""
+    from risk_audit_web.task_contracts import TaskRecord
+
+    record = TaskRecord(
+        schema_version="1.0",
+        task_id="task-1",
+        display_name="资料",
+        input_root=str((tmp_path / "input").resolve()),
+        output_root=str((tmp_path / "output").resolve()),
+        created_at="2026-09-30T10:00:00+08:00",
+    )
+
+    assert "state_path" not in record.to_dict()
+

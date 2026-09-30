@@ -125,7 +125,7 @@ class TaskState:
 
 @dataclass(frozen=True)
 class TaskRecord:
-    """描述便携任务索引中的一条记录。"""
+    """描述任务列表中的一条公开记录。"""
 
     schema_version: str
     task_id: str
@@ -133,14 +133,13 @@ class TaskRecord:
     input_root: str
     output_root: str
     created_at: str
-    state_path: str
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "TaskRecord":
         """解析任务索引记录；value 为 JSON 映射。"""
         known = _known_fields(cls, value)
         _validate_schema(str(known["schema_version"]))
-        _validate_absolute_paths(known, ("input_root", "output_root", "state_path"))
+        _validate_absolute_paths(known, ("input_root", "output_root"))
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:

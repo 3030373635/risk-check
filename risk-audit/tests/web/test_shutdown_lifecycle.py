@@ -13,6 +13,7 @@ class StubManager:
         self.waited = False
         self.wait_results = list(wait_results or [True])
         self.wait_calls = 0
+        self.process_alive = lambda pid: False
 
     def running_task_ids(self) -> list[str]:
         """返回活动任务；无参数。"""
@@ -50,13 +51,13 @@ def test_cancel_active_tasks_shutdown_waits_before_server_exit(tmp_path: Path) -
     """全部安全停止后退出必须等待任务终态；tmp_path 为任务存储。"""
     from risk_audit_web.services import ApplicationServices
     from risk_audit_web.task_paths import PortablePaths
-    from risk_audit_web.task_store import TaskStore
+    from risk_audit_web.task_repository import TaskRepository
 
     manager = StubManager(active=["a", "b"])
     controller = StubServerController()
     service = ApplicationServices(
         paths=PortablePaths.from_app_root(tmp_path),
-        store=TaskStore(tmp_path / "data"),
+        repository=TaskRepository(tmp_path / "data/tasks.sqlite3"),
         manager=manager,
         directory_picker=StubDirectoryPicker(),
         server_controller=controller,
@@ -76,13 +77,13 @@ def test_shutdown_keeps_waiting_after_a_single_timeout(tmp_path: Path) -> None:
     """安全退出必须持续等到全部任务终态；tmp_path 为任务存储。"""
     from risk_audit_web.services import ApplicationServices
     from risk_audit_web.task_paths import PortablePaths
-    from risk_audit_web.task_store import TaskStore
+    from risk_audit_web.task_repository import TaskRepository
 
     manager = StubManager(active=["a"], wait_results=[False, True])
     controller = StubServerController()
     service = ApplicationServices(
         paths=PortablePaths.from_app_root(tmp_path),
-        store=TaskStore(tmp_path / "data"),
+        repository=TaskRepository(tmp_path / "data/tasks.sqlite3"),
         manager=manager,
         directory_picker=StubDirectoryPicker(),
         server_controller=controller,

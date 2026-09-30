@@ -20,8 +20,10 @@
 - `runtime/libreoffice`：平台对应的 LibreOffice 转换运行时。
 - `runtime/licenses`：Python、第三方依赖、Bootstrap 和 LibreOffice 许可证。
 - `runtime/manifest.json`：不可变载荷的文件大小和 SHA-256。
-- `data`：任务索引、服务会话和日志。
-- `outputs`：所有审核输出，每个任务使用独立子目录。
+- `data`：`tasks.sqlite3` 任务历史数据库、服务会话和日志。数据库在首次启动时创建。
+- `outputs`：审核结果、Worker 日志和任务临时目录，每个任务使用独立子目录。
+
+每次在 Web 页面成功创建审核请求就是一个任务，无论最终完成、失败、取消或中断，都会保留在任务列表中。复制或删除 `outputs` 下的目录不会新增或删除任务记录；如删除结果目录，历史任务仍会显示，但对应结果将无法打开。普通 `risk-audit audit`、`risk-audit trial` 命令不会写入桌面端任务数据库，也不会出现在 Web 任务列表中。
 
 ## 本地开发
 

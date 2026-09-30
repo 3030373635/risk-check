@@ -7,25 +7,37 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import json
 from pathlib import Path
+import secrets
 from threading import Lock
 from typing import Any
 
 from risk_audit_web.api_models import OutputPathPreviewRequest, TaskCreateRequest
-from risk_audit_web.diagnostics import DiagnosticReport, run_startup_diagnostics
+from risk_audit_web.diagnostics import (
+    DiagnosticItem,
+    DiagnosticReport,
+    load_active_rulepack,
+    run_startup_diagnostics,
+)
 from risk_audit_web.directory_picker import (
     DirectoryPicker,
     DirectoryPickerBusy,
     DirectoryPickerError,
 )
 from risk_audit_web.server import ServerController
+from risk_audit_web.task_contracts import (
+    SCHEMA_VERSION,
+    TaskEvent,
+    TaskRequest,
+    TaskState,
+)
 from risk_audit_web.task_manager import ManagedTask, TaskManager
 from risk_audit_web.task_paths import (
     PathValidationError,
     PortablePaths,
-    default_output_path,
+    sanitize_directory_name,
     validate_task_paths,
 )
-from risk_audit_web.task_store import TaskStore
+from risk_audit_web.task_repository import TaskDatabaseError, TaskRepository
 
 
 class ApiProblem(Exception):
@@ -89,7 +101,7 @@ class ApplicationServices:
     """组合 API 所需的任务、平台和退出能力。"""
 
     paths: PortablePaths
-    store: TaskStore
+    repository: TaskRepository
     manager: TaskManager
     directory_picker: DirectoryPicker
     server_controller: ServerController
@@ -98,11 +110,24 @@ class ApplicationServices:
     _creation_lock: Lock = field(default_factory=Lock, init=False, repr=False)
     _shutting_down: bool = field(default=False, init=False, repr=False)
     _startup_report: DiagnosticReport = field(init=False, repr=False)
+    _database_error: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """在服务启动时缓存一次必要资源诊断；无参数。"""
         # 状态轮询只复用诊断结果，不重复读取规则包或检查资源路径。
-        self._startup_report = run_startup_diagnostics(self.paths)
+        resource_report = run_startup_diagnostics(self.paths)
+        database_items: list[DiagnosticItem] = []
+        try:
+            self.repository.initialize()
+            self.repository.recover_tasks(is_process_alive=self.manager.process_alive)
+        except TaskDatabaseError as error:
+            self._database_error = str(error)
+            database_items.append(DiagnosticItem(
+                "database_unavailable",
+                str(self.repository.database_path),
+                f"任务数据库不可用：{error}",
+            ))
+        self._startup_report = DiagnosticReport([*resource_report.items, *database_items])
 
     def system_status(self) -> dict[str, Any]:
         """返回服务、资源和任务状态；无参数。"""
@@ -115,7 +140,7 @@ class ApplicationServices:
         except (OSError, json.JSONDecodeError):
             rule_version = None
         return {
-            "service_status": "ok",
+            "service_status": "degraded" if self._database_error else "ok",
             "can_create_task": report.can_start and accepting_tasks,
             "rule_version": rule_version,
             "running_count": self.manager.snapshot().running_count,
@@ -138,9 +163,21 @@ class ApplicationServices:
     def preview_output_path(self, request: OutputPathPreviewRequest) -> dict[str, str]:
         """生成只读输出预览；request 为已验证输入目录。"""
         input_root = Path(request.input_root).resolve(strict=False)
-        output_root = default_output_path(input_root, self.paths.outputs_root, datetime.now().astimezone())
+        output_root = self._next_output_path(input_root, datetime.now().astimezone())
         self._validate_paths(input_root, output_root)
         return {"output_root": str(output_root.resolve(strict=False))}
+
+    def _next_output_path(self, input_root: Path, created_at: datetime) -> Path:
+        """选择未被文件系统或数据库占用的输出路径；参数为输入目录和创建时间。"""
+        directory_name = sanitize_directory_name(input_root.name)
+        timestamp = created_at.strftime("%Y%m%d-%H%M%S")
+        base_name = f"{directory_name}-{timestamp}"
+        candidate = self.paths.outputs_root / base_name
+        suffix = 2
+        while candidate.exists() or self.repository.output_root_exists(candidate):
+            candidate = self.paths.outputs_root / f"{base_name}-{suffix}"
+            suffix += 1
+        return candidate
 
     def _validate_paths(self, input_root: Path, output_root: Path) -> None:
         """验证任务路径并转换错误；参数为输入和输出目录。"""
@@ -152,30 +189,92 @@ class ApplicationServices:
 
     def create_task(self, request: TaskCreateRequest) -> ManagedTask:
         """验证并启动任务；request 为唯一允许的客户端字段。"""
-        try:
-            # 任务索引和输出预占共享一个临界区，避免并发覆盖 tasks.json。
-            with self._creation_lock:
-                if self._shutting_down:
-                    raise ApiProblem(409, "SERVICE_SHUTTING_DOWN", "审核器正在退出，不能创建新任务")
-                if not self._startup_report.can_start:
-                    errors = "；".join(
-                        item.message for item in self._startup_report.items if not item.ok
-                    )
-                    raise ApiProblem(
-                        422,
-                        "ENVIRONMENT_NOT_READY",
-                        f"运行环境检查未通过：{errors}",
-                    )
-                record = self.store.create_task(
-                    input_root=Path(request.input_root),
-                    paths=self.paths,
+        with self._creation_lock:
+            if self._shutting_down:
+                raise ApiProblem(409, "SERVICE_SHUTTING_DOWN", "审核器正在退出，不能创建新任务")
+            if not self._startup_report.can_start:
+                errors = "；".join(
+                    item.message for item in self._startup_report.items if not item.ok
                 )
+                status_code = 500 if self._database_error else 422
+                error_code = "DATABASE_UNAVAILABLE" if self._database_error else "ENVIRONMENT_NOT_READY"
+                raise ApiProblem(status_code, error_code, f"运行环境检查未通过：{errors}")
+
+            creation_time = datetime.now().astimezone()
+            timestamp = creation_time.isoformat(timespec="seconds")
+            task_id = f"{creation_time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
+            input_root = Path(request.input_root).resolve(strict=False)
+            output_root = self._next_output_path(input_root, creation_time)
+            self._validate_paths(input_root, output_root)
+            try:
+                rulepack = load_active_rulepack(self.paths.rulepacks).resolve()
+            except (OSError, ValueError) as error:
+                raise ApiProblem(422, "ENVIRONMENT_NOT_READY", str(error)) from error
+
+            task_request = TaskRequest(
+                schema_version=SCHEMA_VERSION,
+                task_id=task_id,
+                display_name=(
+                    f"{input_root.name or '审核任务'}-{creation_time.strftime('%Y%m%d-%H%M%S')}"
+                ),
+                input_root=str(input_root),
+                output_root=str(output_root.resolve(strict=False)),
+                rulepack=str(rulepack),
+                entity_file=str(self.paths.entity_file.resolve()),
+                baseline_root=str(self.paths.baseline_root.resolve()),
+                config_file=str(self.paths.config_file.resolve()),
+                soffice_path=str(self.paths.soffice.resolve()),
+                created_at=timestamp,
+            )
+            task_state = TaskState(
+                schema_version=SCHEMA_VERSION,
+                task_id=task_id,
+                status="running",
+                stage="startup",
+                completed_units=0,
+                total_units=None,
+                progress_percent=None,
+                current_entity=None,
+                current_business=None,
+                current_file=None,
+                worker_pid=None,
+                started_at=None,
+                heartbeat_at=timestamp,
+                message="任务已创建，正在启动",
+                error_code=None,
+                result_summary=None,
+            )
+            try:
+                # 入库是任务创建边界；提交后任何故障只能把该任务更新为失败。
+                record = self.repository.create_task(
+                    task_request,
+                    task_state,
+                    TaskEvent(SCHEMA_VERSION, task_id, "created", timestamp, {}),
+                )
+            except TaskDatabaseError as error:
+                raise ApiProblem(500, "TASK_CREATE_FAILED", "任务数据库写入失败") from error
+
+            try:
+                output_root.parent.mkdir(parents=True, exist_ok=True)
+                output_root.mkdir(parents=False, exist_ok=False)
                 self.manager.start_task(record)
-        except PathValidationError as error:
-            error_code = "PATH_OVERLAP" if "相互包含" in str(error) else "INVALID_PATH"
-            raise ApiProblem(422, error_code, str(error)) from error
-        except ValueError as error:
-            raise ApiProblem(422, "ENVIRONMENT_NOT_READY", str(error)) from error
+            except Exception as error:
+                failure_time = datetime.now().astimezone().isoformat(timespec="seconds")
+                self.repository.update_task_state(task_id, {
+                    "status": "failed",
+                    "stage": "failed",
+                    "message": f"任务启动失败：{error}",
+                    "worker_pid": None,
+                    "error_code": "TASK_START_FAILED",
+                    "heartbeat_at": failure_time,
+                })
+                self.repository.append_event(TaskEvent(
+                    SCHEMA_VERSION,
+                    task_id,
+                    "failed",
+                    failure_time,
+                    {"error_code": "TASK_START_FAILED", "message": str(error)},
+                ))
         task = self.manager.get_task(record.task_id)
         if task is None:
             raise ApiProblem(500, "TASK_STATE_UNAVAILABLE", "任务已创建但状态暂时无法读取")

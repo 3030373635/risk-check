@@ -17,14 +17,19 @@ APP_ROOT_ENVIRONMENT = "RISK_AUDIT_APP_ROOT"
 PORTABLE_ROOT_DIRECTORIES = ("app", "runtime", "data", "outputs")
 
 
-def worker_arguments(python_executable: Path, request_path: Path) -> list[str]:
-    """生成 Worker 参数；参数为当前 Python 和任务请求文件。"""
+def worker_arguments(
+    python_executable: Path,
+    database_path: Path,
+    task_id: str,
+) -> list[str]:
+    """生成 Worker 参数；参数为当前 Python、数据库路径和任务编号。"""
     return [
         str(python_executable),
         "-m",
         "risk_audit_web.app",
         "--worker",
-        str(request_path),
+        str(database_path),
+        task_id,
     ]
 
 
@@ -132,7 +137,7 @@ def run_primary_instance(
     from risk_audit_web.api.tasks import router as tasks_router
     from risk_audit_web.directory_picker import DirectoryPicker
     from risk_audit_web.logging_setup import configure_server_logging
-    from risk_audit_web.platform_runtime import is_process_alive, open_path
+    from risk_audit_web.platform_runtime import open_path
     from risk_audit_web.process_supervisor import create_process_supervisor
     from risk_audit_web.security import SecuritySettings
     from risk_audit_web.server import (
@@ -150,7 +155,7 @@ def run_primary_instance(
         write_server_session,
     )
     from risk_audit_web.task_manager import TaskManager
-    from risk_audit_web.task_store import TaskStore
+    from risk_audit_web.task_repository import TaskRepository
 
     logger = None
     listener = None
@@ -162,8 +167,7 @@ def run_primary_instance(
     try:
         supervisor.prepare()
         logger = configure_server_logging(paths.data_root)
-        store = TaskStore(paths.data_root)
-        store.recover_tasks(is_process_alive=is_process_alive)
+        repository = TaskRepository(paths.task_database)
         listener = create_loopback_socket()
         port = int(listener.getsockname()[1])
         session = ServerSession(
@@ -181,7 +185,7 @@ def run_primary_instance(
             platform_name=paths.platform_name,
         )
         manager = TaskManager(
-            store,
+            repository,
             executable,
             process_supervisor=supervisor,
             worker_arguments_factory=worker_arguments,
@@ -193,7 +197,7 @@ def run_primary_instance(
 
         services = ApplicationServices(
             paths=paths,
-            store=store,
+            repository=repository,
             manager=manager,
             directory_picker=DirectoryPicker(),
             server_controller=controller,
@@ -268,10 +272,10 @@ def run_web_application(argv: Sequence[str]) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """启动 Web 主程序或 Worker；argv 为可选命令行参数，返回退出码。"""
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) == 2 and args[0] == "--worker":
+    if len(args) == 3 and args[0] == "--worker":
         from risk_audit_web.worker import run_worker
 
-        return run_worker(Path(args[1]))
+        return run_worker(Path(args[1]), args[2])
     return run_web_application(args)
 
 

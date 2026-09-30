@@ -10,7 +10,7 @@ def test_web_runtime_modules_import_without_pyside(monkeypatch) -> None:
     for name in (
         "risk_audit_web.task_contracts",
         "risk_audit_web.task_paths",
-        "risk_audit_web.task_store",
+        "risk_audit_web.task_repository",
         "risk_audit_web.diagnostics",
         "risk_audit_web.platform_runtime",
         "risk_audit_web.worker",

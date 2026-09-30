@@ -76,6 +76,11 @@ class PortablePaths:
         """返回Web 审核运行配置路径；无参数。"""
         return self.rulepacks / "audit-config.json"
 
+    @property
+    def task_database(self) -> Path:
+        """返回任务 SQLite 数据库路径；无参数。"""
+        return self.data_root / "tasks.sqlite3"
+
 
 def sanitize_directory_name(raw_name: str) -> str:
     """生成合法 Windows 目录名；raw_name 为材料目录原名。"""

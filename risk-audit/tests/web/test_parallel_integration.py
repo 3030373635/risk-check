@@ -1,38 +1,25 @@
-"""验证独立 Worker 的并行、取消、崩溃隔离和重启恢复。"""
+"""验证独立 SQLite Worker 的并行、取消、崩溃隔离和重启恢复。"""
 
 from datetime import datetime, timedelta, timezone
-import json
 import os
 from pathlib import Path
 import sys
 import time
 
 
-def create_task(store, tmp_path: Path, task_id: str, barrier: Path, mode: str = "complete"):
-    """创建可供真实子进程使用的任务；参数为存储、路径、编号、栅栏和模式。"""
-    from risk_audit_web.task_contracts import TaskRecord, TaskState
+def create_task(repository, tmp_path: Path, task_id: str):
+    """创建真实进程任务；repository 为仓储，tmp_path 为根，task_id 为编号。"""
+    from risk_audit_web.task_contracts import TaskEvent
+    from tests.web.test_task_repository import make_request, make_state
 
-    output_root = (tmp_path / "outputs" / task_id).resolve()
-    task_dir = output_root / ".task"
-    task_dir.mkdir(parents=True)
-    request_path = task_dir / "request.json"
-    request_path.write_text(json.dumps({
-        "task_id": task_id,
-        "barrier": str(barrier.resolve()),
-        "mode": mode,
-    }), encoding="utf-8")
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-    record = TaskRecord(
-        "1.0", task_id, task_id, str((tmp_path / "input").resolve()),
-        str(output_root), timestamp, str((task_dir / "state.json").resolve()),
+    request = make_request(tmp_path, task_id)
+    output_root = Path(request.output_root)
+    (output_root / ".task").mkdir(parents=True)
+    return repository.create_task(
+        request,
+        make_state(task_id),
+        TaskEvent("1.0", task_id, "created", request.created_at, {}),
     )
-    state = TaskState(
-        "1.0", task_id, "running", "startup", 0, None, None,
-        None, None, None, None, None, timestamp, "created", None, None,
-    )
-    store.add_task(record)
-    store.write_state(Path(record.state_path), state)
-    return record
 
 
 def wait_until(predicate, timeout: float = 5.0) -> None:
@@ -45,107 +32,125 @@ def wait_until(predicate, timeout: float = 5.0) -> None:
     raise AssertionError(f"等待条件超时（{timeout} 秒）")
 
 
-def make_manager(store, fake_worker: Path):
-    """创建使用真实 Python 子进程的管理器；参数为存储和脚本。"""
+def make_manager(repository, fake_worker: Path, barrier: Path, modes: dict[str, str]):
+    """创建真实子进程管理器；参数为仓储、脚本、栅栏和任务模式。"""
     from risk_audit_web.task_manager import TaskManager
 
+    def arguments(_executable: Path, database: Path, task_id: str) -> list[str]:
+        """生成测试 Worker 参数；参数为解释器、数据库和任务编号。"""
+        return [
+            sys.executable,
+            str(fake_worker),
+            str(database),
+            task_id,
+            str(barrier),
+            modes.get(task_id, "complete"),
+        ]
+
     return TaskManager(
-        store,
+        repository,
         Path(sys.executable),
-        worker_arguments_factory=lambda _executable, request: [sys.executable, str(fake_worker), str(request)],
+        worker_arguments_factory=arguments,
     )
 
 
+def new_repository(tmp_path: Path):
+    """创建已初始化仓储；tmp_path 为隔离根。"""
+    from risk_audit_web.task_repository import TaskRepository
+
+    repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
+    repository.initialize()
+    return repository
+
+
 def test_two_workers_overlap_and_keep_directories_isolated(tmp_path: Path) -> None:
-    """两个 Worker 必须在同一栅栏前同时就绪，且工作目录互不混用。"""
-    from risk_audit_web.task_store import TaskStore
-
-    store = TaskStore(tmp_path / "data")
+    """两个 Worker 必须同时运行且工作目录互不混用；tmp_path 为隔离根。"""
+    repository = new_repository(tmp_path)
     barrier = tmp_path / "release"
-    a = create_task(store, tmp_path, "task-a", barrier)
-    b = create_task(store, tmp_path, "task-b", barrier)
-    manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
-    manager.start_task(a)
-    manager.start_task(b)
-    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (a, b)))
+    records = [create_task(repository, tmp_path, task_id) for task_id in ("task-a", "task-b")]
+    manager = make_manager(repository, Path(__file__).with_name("fake_worker.py"), barrier, {})
+    for record in records:
+        manager.start_task(record)
+    wait_until(lambda: all((Path(item.output_root) / ".task/ready").exists() for item in records))
 
-    state_a, state_b = store.read_state(a), store.read_state(b)
-    assert state_a.status == state_b.status == "running"
-    assert state_a.worker_pid != state_b.worker_pid
+    states = [repository.read_state(item.task_id) for item in records]
+    assert all(state.status == "running" for state in states)
+    assert states[0].worker_pid != states[1].worker_pid
     barrier.touch()
-    wait_until(lambda: store.read_state(a).status == store.read_state(b).status == "completed")
-    expected_task_store = Path(__file__).resolve().parents[2] / "src/risk_audit_web/task_store.py"
-    for record in (a, b):
+    wait_until(lambda: all(repository.read_state(item.task_id).status == "completed" for item in records))
+    for record in records:
         task_dir = Path(record.output_root) / ".task"
         assert (task_dir / "work/owner.txt").read_text(encoding="utf-8") == record.task_id
         assert (task_dir / "lo-profile/owner.txt").read_text(encoding="utf-8") == record.task_id
-        worker_log = (task_dir / "worker.log").read_text(encoding="utf-8")
-        assert record.task_id in worker_log
-        assert f"module={expected_task_store}" in worker_log
         assert (Path(record.output_root) / "result.txt").read_text(encoding="utf-8") == record.task_id
+        for removed_name in ("request.json", "state.json", "events.jsonl", "cancel.requested"):
+            assert not (task_dir / removed_name).exists()
 
 
-def test_cancelling_one_worker_does_not_affect_the_other(tmp_path: Path) -> None:
-    """取消 A 必须只作用于 A，B 仍然正常完成。"""
-    from risk_audit_web.task_store import TaskStore
-
-    store = TaskStore(tmp_path / "data")
+def test_cancelling_one_worker_does_not_affect_other(tmp_path: Path) -> None:
+    """取消 A 必须只作用于 A，B 仍正常完成；tmp_path 为隔离根。"""
+    repository = new_repository(tmp_path)
     barrier = tmp_path / "release"
-    a = create_task(store, tmp_path, "task-a", barrier)
-    b = create_task(store, tmp_path, "task-b", barrier)
-    manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
-    manager.start_task(a)
-    manager.start_task(b)
-    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (a, b)))
+    first = create_task(repository, tmp_path, "task-a")
+    second = create_task(repository, tmp_path, "task-b")
+    manager = make_manager(repository, Path(__file__).with_name("fake_worker.py"), barrier, {})
+    manager.start_task(first)
+    manager.start_task(second)
+    wait_until(lambda: all(
+        (Path(item.output_root) / ".task/ready").exists() for item in (first, second)
+    ))
+
     assert manager.request_cancel("task-a")
     barrier.touch()
-    wait_until(lambda: store.read_state(a).status == "cancelled")
-    wait_until(lambda: store.read_state(b).status == "completed")
-
-    assert not (Path(b.output_root) / ".task/cancel.requested").exists()
-    assert "task-a" not in (Path(b.output_root) / ".task/worker.log").read_text(encoding="utf-8")
+    wait_until(lambda: repository.read_state("task-a").status == "cancelled")
+    wait_until(lambda: repository.read_state("task-b").status == "completed")
+    assert repository.is_cancel_requested("task-b") is False
 
 
 def test_crashed_worker_is_interrupted_while_other_completes(tmp_path: Path) -> None:
-    """单个 Worker 无终态退出后必须中断，另一个仍可更新至完成。"""
-    from risk_audit_web.task_store import TaskStore
-
-    store = TaskStore(tmp_path / "data")
+    """单个 Worker 崩溃必须中断，另一个仍完成；tmp_path 为隔离根。"""
+    repository = new_repository(tmp_path)
     barrier = tmp_path / "release"
-    crashed = create_task(store, tmp_path, "crashed", barrier, "crash")
-    healthy = create_task(store, tmp_path, "healthy", barrier)
-    manager = make_manager(store, Path(__file__).with_name("fake_worker.py"))
+    crashed = create_task(repository, tmp_path, "crashed")
+    healthy = create_task(repository, tmp_path, "healthy")
+    manager = make_manager(
+        repository,
+        Path(__file__).with_name("fake_worker.py"),
+        barrier,
+        {"crashed": "crash"},
+    )
     manager.start_task(crashed)
     manager.start_task(healthy)
-    wait_until(lambda: all((Path(record.output_root) / ".task/ready").exists() for record in (crashed, healthy)))
+    wait_until(lambda: all(
+        (Path(item.output_root) / ".task/ready").exists() for item in (crashed, healthy)
+    ))
     barrier.touch()
 
-    def poll_to_terminal() -> bool:
-        """轮询直至两任务终态；无参数。"""
+    def both_terminal() -> bool:
+        """驱动进程稳定化并判断两任务终态；无参数。"""
         manager.snapshot()
-        return store.read_state(crashed).status == "interrupted" and store.read_state(healthy).status == "completed"
+        return (
+            repository.read_state("crashed").status == "interrupted"
+            and repository.read_state("healthy").status == "completed"
+        )
 
-    wait_until(poll_to_terminal)
-    states = {item.record.task_id: item.state.status for item in manager.snapshot().tasks}
-    assert states["healthy"] == "completed"
+    wait_until(both_terminal)
 
 
-def test_new_store_recovers_live_dead_and_completed_tasks(tmp_path: Path) -> None:
-    """新实例必须保留存活和已完成任务，将死进程标为中断。"""
-    from risk_audit_web.task_store import TaskStore
-
-    original = TaskStore(tmp_path / "data")
-    barrier = tmp_path / "unused"
-    live = create_task(original, tmp_path, "live", barrier)
-    dead = create_task(original, tmp_path, "dead", barrier)
-    completed = create_task(original, tmp_path, "completed", barrier)
+def test_new_repository_recovers_live_dead_and_completed_tasks(tmp_path: Path) -> None:
+    """新仓储必须保留存活和终态任务，将死进程标为中断；tmp_path 为隔离根。"""
+    repository = new_repository(tmp_path)
+    for task_id in ("live", "dead", "completed"):
+        create_task(repository, tmp_path, task_id)
     fresh = datetime.now(timezone.utc).isoformat(timespec="seconds")
     old = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds")
-    original.write_state(Path(live.state_path), original.read_state(live).with_updates(worker_pid=os.getpid(), heartbeat_at=fresh))
-    original.write_state(Path(dead.state_path), original.read_state(dead).with_updates(worker_pid=2_147_483_647, heartbeat_at=old))
-    original.write_state(Path(completed.state_path), original.read_state(completed).with_updates(status="completed", stage="completed", progress_percent=100))
+    repository.update_task_state("live", {"worker_pid": os.getpid(), "heartbeat_at": fresh})
+    repository.update_task_state("dead", {"worker_pid": 2_147_483_647, "heartbeat_at": old})
+    repository.update_task_state("completed", {
+        "status": "completed", "stage": "completed", "progress_percent": 100,
+    })
 
-    restarted = TaskStore(tmp_path / "data")
+    restarted = new_repository(tmp_path)
     recovery = restarted.recover_tasks(is_process_alive=lambda pid: pid == os.getpid())
     states = {task.record.task_id: task.state.status for task in recovery.tasks}
 

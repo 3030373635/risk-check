@@ -78,6 +78,7 @@ def test_portable_paths_are_anchored_to_app_root_for_each_platform(
     assert paths.runtime_root == paths.app_root / "runtime"
     assert paths.data_root == paths.app_root / "data"
     assert paths.outputs_root == paths.app_root / "outputs"
+    assert paths.task_database == paths.app_root / "data/tasks.sqlite3"
     assert paths.soffice == paths.app_root / relative_soffice
 
 

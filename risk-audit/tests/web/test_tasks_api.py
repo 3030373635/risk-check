@@ -1,6 +1,7 @@
 """验证任务资源 REST API。"""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 import re
 
@@ -120,10 +121,10 @@ def test_read_unaudited_files_returns_customer_friendly_json_resource(
         "parse_errors": ["缺少风险事件列", "缺少控制措施列"],
     }]
     report_path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
-    state = web_services.store.read_state(task.record).with_updates(
-        result_summary={"unaudited_files_report": str(report_path)},
+    web_services.repository.update_task_state(
+        task.record.task_id,
+        {"result_summary": {"unaudited_files_report": str(report_path)}},
     )
-    web_services.store.write_state(Path(task.record.state_path), state)
 
     response = client.get(
         f"/api/v1/tasks/{task.record.task_id}/unaudited-files",
@@ -147,11 +148,12 @@ def test_read_unaudited_files_reports_invalid_utf8(
     ).json()
     task = web_services.get_task(created["task_id"])
     report_path = Path(task.record.output_root) / ".task/未审核文件.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_bytes(b"\xff\xfe")
-    state = web_services.store.read_state(task.record).with_updates(
-        result_summary={"unaudited_files_report": str(report_path)},
+    web_services.repository.update_task_state(
+        task.record.task_id,
+        {"result_summary": {"unaudited_files_report": str(report_path)}},
     )
-    web_services.store.write_state(Path(task.record.state_path), state)
 
     response = client.get(
         f"/api/v1/tasks/{task.record.task_id}/unaudited-files",
@@ -160,3 +162,60 @@ def test_read_unaudited_files_reports_invalid_utf8(
 
     assert response.status_code == 500
     assert response.json()["error_code"] == "INVALID_RESULT"
+
+
+def test_list_returns_every_created_task_status_without_internal_fields(
+    client,
+    web_services,
+    tmp_path: Path,
+) -> None:
+    """列表必须返回全部终态且隐藏内部字段；参数为客户端、服务和隔离目录。"""
+    from risk_audit_web.task_contracts import TaskEvent
+    from tests.web.test_task_repository import make_request, make_state
+
+    statuses = ["completed", "partial", "failed", "cancelled", "interrupted"]
+    for index, status in enumerate(statuses):
+        task_id = f"task-{index}"
+        created_at = f"2026-09-30T10:0{index}:00+08:00"
+        request = replace(make_request(tmp_path, task_id), created_at=created_at)
+        state = make_state(task_id).with_updates(status=status, stage=status)
+        web_services.repository.create_task(
+            request,
+            state,
+            TaskEvent("1.0", task_id, "created", created_at, {}),
+        )
+
+    response = client.get("/api/v1/tasks", headers={"X-Local-Token": "secret"})
+
+    assert response.status_code == 200
+    tasks = response.json()["tasks"]
+    assert [task["status"] for task in tasks] == list(reversed(statuses))
+    assert all("state_path" not in task for task in tasks)
+    assert all("database_path" not in task for task in tasks)
+    assert all("cancel_requested" not in task for task in tasks)
+
+
+def test_created_task_remains_in_rest_list_when_worker_start_fails(
+    client,
+    web_services,
+    input_root: Path,
+    monkeypatch,
+) -> None:
+    """Worker 启动失败后创建接口和列表仍须返回任务；参数为端到端测试依赖。"""
+    monkeypatch.setattr(
+        web_services.manager,
+        "start_task",
+        lambda record: (_ for _ in ()).throw(OSError("启动失败")),
+    )
+
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    )
+    listed = client.get("/api/v1/tasks", headers={"X-Local-Token": "secret"})
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "failed"
+    assert listed.json()["tasks"][0]["task_id"] == created.json()["task_id"]
+    assert listed.json()["tasks"][0]["status"] == "failed"
