@@ -8,7 +8,7 @@
     },
     {
       "business_id": "power_purchase_trading", "business_code": "02", "business_name": "交易与购电",
-      "aliases": ["交易与购电", "交易购电"],
+      "aliases": ["交易与购电", "交易购电", "营销购电"],
       "variants": [{"variant_id": "default", "aliases": [], "template": {"path": "templates/第一批省公司通用版本整合0818/第一批省公司通用版本整合9.4/02 交易与购电/02风控矩阵-交易与购电-省公司.xlsx", "sha256": "e7d4cd87bcf8f2b38026421862212cc665bfd8c7aebf6132c617d07aefbd3316"}}]
     },
     {
@@ -41,7 +41,7 @@
     },
     {
       "business_id": "digitalization_rd_investment", "business_code": "08", "business_name": "数字化与研发投入",
-      "aliases": ["数字化与研发投入", "数字化研发投入", "科研投入"],
+      "aliases": ["数字化与研发投入", "数字化研发投入", "数字化与研发", "科研投入"],
       "variants": [{"variant_id": "default", "aliases": [], "template": {"path": "templates/第一批省公司通用版本整合0818/第一批省公司通用版本整合9.4/08 数字化与研发投入/08风控矩阵-数字化与研发投入-省公司版（审定）8.5.xlsx", "sha256": "19df00a902351d9a1355fc314cca31c0de9d712114c8821a4949a5f8c12890fb"}}]
     },
     {

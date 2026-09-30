@@ -38,39 +38,24 @@ def true_format(path: Path) -> str:
 
 
 def classify_material(path: Path) -> str | None:
+    """根据文件名判断材料类型。
+
+    Args:
+        path: 待判断的材料文件路径。
+    """
+
     name = path.name
     auxiliary = ("适用性匹配", "意见建议", "成果清单", "应用清单", "统计表")
     if any(x in name for x in auxiliary): return None
     if path.suffix.lower() in {".doc", ".docx"}: return "explanation" if "说明" in name else None
-    if "三清单" in name: return "three_lists"
-    if "风控矩阵" in name: return "matrix"
+    # 同时包含两类关键字时沿用三清单优先级，工作表解析仍会识别矩阵表。
+    if "清单" in name: return "three_lists"
+    if "矩阵" in name: return "matrix"
     return None
 
 
 def is_auxiliary(path: Path) -> bool:
     return any(x in path.name for x in ("适用性匹配", "意见建议", "成果清单", "应用清单", "统计表"))
-
-
-def probe_material(path: Path) -> str | None:
-    if path.suffix.lower() == ".docx":
-        try:
-            from docx import Document
-            doc = Document(path)
-            text = "\n".join([p.text for p in doc.paragraphs[:30]] + [str(cell.text) for table in doc.tables[:5] for row in table.rows[:10] for cell in row.cells])
-            return "explanation" if "说明" in text else None
-        except Exception:
-            return None
-    if path.suffix.lower() != ".xlsx": return None
-    try:
-        from openpyxl import load_workbook
-        wb = load_workbook(path, read_only=False, data_only=False)
-        for ws in wb.worksheets:
-            values = {str(c.value).strip().replace(" ", "") for c in ws._cells.values() if c.row <= 8 and c.value not in (None, "")}
-            if {"部门", "岗位名称", "岗位职责"} <= values: return "three_lists"
-            if "控制措施" in values and ("控制措施编号" in values or "控制措施/编号" in values): return "matrix"
-    except Exception:
-        return None
-    return None
 
 
 def identify_business(relative: Path) -> tuple[str | None, str]:
@@ -107,7 +92,7 @@ def scan_package(
                 or path.suffix.lower() not in {".xlsx", ".xls", ".et", ".doc", ".docx"}):
             continue
         if is_auxiliary(path): continue
-        material = classify_material(path) or probe_material(path)
+        material = classify_material(path)
         if not material: continue
         rel = path.relative_to(base)
         business_id = None

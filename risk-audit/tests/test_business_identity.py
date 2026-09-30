@@ -10,6 +10,7 @@ from risk_audit.business_identity import (
     normalize_business_text,
     validate_business_registry,
 )
+from risk_audit.inventory import classify_material
 from risk_audit.util import read_json, sha256_file
 
 
@@ -67,6 +68,15 @@ def business_registry() -> dict:
                     "path": "education.xlsx", "sha256": "f" * 64,
                 }}],
             },
+            {
+                "business_id": "distribution_grid_project_management",
+                "business_code": "05",
+                "business_name": "配网工程管理",
+                "aliases": ["配网工程管理", "配网工程"],
+                "variants": [{"variant_id": "default", "aliases": [], "template": {
+                    "path": "distribution-grid.xlsx", "sha256": "2" * 64,
+                }}],
+            },
         ],
     }
 
@@ -82,8 +92,8 @@ def test_normalize_business_text_ignores_spacing_parentheses_hyphens_and_case():
         ("第一批/01 营销售电/01风控矩阵.xlsx", "sales_electricity", "01", "default"),
         ("第二批/01 股权(产权)管理-省公司版/01三清单.xlsx", "equity_management", "01", "default"),
         ("第二批/28 教育 培训—省公司版/28风控矩阵.xlsx", "education_training", "28", "default"),
-        ("第一批/03 电网基建/35KV—220KV/03风控矩阵.xlsx", "grid_construction", "03", "35-220kv"),
-        ("第一批/03 电网基建/500千伏-750千伏/03风控矩阵.xlsx", "grid_construction", "03", "500-750kv"),
+        ("第一批/03 电网基建 35KV—220KV/03风控矩阵.xlsx", "grid_construction", "03", "35-220kv"),
+        ("第一批/03 电网基建 500千伏-750千伏/03风控矩阵.xlsx", "grid_construction", "03", "500-750kv"),
         ("第二批/03 合同管理/03风控矩阵.xlsx", "contract_management", "03", "default"),
     ],
 )
@@ -108,6 +118,62 @@ def test_longest_alias_resolves_containment(business_registry: dict):
     result = identify_business(Path("01 股权（产权）管理/股权管理矩阵.xlsx"), business_registry)
     assert result.business_id == "equity_management"
     assert result.matched_alias == "股权（产权）管理"
+
+
+def test_identify_business_uses_direct_parent_directory_code(business_registry: dict):
+    """父目录只有业务编号和简称时，必须通过唯一编号识别业务。"""
+    result = identify_business(
+        Path("本部/05配网/附件：三清单模板-本部927.xlsx"),
+        business_registry,
+    )
+
+    assert (result.business_id, result.business_code, result.business_name) == (
+        "distribution_grid_project_management",
+        "05",
+        "配网工程管理",
+    )
+
+
+def test_identify_business_ignores_business_name_in_filename(business_registry: dict):
+    """文件名中的其他业务名不得覆盖直接父目录确定的业务。"""
+    result = identify_business(
+        Path("01 营销售电/股权产权管理矩阵.xlsx"),
+        business_registry,
+    )
+
+    assert result.business_id == "sales_electricity"
+
+
+def test_identify_business_rejects_duplicate_directory_code(business_registry: dict):
+    """父目录只命中重复业务编号时不得猜测具体业务。"""
+    with pytest.raises(BusinessIdentityError, match="业务编号映射冲突"):
+        identify_business(Path("01业务/清单.xlsx"), business_registry)
+
+
+def test_identify_business_rejects_filename_only_match(business_registry: dict):
+    """父目录无法识别时，不得使用文件名中的业务名兜底。"""
+    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
+        identify_business(Path("未知目录/营销售电矩阵.xlsx"), business_registry)
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "expected_business_id"),
+    [
+        ("本部/02营销购电矩阵/附件清单.xlsx", "power_purchase_trading"),
+        ("本部/08 数字化与研发/附件矩阵.xlsx", "digitalization_rd_investment"),
+    ],
+)
+def test_active_registry_recognizes_submission_directory_aliases(
+    relative_path: str,
+    expected_business_id: str,
+):
+    """relative_path 为实际报送目录；活动规则包必须覆盖业务目录简称。"""
+    registry_path = Path(__file__).resolve().parents[1] / "rulepacks/releases/1.9.20/baseline_registry.json"
+    registry = read_json(registry_path)
+
+    result = identify_business(Path(relative_path), registry)
+
+    assert result.business_id == expected_business_id
 
 
 def test_equal_length_business_alias_conflict_is_rejected(business_registry: dict):
@@ -139,7 +205,23 @@ def test_multiple_non_default_variants_are_rejected_even_when_alias_lengths_diff
     grid["variants"][0]["aliases"].append("35kv")
 
     with pytest.raises(BusinessIdentityError, match="模板变体映射冲突"):
-        identify_business(Path("03 电网基建/35kv与500kv-750kv/矩阵.xlsx"), business_registry)
+        identify_business(Path("03 电网基建 35kv与500kv-750kv/矩阵.xlsx"), business_registry)
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("附件清单.xlsx", "three_lists"),
+        ("附件三清单.xlsx", "three_lists"),
+        ("内部控制矩阵.xlsx", "matrix"),
+        ("风控矩阵.xlsx", "matrix"),
+        ("矩阵及三清单.xlsx", "three_lists"),
+        ("普通附件.xlsx", None),
+    ],
+)
+def test_classify_material_uses_filename_keywords(filename: str, expected: str | None):
+    """表格材料类型必须只由文件名中的清单或矩阵关键字决定。"""
+    assert classify_material(Path(filename)) == expected
 
 
 def test_validate_business_registry_rejects_unstable_or_ambiguous_configuration(business_registry: dict):
@@ -156,6 +238,44 @@ def test_validate_business_registry_rejects_unstable_or_ambiguous_configuration(
     assert any("不允许纯数字" in error for error in errors)
     assert any("variant_id 重复" in error for error in errors)
     assert any("模板路径重复" in error for error in errors)
+
+
+@pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
+def test_scanner_uses_filename_only_for_spreadsheet_material(
+    tmp_path,
+    business_registry: dict,
+    scanner_name: str,
+):
+    """scanner_name 为扫描器版本；无关键字表格即使内容像矩阵也必须忽略。"""
+    from risk_audit.inventory import scan_package
+    from risk_audit.inventory_v180 import scan_package_v180
+    from risk_audit.models import Entity
+
+    business_directory = tmp_path / "测试主体有限公司" / "05配网"
+    business_directory.mkdir(parents=True)
+
+    three_lists = Workbook()
+    three_lists.active.append(["部门", "岗位名称", "岗位职责"])
+    three_lists.save(business_directory / "附件清单.xlsx")
+
+    matrix = Workbook()
+    matrix.active.append(["控制措施编号", "控制措施"])
+    matrix.save(business_directory / "业务矩阵.xlsx")
+    matrix.save(business_directory / "普通附件.xlsx")
+
+    scanner = scan_package if scanner_name == "current" else scan_package_v180
+    files = scanner(
+        tmp_path,
+        {"A001": Entity("A001", "测试主体有限公司")},
+        {},
+        business_registry,
+    )
+
+    assert {(file.relative_path.name, file.material_type) for file in files} == {
+        ("附件清单.xlsx", "three_lists"),
+        ("业务矩阵.xlsx", "matrix"),
+    }
+    assert all(file.business_id == "distribution_grid_project_management" for file in files)
 
 
 def test_confirmed_scanner_carries_unique_business_identity(tmp_path, business_registry: dict):

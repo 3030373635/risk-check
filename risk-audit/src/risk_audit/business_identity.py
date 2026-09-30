@@ -11,6 +11,7 @@ from typing import Any
 _SEPARATORS = re.compile(r"[\s()（）\[\]【】{}｛｝<>《》·•・,，、:：;；._—–－-]+")
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_BUSINESS_CODE_PREFIX = re.compile(r"^(\d{1,2})(?:\D|$)")
 
 
 class BusinessIdentityError(ValueError):
@@ -133,26 +134,54 @@ def _select_longest_match(
 
 
 def identify_business(relative_path: Path, registry: dict[str, Any]) -> BusinessIdentity:
-    """识别报送路径的唯一业务；relative_path 为输入根目录下路径，registry 为 v2 模板配置。"""
-    path_text = normalize_business_text(str(relative_path))
+    """使用文件直接父目录识别唯一业务。
+
+    Args:
+        relative_path: 材料文件在输入根目录下的相对路径。
+        registry: schema_version 为 2.0 的模板业务配置。
+    """
+
+    business_directory = relative_path.parent.name
+    directory_text = normalize_business_text(business_directory)
     business_matches: list[tuple[int, str, dict[str, Any]]] = []
     for business in registry.get("businesses", []):
         for alias in business.get("aliases", []):
             normalized_alias = normalize_business_text(alias)
-            if normalized_alias and normalized_alias in path_text:
+            if normalized_alias and normalized_alias in directory_text:
                 business_matches.append((len(normalized_alias), alias, business))
-    if not business_matches:
-        raise BusinessIdentityError(
-            f"未找到业务模板映射：{relative_path}；候选业务为空；"
-            "请在 baseline_registry.json 的 businesses[].aliases 中补充业务名称"
+
+    if business_matches:
+        _, matched_alias, business = _select_longest_match(
+            business_matches,
+            relative_path,
+            "业务模板映射冲突",
         )
-    _, matched_alias, business = _select_longest_match(
-        business_matches,
-        relative_path,
-        "业务模板映射冲突",
-    )
+    else:
+        # 目录简称未配置为别名时，仅在编号唯一时允许回退。
+        code_match = _BUSINESS_CODE_PREFIX.match(business_directory)
+        business_code = code_match.group(1).zfill(2) if code_match else ""
+        code_matches = [
+            item
+            for item in registry.get("businesses", [])
+            if str(item.get("business_code", "")).zfill(2) == business_code
+        ] if business_code else []
+        if len(code_matches) > 1:
+            candidates = "、".join(str(item.get("business_name", "")) for item in code_matches)
+            raise BusinessIdentityError(
+                f"业务编号映射冲突：{relative_path}；父目录={business_directory}；"
+                f"编号={business_code}；候选：{candidates}"
+            )
+        if not code_matches:
+            raise BusinessIdentityError(
+                f"未找到业务模板映射：{relative_path}；父目录={business_directory}；"
+                "请使用可识别的业务名称或唯一业务编号"
+            )
+        business = code_matches[0]
+        matched_alias = ""
 
     variants = business.get("variants", [])
+    # 业务由父目录确定；电压等模板变体仍可由整条路径补充判断。
+    path_text = normalize_business_text(str(relative_path))
     variant_matches: list[tuple[int, str, dict[str, Any]]] = []
     for variant in variants:
         if variant.get("variant_id") == "default":

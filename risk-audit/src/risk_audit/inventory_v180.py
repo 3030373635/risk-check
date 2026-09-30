@@ -5,7 +5,7 @@ import tempfile
 
 from risk_audit.business_identity import BusinessIdentityError, identify_business as identify_business_v2
 from risk_audit.entities import identify_material_entity
-from risk_audit.inventory import identify_business, is_auxiliary, probe_material, true_format
+from risk_audit.inventory import classify_material, identify_business, is_auxiliary, true_format
 from risk_audit.models import FileRecord
 from risk_audit.util import sha256_file
 
@@ -64,12 +64,9 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
                 continue
             material = 'explanation'
         else:
-            material = 'three_lists' if '三清单' in path.name else 'matrix' if '矩阵' in path.name else probe_material(path)
-            if not material and any(word in path.stem for word in ('岗位内控责任清单', '不相容岗位清单', '系统控制规则清单')):
-                material = 'three_lists'
+            material = classify_material(path)
             if not material:
-                # XLS、晚表头或独立区域须交给实际业务读取器；扫描不能凭文件名漏件。
-                material = 'unclassified'
+                continue
         business_id = None
         business_error = ''
         if material == 'explanation':
