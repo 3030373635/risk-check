@@ -29,7 +29,7 @@ PLATFORM_LAYOUTS = {
             "runtime/python/vcruntime140.dll",
             "runtime/python/vcruntime140_1.dll",
         ),
-        "soffice": "runtime/libreoffice/program/soffice.exe",
+        "soffice": "runtime/libreoffice/program/soffice.com",
         "libreoffice_dependencies": (
             "runtime/libreoffice/program/vcruntime140.dll",
             "runtime/libreoffice/program/vcruntime140_1.dll",
@@ -125,7 +125,7 @@ def _verify_web_runtime(runtime_root: Path) -> list[str]:
 
 def binary_architectures(path: Path) -> set[str]:
     """读取 PE 或 Mach-O 架构；path 为平台可执行文件。"""
-    if path.suffix.lower() in {".exe", ".dll", ".pyd"}:
+    if path.suffix.lower() in {".com", ".exe", ".dll", ".pyd"}:
         try:
             content = path.read_bytes()
             if content[:2] != b"MZ" or len(content) < 0x40:

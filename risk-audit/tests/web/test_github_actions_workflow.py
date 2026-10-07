@@ -65,6 +65,7 @@ def test_windows_workflow_installs_project_without_editable_mode() -> None:
 def test_web_build_workflow_pins_libreoffice_and_uploads_zip() -> None:
     """工作流必须校验固定 LibreOffice 并上传最终 ZIP。"""
     workflow = read_workflow()
+    install_step = workflow.split("- name: 下载并安装 LibreOffice", 1)[1].split("\n      - name:", 1)[0]
 
     assert "LibreOffice_26.2.6_Win_x86-64.msi" in workflow
     assert "f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660" in workflow
@@ -73,6 +74,8 @@ def test_web_build_workflow_pins_libreoffice_and_uploads_zip() -> None:
     assert "风控矩阵审核器-v2.0.0-Windows-x64.zip" in workflow
     assert "actions/upload-artifact@v7" in workflow
     assert "if-no-files-found: error" in workflow
+    assert r"program\soffice.com" in install_step
+    assert r"program\soffice.exe" not in install_step
 
 
 def test_windows_workflow_bundles_vc_runtime_and_smoke_tests_xls_conversion() -> None:

@@ -51,7 +51,8 @@ class PortablePaths:
     def soffice(self) -> Path:
         """返回目标平台包内 LibreOffice 可执行文件路径；无参数。"""
         if self.platform_name == "win32":
-            return self.runtime_root / "libreoffice/program/soffice.exe"
+            # Windows 命令行转换必须使用会等待任务结束的控制台入口。
+            return self.runtime_root / "libreoffice/program/soffice.com"
         if self.platform_name == "darwin":
             return self.runtime_root / "libreoffice/LibreOffice.app/Contents/MacOS/soffice"
         raise ValueError(f"不支持的运行平台：{self.platform_name}")

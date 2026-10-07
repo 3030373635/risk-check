@@ -30,16 +30,16 @@ def test_verify_manifest_reports_ok_resource(tmp_path: Path) -> None:
 
     app_root = tmp_path / "release"
     content = b"portable-office"
-    resource = app_root / "runtime/libreoffice/program/soffice.exe"
+    resource = app_root / "runtime/libreoffice/program/soffice.com"
     resource.parent.mkdir(parents=True)
     resource.write_bytes(content)
-    write_manifest(app_root, "runtime/libreoffice/program/soffice.exe", content)
+    write_manifest(app_root, "runtime/libreoffice/program/soffice.com", content)
 
     report = verify_release_manifest(app_root)
 
     assert report.can_start
     assert [(item.code, item.relative_path) for item in report.items] == [
-        ("ok", "runtime/libreoffice/program/soffice.exe")
+        ("ok", "runtime/libreoffice/program/soffice.com")
     ]
 
 
@@ -94,7 +94,7 @@ def test_portable_paths_expose_fixed_runtime_resources(tmp_path: Path) -> None:
     app_root = (tmp_path / "app").resolve()
     paths = PortablePaths.from_app_root(app_root, platform_name="win32")
 
-    assert paths.soffice == app_root / "runtime/libreoffice/program/soffice.exe"
+    assert paths.soffice == app_root / "runtime/libreoffice/program/soffice.com"
     assert paths.rulepacks == app_root / "runtime/resources/rulepacks"
     assert paths.baseline_root == app_root / "runtime/resources/baselines"
     assert paths.entity_file == app_root / "runtime/resources/entities/会计主体清单20260907.xlsx"

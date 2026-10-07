@@ -212,7 +212,7 @@ def make_valid_distribution(tmp_path: Path, platform_id: str) -> Path:
         write_file(root / "runtime/python/python311.dll", pe_x64_bytes())
         write_file(root / "runtime/python/vcruntime140.dll", pe_x64_bytes())
         write_file(root / "runtime/python/vcruntime140_1.dll", pe_x64_bytes())
-        write_file(root / "runtime/libreoffice/program/soffice.exe", pe_x64_bytes())
+        write_file(root / "runtime/libreoffice/program/soffice.com", pe_x64_bytes())
         for dll_name in (
             "vcruntime140.dll",
             "vcruntime140_1.dll",
@@ -341,6 +341,26 @@ def test_distribution_requires_only_matching_launcher_and_licenses(tmp_path: Pat
 
     assert any("启动器" in error for error in errors)
     assert any("Python" in error and "许可证" in error for error in errors)
+
+
+def test_windows_distribution_requires_command_line_libreoffice_entrypoint(
+    tmp_path: Path,
+) -> None:
+    """Windows 发布必须包含会等待命令行转换结束的 soffice.com。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+    from tools.verify_portable_distribution import verify_distribution
+
+    root = make_valid_distribution(tmp_path, "windows-x64")
+    (root / "runtime/libreoffice/program/soffice.com").unlink()
+    write_file(root / "runtime/libreoffice/program/soffice.exe", pe_x64_bytes())
+    refresh_release_manifest(root)
+
+    errors = verify_distribution(root, "windows-x64")
+
+    assert any("soffice.com" in error and "缺失" in error for error in errors)
 
 
 @pytest.mark.parametrize(

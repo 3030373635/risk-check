@@ -243,8 +243,8 @@ def _copy_platform_runtime(inputs: BuildInputs, distribution_root: Path) -> None
     """复制目标 Python 和 LibreOffice；inputs 为构建输入。"""
     _copy_tree(inputs.python_root, distribution_root / "runtime/python")
     if inputs.platform_id == "windows-x64":
-        if not (inputs.libreoffice_root / "program/soffice.exe").is_file():
-            raise BuildError(f"Windows LibreOffice 缺失：{inputs.libreoffice_root}")
+        if not (inputs.libreoffice_root / "program/soffice.com").is_file():
+            raise BuildError(f"Windows LibreOffice 命令行入口 soffice.com 缺失：{inputs.libreoffice_root}")
         libreoffice_target = distribution_root / "runtime/libreoffice"
         _copy_tree(inputs.libreoffice_root, libreoffice_target)
         _copy_windows_vc_runtime(

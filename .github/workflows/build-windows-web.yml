@@ -80,8 +80,8 @@ jobs:
             throw "LibreOffice 安装失败，退出码：$($process.ExitCode)"
           }
           $libreOfficeRoot = Join-Path $env:ProgramFiles "LibreOffice"
-          if (-not (Test-Path (Join-Path $libreOfficeRoot "program\soffice.exe") -PathType Leaf)) {
-            throw "LibreOffice 运行文件缺失"
+          if (-not (Test-Path (Join-Path $libreOfficeRoot "program\soffice.com") -PathType Leaf)) {
+            throw "LibreOffice 命令行入口缺失"
           }
           "LIBREOFFICE_ROOT=$libreOfficeRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 

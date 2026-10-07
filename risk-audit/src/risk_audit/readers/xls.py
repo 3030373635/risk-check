@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from contextlib import nullcontext
@@ -265,7 +266,17 @@ def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
             # 参数列表直接传给子进程，禁止 shell 插值中文路径或用户材料名。
             cmd = [str(SOFFICE), f"-env:UserInstallation={profile.as_uri()}", "--headless", "--convert-to", "xlsx", "--outdir", str(destination.parent), str(staged_source)]
             env = dict(os.environ, SAL_DISABLE_OPENCL="1", SAL_DISABLE_MACROS="1")
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, timeout=120)
+            process_options: dict[str, Any] = {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "text": True,
+                "env": env,
+                "timeout": 120,
+            }
+            if sys.platform == "win32":
+                # soffice.com 会同步等待转换完成；禁止其控制台窗口在桌面端闪现。
+                process_options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            proc = subprocess.run(cmd, **process_options)
             if proc.returncode or not destination.exists(): raise RuntimeError(f"xls conversion failed: {proc.stdout} {proc.stderr}")
     finally:
         staged_source.unlink(missing_ok=True)

@@ -59,7 +59,7 @@ def test_default_output_increments_existing_name_without_overwrite(tmp_path: Pat
 @pytest.mark.parametrize(
     ("platform_name", "relative_soffice"),
     [
-        ("win32", "runtime/libreoffice/program/soffice.exe"),
+        ("win32", "runtime/libreoffice/program/soffice.com"),
         ("darwin", "runtime/libreoffice/LibreOffice.app/Contents/MacOS/soffice"),
     ],
 )

@@ -59,7 +59,7 @@ def make_build_inputs(tmp_path: Path):
     write_file(python_root / "Lib/site-packages/package.py", b"package = True\n")
     write_file(python_root / "Lib/site-packages/__pycache__/package.pyc")
     libreoffice_root = tmp_path / "LibreOffice"
-    write_file(libreoffice_root / "program/soffice.exe", b"office")
+    write_file(libreoffice_root / "program/soffice.com", b"office")
     vc_runtime_root = tmp_path / "Microsoft.VC143.CRT"
     for dll_name in (
         "vcruntime140.dll",
@@ -102,7 +102,7 @@ def test_assemble_distribution_uses_script_layout_and_single_web_copy(tmp_path: 
     assert (result / "runtime/python/python.exe").is_file()
     assert not list((result / "runtime/python").rglob("__pycache__"))
     assert not list((result / "runtime/python").rglob("*.pyc"))
-    assert (result / "runtime/libreoffice/program/soffice.exe").is_file()
+    assert (result / "runtime/libreoffice/program/soffice.com").is_file()
     assert (result / "runtime/libreoffice/program/vcruntime140.dll").is_file()
     assert (result / "runtime/libreoffice/program/vcruntime140_1.dll").is_file()
     assert (result / "runtime/libreoffice/program/msvcp140.dll").is_file()
@@ -131,6 +131,26 @@ def test_windows_assembly_rejects_missing_vc_runtime_dll(tmp_path: Path) -> None
     (inputs.vc_runtime_root / "msvcp140.dll").unlink()
 
     with pytest.raises(portable_release.BuildError, match="msvcp140.dll.*缺失"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
+
+
+def test_windows_assembly_rejects_missing_command_line_libreoffice_entrypoint(
+    tmp_path: Path,
+) -> None:
+    """Windows 组装必须拒绝缺少 soffice.com 的 LibreOffice。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    (inputs.libreoffice_root / "program/soffice.com").unlink()
+    write_file(inputs.libreoffice_root / "program/soffice.exe", b"office")
+
+    with pytest.raises(portable_release.BuildError, match="soffice.com"):
         portable_release.assemble_distribution(inputs)
 
     assert not inputs.output_root.exists()

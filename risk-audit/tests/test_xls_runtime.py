@@ -13,7 +13,7 @@ def test_convert_xls_uses_short_explicit_destination(monkeypatch, tmp_path: Path
     """
     from risk_audit.readers import xls
 
-    soffice = tmp_path / "runtime/libreoffice/program/soffice.exe"
+    soffice = tmp_path / "runtime/libreoffice/program/soffice.com"
     soffice.parent.mkdir(parents=True)
     soffice.write_bytes(b"exe")
     profile = tmp_path / "output/.task/libreoffice-profile"
@@ -34,6 +34,7 @@ def test_convert_xls_uses_short_explicit_destination(monkeypatch, tmp_path: Path
     monkeypatch.setattr(xls.subprocess, "run", fake_run)
     monkeypatch.setattr(xls, "restore_biff_formula_caches", lambda *args: 0)
     monkeypatch.setattr(xls, "compare_conversion", lambda *args: {"passed": True})
+    monkeypatch.setattr(xls, "sys", SimpleNamespace(platform="win32"), raising=False)
 
     xls.configure_conversion_runtime(soffice, profile)
     converted, _report = xls.convert_xls(source, destination)
@@ -45,6 +46,7 @@ def test_convert_xls_uses_short_explicit_destination(monkeypatch, tmp_path: Path
     assert captured["command"][-3:-1] == ["--outdir", str(destination.parent)]
     assert f"-env:UserInstallation={profile.resolve().as_uri()}" in captured["command"]
     assert captured["kwargs"].get("shell") is None
+    assert captured["kwargs"]["creationflags"] == 0x08000000
     settings = profile / "user/registrymodifications.xcu"
     assert "DisableMacrosExecution" in settings.read_text(encoding="utf-8")
     assert captured["kwargs"]["env"]["SAL_DISABLE_MACROS"] == "1"
