@@ -20,6 +20,7 @@ from risk_audit.entities import load_entities
 from risk_audit.entity_alerts import build_entity_alerts, write_entity_alerts
 from risk_audit.entity_groups import prepare_entity_groups
 from risk_audit.hidden_sheets import hidden_sheet_alerts, write_hidden_sheet_alerts
+from risk_audit.incomplete_items import collect_incomplete_items
 from risk_audit.inventory import scan_package
 from risk_audit.readers.excel import parse_files
 from risk_audit.snapshot import build_snapshot, save_snapshot
@@ -192,12 +193,7 @@ def audit(
 
 def _has_failures(files: list[FileRecord], statuses: list[CheckStatus], warnings: list[dict[str, Any]]) -> bool:
     """判断是否存在未完成审核；files 为材料，statuses 为检查状态，warnings 为输出告警。"""
-    business_files = [file for file in files if file.material_type != 'explanation']
-    return (any(not file.sheets or file.parse_errors for file in business_files)
-            or any(status.status == 'failed' for status in statuses)
-            or any(warning.get('type') in {
-                'no_writable_sheet', 'output_incompatible_file', 'business_processing_failed',
-            } for warning in warnings))
+    return bool(collect_incomplete_items(files, statuses, warnings))
 
 
 def _remove_legacy_opinion_outputs(output_root: Path) -> None:
@@ -737,10 +733,16 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     parsed_business_files = [f for f in files if f.material_type != "explanation"]
     # 即使同批其他文件已写入，无业务表的文件仍属于未审核，隐藏提示不能掩盖它。
     unparsed_file_paths = [str(file.relative_path) for file in parsed_business_files if not file.sheets]
-    has_failures = _has_failures(files, statuses, warnings)
+    incomplete_items = collect_incomplete_items(files, statuses, warnings)
+    incomplete_items_report = audit_directory / '未完成项.json'
+    # 任务终态和页面明细共用同一份未完成项，避免状态与弹窗内容不一致。
+    write_json(incomplete_items_report, incomplete_items)
+    has_failures = bool(incomplete_items)
     result = {"run_id": run_id, "run_dir": str(run_dir), "output_root": str(output_resolved), "input_files": len(parsed_business_files), "parsed_files": sum(bool(f.sheets) for f in parsed_business_files), "records": sum(len(s.records) for f in files for s in f.sheets), "findings": len(findings), "statuses": {k: sum(x.status == k for x in statuses) for k in {x.status for x in statuses}}, "missing_code_entities": len(missing_code), "write_completed": write and not has_failures, "warnings": len(warnings)}
     result['unparsed_files'] = len(unparsed_file_paths)
     result['unparsed_file_paths'] = unparsed_file_paths
+    result['incomplete_items'] = len(incomplete_items)
+    result['incomplete_items_report'] = str(incomplete_items_report)
     result["limitations"] = len(limitations)
     result['skipped_businesses'] = len(business_failures)
     result['business_failures'] = business_failures

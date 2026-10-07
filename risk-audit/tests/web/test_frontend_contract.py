@@ -70,20 +70,25 @@ def test_frontend_only_selects_input_and_keeps_output_readonly() -> None:
     assert "output_root:" not in app_source
 
 
-def test_frontend_uses_automatic_name_and_readable_unaudited_files_modal() -> None:
-    """页面不得要求任务名，并应在弹窗中展示未审核文件；无参数。"""
+def test_frontend_uses_automatic_name_and_readable_incomplete_items_modal() -> None:
+    """页面不得要求任务名，并应在弹窗中展示全部未完成项；无参数。"""
     root = static_root()
     html = (root / "index.html").read_text(encoding="utf-8")
     app_source = (root / "js/app.js").read_text(encoding="utf-8")
+    tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
 
     assert 'id="task-name"' not in html
     assert "任务名称由系统自动生成" in html
-    assert 'id="view-unaudited-files-button"' in html
-    assert 'id="unaudited-files-modal"' in html
-    assert "/unaudited-files" in app_source
-    assert 'appendUnauditedDetail(card, "失败阶段", item.failure_stage)' in app_source
-    assert 'appendUnauditedDetail(card, "异常类型", item.error_type)' in app_source
-    assert 'appendUnauditedDetail(card, "详细日志", item.log_reference)' in app_source
+    assert 'id="view-incomplete-items-button"' in html
+    assert 'id="incomplete-items-modal"' in html
+    assert "查看未完成项" in html
+    assert "/incomplete-items" in app_source
+    assert 'appendIncompleteDetail(card, "失败阶段", item.stage)' in app_source
+    assert 'appendIncompleteDetail(card, "异常类型", item.error_type)' in app_source
+    assert 'appendIncompleteDetail(card, "详细日志", item.log_reference)' in app_source
+    assert "summary.incomplete_items_report" in tasks_source
+    assert "summary.incomplete_items" in tasks_source
+    assert "unaudited-files" not in app_source
     assert "display_name:" not in app_source
     assert "review-openings" not in app_source
 

@@ -56,12 +56,20 @@ def test_worker_maps_result_to_sqlite_terminal_state(
         report = kwargs["run_directory"] / "result.json"
         report.parent.mkdir(parents=True)
         report.write_text("{}", encoding="utf-8")
+        incomplete_items_report = kwargs["run_directory"] / "_risk_audit/未完成项.json"
+        incomplete_items_report.parent.mkdir(parents=True)
+        incomplete_items_report.write_text(
+            "[]" if write_completed else '[{"type":"file_parsing_failed"}]',
+            encoding="utf-8",
+        )
         return {
             "write_completed": write_completed,
             "input_files": 2,
             "findings": 3,
             "warnings": 1,
             "limitations": 0,
+            "incomplete_items": 0 if write_completed else 1,
+            "incomplete_items_report": str(incomplete_items_report),
             "business_results": [{}, {}],
             "run_dir": str(kwargs["run_directory"]),
         }
@@ -71,6 +79,13 @@ def test_worker_maps_result_to_sqlite_terminal_state(
     state = repository.read_state(request.task_id)
     assert code == 0
     assert state.status == expected_status
+    assert state.result_summary["incomplete_items"] == (0 if write_completed else 1)
+    assert state.result_summary["incomplete_items_report"].endswith("未完成项.json")
+    assert state.message == (
+        "审核已完成"
+        if write_completed
+        else "审核已结束，存在 1 个未完成项"
+    )
     assert state.progress_percent == 100
     assert state.worker_pid is None
     task_dir = Path(request.output_root) / ".task"

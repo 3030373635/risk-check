@@ -137,9 +137,15 @@ function renderTaskDetail(task) {
   setText("result-findings", summary.findings);
   setText("result-warnings", summary.warnings);
   setText("result-limitations", summary.limitations);
+  setText("result-incomplete", summary.incomplete_items);
   document.getElementById("cancel-task-button").disabled = !["running", "cancelling"].includes(task.status);
   document.getElementById("open-statistics-button").disabled = !summary.audit_statistics_report;
-  document.getElementById("view-unaudited-files-button").disabled = !summary.unaudited_files_report;
+  const incompleteButton = document.getElementById("view-incomplete-items-button");
+  incompleteButton.disabled = !summary.incomplete_items_report || !summary.incomplete_items;
+  setText(
+    "incomplete-items-button-label",
+    summary.incomplete_items ? `查看未完成项（${summary.incomplete_items}）` : "查看未完成项",
+  );
 }
 
 /** 刷新当前任务详情；无参数。 */

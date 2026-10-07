@@ -162,6 +162,15 @@ def test_later_business_failure_is_skipped_and_audit_continues(tmp_path, monkeyp
     assert skipped['error_type'] == 'RuntimeError'
     assert skipped['skip_reason'] == '第二业务解析异常'
     assert skipped['log_reference'] == 'runs/business/audit.log'
+    incomplete_items = json.loads(Path(result['incomplete_items_report']).read_text(encoding='utf-8'))
+    assert result['incomplete_items'] == 2
+    assert {item['type'] for item in incomplete_items} == {'business_processing_failed'}
+    assert {item['file'] for item in incomplete_items} == {
+        str(source.relative_to(input_root))
+        for source in sources[units[1]]
+    }
+    assert all(item['stage'] == '材料解析' for item in incomplete_items)
+    assert all(item['message'] == '第二业务解析异常' for item in incomplete_items)
     statistics = load_workbook(result['audit_statistics_report'])['审核统计表']
     statistics_text = '\n'.join(str(cell.value or '') for row in statistics.iter_rows() for cell in row)
     assert '【审核状态】已跳过，未完成审核' in statistics_text

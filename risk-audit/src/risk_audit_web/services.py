@@ -360,6 +360,27 @@ class ApplicationServices:
             raise ApiProblem(500, "INVALID_RESULT", "未审核文件结果格式错误")
         return {"count": len(payload), "items": payload}
 
+    def get_incomplete_items(self, task_id: str) -> dict[str, Any]:
+        """读取未完成项列表。
+
+        Args:
+            task_id: 待读取结果的任务编号。
+        """
+
+        task = self.get_task(task_id)
+        summary = task.state.result_summary or {}
+        raw_path = summary.get("incomplete_items_report")
+        if not isinstance(raw_path, str) or not raw_path:
+            raise ApiProblem(404, "RESULT_NOT_FOUND", "未完成项结果尚不存在")
+        target = self._safe_task_target(task_id, Path(raw_path))
+        try:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ApiProblem(500, "INVALID_RESULT", "未完成项结果无法读取") from error
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise ApiProblem(500, "INVALID_RESULT", "未完成项结果格式错误")
+        return {"count": len(payload), "items": payload}
+
     def request_shutdown(self, mode: str) -> dict[str, object]:
         """按模式请求退出；mode 为 immediate 或 cancel_active_tasks。"""
         with self._creation_lock:

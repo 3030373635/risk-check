@@ -96,6 +96,51 @@ def test_output_opening_never_accepts_client_path(client, input_root: Path) -> N
     assert response.json()["error_code"] == "INVALID_REQUEST"
 
 
+def test_read_incomplete_items_returns_every_visible_reason(
+    client,
+    web_services,
+    input_root: Path,
+) -> None:
+    """未完成项接口必须返回状态数量对应的结构化原因。
+
+    Args:
+        client: FastAPI 测试客户端。
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+    """
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    ).json()
+    task = web_services.get_task(created["task_id"])
+    report_path = Path(task.record.output_root) / ".task/report/_risk_audit/未完成项.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    items = [{
+        "type": "business_identification_failed",
+        "title": "业务识别失败",
+        "file": "本部/05配网/附件清单.xlsx",
+        "stage": "业务识别",
+        "message": "未找到业务模板映射",
+    }]
+    report_path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    web_services.repository.update_task_state(
+        task.record.task_id,
+        {"result_summary": {
+            "incomplete_items": 1,
+            "incomplete_items_report": str(report_path),
+        }},
+    )
+
+    response = client.get(
+        f"/api/v1/tasks/{task.record.task_id}/incomplete-items",
+        headers={"X-Local-Token": "secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 1, "items": items}
+
+
 def test_read_unaudited_files_returns_customer_friendly_json_resource(
     client,
     web_services,

@@ -36,16 +36,19 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     """提取界面所需结果摘要；result 为审核核心完整结果。"""
     summary: dict[str, Any] = {
         key: int(result.get(key, 0) or 0)
-        for key in ("input_files", "findings", "warnings", "limitations")
+        for key in ("input_files", "findings", "warnings", "limitations", "incomplete_items")
     }
     statistics_report = result.get("audit_statistics_report")
     run_dir = result.get("run_dir")
     log_reference = result.get("log_reference")
+    incomplete_items_report = result.get("incomplete_items_report")
     if isinstance(statistics_report, str):
         summary["audit_statistics_report"] = statistics_report
     if isinstance(log_reference, str):
         # 只传递任务结果引用，不把数据库位置等内部资源暴露给界面。
         summary["log_reference"] = log_reference
+    if isinstance(incomplete_items_report, str) and Path(incomplete_items_report).is_file():
+        summary["incomplete_items_report"] = incomplete_items_report
     if isinstance(run_dir, str):
         summary["run_dir"] = run_dir
         unaudited_files_report = Path(run_dir) / "_risk_audit/未审核文件.json"
@@ -196,7 +199,6 @@ def run_worker(
             cancel_check=lambda: repository.is_cancel_requested(task_id),
         )
         terminal_status = "completed" if result.get("write_completed") else "partial"
-        terminal_message = "审核已完成" if terminal_status == "completed" else "审核已结束，存在未完成项"
         current = repository.read_state(task_id)
         total_units = (
             current.total_units
@@ -204,6 +206,12 @@ def run_worker(
             else len(result.get("business_results", []))
         )
         summary = _result_summary(result)
+        incomplete_count = summary["incomplete_items"]
+        terminal_message = (
+            "审核已完成"
+            if terminal_status == "completed"
+            else f"审核已结束，存在 {incomplete_count} 个未完成项"
+        )
         update_state({
             "status": terminal_status,
             "stage": "completed",

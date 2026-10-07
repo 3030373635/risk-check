@@ -102,11 +102,11 @@ async function createTask(event) {
   }
 }
 
-/** 添加未审核文件的说明行；container 为容器，label/value 为标签和值。 */
-function appendUnauditedDetail(container, label, value) {
+/** 添加未完成项的说明行；container 为容器，label/value 为标签和值。 */
+function appendIncompleteDetail(container, label, value) {
   if (value === null || value === undefined || String(value).trim() === "") return;
   const row = document.createElement("div");
-  row.className = "unaudited-detail";
+  row.className = "incomplete-detail";
   const term = document.createElement("span");
   term.textContent = label;
   const content = document.createElement("strong");
@@ -115,47 +115,38 @@ function appendUnauditedDetail(container, label, value) {
   container.appendChild(row);
 }
 
-/** 生成未审核文件卡片；item 为后端 JSON 条目，返回 article 元素。 */
-function unauditedFileCard(item) {
+/** 生成未完成项卡片；item 为后端 JSON 条目，返回 article 元素。 */
+function incompleteItemCard(item) {
   const card = document.createElement("article");
-  card.className = "unaudited-file-card";
+  card.className = "incomplete-item-card";
   const title = document.createElement("h3");
-  title.textContent = item.file || "未命名文件";
+  title.textContent = item.title || "未完成项";
   const reason = document.createElement("p");
-  reason.textContent = item.message || "该文件未进入自动审核流程";
+  reason.textContent = item.message || "该项内容未完成审核";
   card.append(title, reason);
-  appendUnauditedDetail(card, "失败阶段", item.failure_stage);
-  appendUnauditedDetail(card, "异常类型", item.error_type);
-  appendUnauditedDetail(card, "工作表", item.sheet);
-  appendUnauditedDetail(card, "数据范围", item.range);
-  appendUnauditedDetail(card, "技术信息", item.error);
-  appendUnauditedDetail(card, "详细日志", item.log_reference);
-  if (Array.isArray(item.parse_errors) && item.parse_errors.length > 0) {
-    const heading = document.createElement("span");
-    heading.className = "unaudited-error-title";
-    heading.textContent = "解析问题";
-    const list = document.createElement("ul");
-    for (const parseError of item.parse_errors) {
-      const listItem = document.createElement("li");
-      listItem.textContent = String(parseError);
-      list.appendChild(listItem);
-    }
-    card.append(heading, list);
-  }
+  appendIncompleteDetail(card, "文件", item.file);
+  appendIncompleteDetail(card, "所属主体", item.entity_name || item.entity_code);
+  appendIncompleteDetail(card, "所属业务", item.business_name || item.business_code);
+  appendIncompleteDetail(card, "失败阶段", item.stage);
+  appendIncompleteDetail(card, "异常类型", item.error_type);
+  appendIncompleteDetail(card, "检查规则", item.rule_id);
+  appendIncompleteDetail(card, "检查项", item.check_id);
+  appendIncompleteDetail(card, "工作表", item.sheet);
+  appendIncompleteDetail(card, "详细日志", item.log_reference);
   return card;
 }
 
-/** 读取当前任务的未审核文件并在页面弹窗展示；无参数。 */
-async function showUnauditedFiles() {
+/** 读取当前任务的未完成项并在页面弹窗展示；无参数。 */
+async function showIncompleteItems() {
   const taskId = currentTaskIdValue();
   if (!taskId) return;
   try {
-    const payload = await apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}/unaudited-files`);
+    const payload = await apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}/incomplete-items`);
     const items = Array.isArray(payload.items) ? payload.items : [];
-    document.getElementById("unaudited-files-count").textContent = `共 ${items.length} 个未审核文件`;
-    document.getElementById("unaudited-files-list").replaceChildren(...items.map(unauditedFileCard));
-    document.getElementById("unaudited-files-empty").classList.toggle("d-none", items.length !== 0);
-    bootstrap.Modal.getOrCreateInstance(document.getElementById("unaudited-files-modal")).show();
+    document.getElementById("incomplete-items-count").textContent = `共 ${items.length} 个未完成项`;
+    document.getElementById("incomplete-items-list").replaceChildren(...items.map(incompleteItemCard));
+    document.getElementById("incomplete-items-empty").classList.toggle("d-none", items.length !== 0);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("incomplete-items-modal")).show();
   } catch (error) {
     if (error.message !== "SESSION_EXPIRED") showToast(error.message);
   }
@@ -198,7 +189,7 @@ function bindEvents() {
   document.getElementById("cancel-task-button").addEventListener("click", () => postTaskAction("cancellations"));
   document.getElementById("open-output-button").addEventListener("click", () => postTaskAction("output-openings"));
   document.getElementById("open-statistics-button").addEventListener("click", () => postTaskAction("statistics-openings"));
-  document.getElementById("view-unaudited-files-button").addEventListener("click", showUnauditedFiles);
+  document.getElementById("view-incomplete-items-button").addEventListener("click", showIncompleteItems);
   document.getElementById("shutdown-button").addEventListener("click", () => {
     const running = Number(document.getElementById("sidebar-running-count").textContent || 0);
     document.getElementById("shutdown-message").textContent = running > 0 ? `仍有 ${running} 个任务运行。确认全部安全停止后退出？` : "确认关闭本机审核服务？";

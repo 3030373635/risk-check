@@ -83,3 +83,12 @@ def read_unaudited_files(
 ) -> dict[str, object]:
     """读取未审核文件；task_id 为任务编号，services 为应用服务。"""
     return services.get_unaudited_files(task_id)
+
+
+@router.get("/{task_id}/incomplete-items")
+def read_incomplete_items(
+    task_id: str,
+    services: ApplicationServices = Depends(get_services),
+) -> dict[str, object]:
+    """读取未完成项；task_id 为任务编号，services 为应用服务。"""
+    return services.get_incomplete_items(task_id)
