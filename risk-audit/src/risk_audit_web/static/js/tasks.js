@@ -97,7 +97,8 @@ async function loadTasks() {
     const payload = await apiRequest("/api/v1/tasks");
     renderTasks(payload.tasks || []);
     document.getElementById("metric-running").textContent = String(payload.running_count || 0);
-    document.getElementById("sidebar-running-count").textContent = String(payload.running_count || 0);
+    // 同步最新任务数量，保证退出提示与任务列表一致。
+    runningTaskCount = Number(payload.running_count || 0);
     const today = new Date().toDateString();
     const completed = (payload.tasks || []).filter((task) => task.status === "completed" && new Date(task.created_at).toDateString() === today).length;
     const review = (payload.tasks || []).reduce((total, task) => total + Number(task.result_summary?.warnings || 0), 0);

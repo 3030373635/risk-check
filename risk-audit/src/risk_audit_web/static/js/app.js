@@ -1,6 +1,8 @@
 "use strict";
 
 let systemStatus = null;
+// 保留运行任务数量供安全退出流程使用，不再依赖侧边栏 DOM。
+let runningTaskCount = 0;
 
 /** 显示短暂消息；message 为用户可读文本。 */
 function showToast(message) {
@@ -43,7 +45,7 @@ async function loadSystemStatus() {
     document.getElementById("service-status-text").textContent = "本机服务运行正常";
     document.getElementById("app-version").textContent = systemStatus.app_version || "不可用";
     document.getElementById("rule-version").textContent = systemStatus.rule_version || "不可用";
-    document.getElementById("sidebar-running-count").textContent = String(systemStatus.running_count || 0);
+    runningTaskCount = Number(systemStatus.running_count || 0);
     const list = document.getElementById("diagnostic-list");
     list.replaceChildren(...(systemStatus.diagnostics || []).map(diagnosticItem));
     updateCreateButton();
@@ -167,7 +169,7 @@ async function postTaskAction(suffix) {
 
 /** 请求立即退出或安全停止后退出；无参数。 */
 async function requestShutdown() {
-  const running = Number(document.getElementById("sidebar-running-count").textContent || 0);
+  const running = runningTaskCount;
   const mode = running > 0 ? "cancel_active_tasks" : "immediate";
   try {
     await apiRequest("/api/v1/shutdown-requests", { method: "POST", body: JSON.stringify({ mode }) });
@@ -192,7 +194,7 @@ function bindEvents() {
   document.getElementById("open-statistics-button").addEventListener("click", () => postTaskAction("statistics-openings"));
   document.getElementById("view-incomplete-items-button").addEventListener("click", showIncompleteItems);
   document.getElementById("shutdown-button").addEventListener("click", () => {
-    const running = Number(document.getElementById("sidebar-running-count").textContent || 0);
+    const running = runningTaskCount;
     document.getElementById("shutdown-message").textContent = running > 0 ? `仍有 ${running} 个任务运行。确认全部安全停止后退出？` : "确认关闭本机审核服务？";
     bootstrap.Modal.getOrCreateInstance(document.getElementById("shutdown-modal")).show();
   });

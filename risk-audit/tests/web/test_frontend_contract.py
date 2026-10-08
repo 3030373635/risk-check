@@ -50,6 +50,23 @@ def test_frontend_displays_auditor_and_rule_versions() -> None:
     assert 'getElementById("rule-version").textContent = systemStatus.rule_version' in app_source
 
 
+def test_sidebar_omits_running_count_without_breaking_shutdown_state() -> None:
+    """侧边栏不应展示运行数量，退出流程仍必须使用内部运行状态。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app_source = (root / "js/app.js").read_text(encoding="utf-8")
+    tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
+
+    assert "运行中任务" not in html
+    assert 'id="sidebar-running-count"' not in html
+    assert 'getElementById("sidebar-running-count")' not in app_source
+    assert 'getElementById("sidebar-running-count")' not in tasks_source
+    assert "let runningTaskCount = 0;" in app_source
+    assert "runningTaskCount = Number(systemStatus.running_count || 0);" in app_source
+    assert "runningTaskCount = Number(payload.running_count || 0);" in tasks_source
+    assert "const running = runningTaskCount;" in app_source
+
+
 def test_progress_updates_do_not_require_csp_blocked_inline_styles() -> None:
     """进度条必须在严格 style-src 策略下正常更新。"""
     root = static_root()
