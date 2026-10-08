@@ -33,6 +33,23 @@ def test_frontend_uses_local_bootstrap_and_semantic_controls() -> None:
     assert "<main" in html and "<nav" in html
 
 
+def test_frontend_displays_auditor_and_rule_versions() -> None:
+    """顶部状态必须分别展示审核器版本和规则版本；无参数。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app_source = (root / "js/app.js").read_text(encoding="utf-8")
+    theme_source = (root / "css/theme.css").read_text(encoding="utf-8")
+
+    assert 'class="version-badges"' in html
+    assert 'class="version-badge">审核器版本 <strong id="app-version">—</strong>' in html
+    assert 'class="version-badge">规则版本 <strong id="rule-version">—</strong>' in html
+    assert ".version-badges { margin-left: auto; display: flex;" in theme_source
+    assert "@media (max-width: 359.98px)" in theme_source
+    assert ".offline-pill { display: none; }" in theme_source
+    assert 'getElementById("app-version").textContent = systemStatus.app_version' in app_source
+    assert 'getElementById("rule-version").textContent = systemStatus.rule_version' in app_source
+
+
 def test_progress_updates_do_not_require_csp_blocked_inline_styles() -> None:
     """进度条必须在严格 style-src 策略下正常更新。"""
     root = static_root()

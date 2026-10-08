@@ -11,6 +11,7 @@ import secrets
 from threading import Lock
 from typing import Any
 
+from risk_audit_web import __version__ as APP_VERSION
 from risk_audit_web.api_models import OutputPathPreviewRequest, TaskCreateRequest
 from risk_audit_web.diagnostics import (
     DiagnosticItem,
@@ -142,6 +143,8 @@ class ApplicationServices:
         return {
             "service_status": "degraded" if self._database_error else "ok",
             "can_create_task": report.can_start and accepting_tasks,
+            # 审核器版本与规则包版本独立，页面需要分别展示。
+            "app_version": APP_VERSION,
             "rule_version": rule_version,
             "running_count": self.manager.snapshot().running_count,
             "diagnostics": diagnostic_response(report),

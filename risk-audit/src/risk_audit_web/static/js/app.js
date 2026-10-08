@@ -41,6 +41,7 @@ async function loadSystemStatus() {
     systemStatus = await apiRequest("/api/v1/system/status");
     document.getElementById("service-status-dot").classList.add("online");
     document.getElementById("service-status-text").textContent = "本机服务运行正常";
+    document.getElementById("app-version").textContent = systemStatus.app_version || "不可用";
     document.getElementById("rule-version").textContent = systemStatus.rule_version || "不可用";
     document.getElementById("sidebar-running-count").textContent = String(systemStatus.running_count || 0);
     const list = document.getElementById("diagnostic-list");
