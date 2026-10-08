@@ -18,7 +18,7 @@ import zipfile
 from packaging.requirements import InvalidRequirement, Requirement
 
 
-RELEASE_NAME = "风控矩阵审核器-v2.0.0"
+RELEASE_NAME = "风控矩阵审核器-v2.1.0"
 PLATFORM_LAUNCHERS = {
     "windows-x64": "启动审核器.bat",
     "macos-arm64": "启动审核器.command",
@@ -291,7 +291,7 @@ def build_release_manifest(distribution_root: Path) -> dict[str, object]:
             "size": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
         })
-    return {"schema_version": "1.0", "app_version": "2.0.0", "resources": resources}
+    return {"schema_version": "1.0", "app_version": "2.1.0", "resources": resources}
 
 
 def _remove_runtime_caches(python_root: Path) -> None:
