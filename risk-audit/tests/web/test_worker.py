@@ -1,6 +1,8 @@
 """验证 Worker 通过 SQLite 发布进度、终态、心跳和取消。"""
 
 from pathlib import Path
+from dataclasses import replace
+import tempfile
 import threading
 import time
 
@@ -117,6 +119,114 @@ def test_worker_failure_remains_visible_as_failed(
     assert state.error_code == "AUDIT_FAILED"
     assert "模拟审核崩溃" in state.message
     assert (Path(request.output_root) / ".task/worker.log").is_file()
+
+
+def test_worker_uses_system_temp_for_long_output_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """超长结果目录不得参与 LibreOffice 运行路径。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import worker
+    from risk_audit_web.task_contracts import TaskEvent
+    from risk_audit_web.task_repository import TaskRepository
+    from tests.web.test_task_repository import make_request, make_state
+
+    task_id = "task-long-path"
+    system_temp_root = tmp_path / "system-temp"
+    system_temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_temp_root))
+
+    repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
+    repository.initialize()
+    request = replace(
+        make_request(tmp_path, task_id),
+        output_root=str((tmp_path / "outputs" / ("超长材料目录" * 20)).resolve()),
+    )
+    Path(request.output_root).mkdir(parents=True)
+    repository.create_task(
+        request,
+        make_state(task_id),
+        TaskEvent("1.0", task_id, "created", request.created_at, {}),
+    )
+    observed_paths: dict[str, Path] = {}
+
+    def configure_runtime(_soffice_path: Path, profile_path: Path) -> None:
+        """记录 LibreOffice profile 路径。
+
+        Args:
+            _soffice_path: 本用例不使用的可执行文件路径。
+            profile_path: Worker 选择的 profile 路径。
+        """
+        observed_paths["profile"] = profile_path
+
+    def audit_func(*_args, **kwargs):
+        """记录核心审核使用的临时路径。
+
+        Args:
+            _args: 核心审核位置参数。
+            kwargs: 核心审核命名参数。
+        """
+        observed_paths["work"] = kwargs["work_root"]
+        return {"write_completed": True, "business_results": []}
+
+    monkeypatch.setattr(worker, "configure_conversion_runtime", configure_runtime)
+
+    code = worker.run_worker(repository.database_path, task_id, audit_func=audit_func)
+
+    expected_runtime_root = system_temp_root / "risk-audit" / task_id
+    assert code == 0
+    assert observed_paths["work"] == expected_runtime_root / "work"
+    assert observed_paths["profile"] == expected_runtime_root / "libreoffice-profile"
+    assert Path(request.output_root) not in observed_paths["work"].parents
+    assert not expected_runtime_root.exists()
+
+
+def test_worker_cleans_partial_runtime_when_directory_creation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """临时目录初始化失败时必须发布失败终态并清理已创建内容。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path)
+    system_temp_root = tmp_path / "system-temp"
+    system_temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_temp_root))
+    runtime_dir = worker.task_runtime_directory(request.task_id)
+    profile_dir = runtime_dir / "libreoffice-profile"
+    original_mkdir = Path.mkdir
+
+    def fail_profile_creation(path: Path, *args, **kwargs) -> None:
+        """profile 目录创建时模拟磁盘错误。
+
+        Args:
+            path: 待创建目录。
+            args: Path.mkdir 位置参数。
+            kwargs: Path.mkdir 命名参数。
+        """
+        if path == profile_dir:
+            raise OSError("无法创建 LibreOffice profile")
+        original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_profile_creation)
+
+    code = worker.run_worker(repository.database_path, request.task_id)
+
+    state = repository.read_state(request.task_id)
+    assert code == 1
+    assert state.status == "failed"
+    assert "无法创建 LibreOffice profile" in state.message
+    assert not runtime_dir.exists()
 
 
 def test_worker_cancel_check_reads_database_flag(

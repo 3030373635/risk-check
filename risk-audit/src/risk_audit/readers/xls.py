@@ -18,6 +18,7 @@ from openpyxl.utils.cell import coordinate_to_tuple, get_column_letter
 # Web Worker 启动后会注入包内路径；默认值只用于明确的未配置错误提示。
 SOFFICE = Path("soffice")
 PROFILE_PATH: Path | None = None
+WINDOWS_SAFE_PATH_LIMIT = 240
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKGREL = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -46,12 +47,55 @@ def configure_conversion_runtime(
     profile_path: Path | None,
 ) -> None:
     """配置本进程的 LibreOffice；参数为可执行文件和可选独立 profile。"""
+    initial_soffice = soffice_path.absolute()
+    initial_profile = profile_path.absolute() if profile_path is not None else None
+    initial_paths = {"soffice_path": initial_soffice}
+    if initial_profile is not None:
+        initial_paths.update({
+            "profile_path": initial_profile,
+            "profile_settings_path": initial_profile / "user/registrymodifications.xcu",
+        })
+    # 先用纯路径计算拒绝 Windows 长路径，避免 resolve/is_file 先触发不明确错误。
+    _validate_windows_conversion_paths(initial_paths)
     resolved_soffice = soffice_path.resolve()
+    resolved_profile = profile_path.resolve() if profile_path is not None else None
+    runtime_paths = {"soffice_path": resolved_soffice}
+    if resolved_profile is not None:
+        runtime_paths.update({
+            "profile_path": resolved_profile,
+            "profile_settings_path": resolved_profile / "user/registrymodifications.xcu",
+        })
+    _validate_windows_conversion_paths(runtime_paths)
     if not resolved_soffice.is_file():
         raise ValueError(f"LibreOffice executable does not exist: {resolved_soffice}")
     global SOFFICE, PROFILE_PATH
     SOFFICE = resolved_soffice
-    PROFILE_PATH = profile_path.resolve() if profile_path is not None else None
+    PROFILE_PATH = resolved_profile
+
+
+def _validate_windows_conversion_paths(paths: dict[str, Path]) -> None:
+    """校验 LibreOffice 的 Windows 运行路径。
+
+    Args:
+        paths: 按用途命名的可执行文件、profile 及转换文件路径。
+    """
+    if sys.platform != "win32":
+        return
+    unsafe_paths = {
+        name: path
+        for name, path in paths.items()
+        if len(str(path)) > WINDOWS_SAFE_PATH_LIMIT
+    }
+    if not unsafe_paths:
+        return
+    details = ", ".join(
+        f"{name}={path} (length={len(str(path))})"
+        for name, path in unsafe_paths.items()
+    )
+    # 为 LibreOffice 内部临时文件预留空间，不让子进程以空错误静默失败。
+    raise RuntimeError(
+        f"Windows conversion path is too long; limit={WINDOWS_SAFE_PATH_LIMIT}; {details}"
+    )
 
 
 def _same_value(a: Any, b: Any, *, source_type: int | None = None) -> bool:
@@ -252,9 +296,21 @@ def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
         destination: 使用短文件名的 XLSX 目标路径。
     """
 
+    staged_source = destination.with_suffix(".xls")
+    initial_paths = {
+        "soffice_path": SOFFICE,
+        "source_path": staged_source,
+        "destination_path": destination,
+    }
+    if PROFILE_PATH is not None:
+        initial_paths.update({
+            "profile_path": PROFILE_PATH,
+            "profile_settings_path": PROFILE_PATH / "user/registrymodifications.xcu",
+        })
+    # Windows 必须在建目录或复制前拒绝长路径，否则无法生成可诊断错误。
+    _validate_windows_conversion_paths(initial_paths)
     if not SOFFICE.exists(): raise RuntimeError(f"bundled soffice missing: {SOFFICE}")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staged_source = destination.with_suffix(".xls")
     # LibreOffice 按源文件名生成目标，因此先用短名副本避免 Windows MAX_PATH。
     shutil.copy2(source, staged_source)
     profile_context = (nullcontext(PROFILE_PATH) if PROFILE_PATH is not None
@@ -262,6 +318,13 @@ def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
     try:
         with profile_context as profile_value:
             profile = Path(profile_value).resolve()
+            _validate_windows_conversion_paths({
+                "soffice_path": SOFFICE,
+                "profile_path": profile,
+                "profile_settings_path": profile / "user/registrymodifications.xcu",
+                "source_path": staged_source,
+                "destination_path": destination,
+            })
             prepare_conversion_profile(profile)
             # 参数列表直接传给子进程，禁止 shell 插值中文路径或用户材料名。
             cmd = [str(SOFFICE), f"-env:UserInstallation={profile.as_uri()}", "--headless", "--convert-to", "xlsx", "--outdir", str(destination.parent), str(staged_source)]
@@ -277,7 +340,18 @@ def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
                 # soffice.com 会同步等待转换完成；禁止其控制台窗口在桌面端闪现。
                 process_options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             proc = subprocess.run(cmd, **process_options)
-            if proc.returncode or not destination.exists(): raise RuntimeError(f"xls conversion failed: {proc.stdout} {proc.stderr}")
+            if proc.returncode or not destination.exists():
+                stdout = (proc.stdout or "").strip() or "<empty>"
+                stderr = (proc.stderr or "").strip() or "<empty>"
+                raise RuntimeError(
+                    "xls conversion failed: "
+                    f"exit_code={proc.returncode}; "
+                    f"source_path={staged_source}; "
+                    f"source_path_length={len(str(staged_source))}; "
+                    f"destination_path={destination}; "
+                    f"destination_path_length={len(str(destination))}; "
+                    f"stdout={stdout}; stderr={stderr}"
+                )
     finally:
         staged_source.unlink(missing_ok=True)
     restored = restore_biff_formula_caches(source, destination)

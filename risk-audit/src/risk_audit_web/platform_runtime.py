@@ -115,10 +115,33 @@ def read_process_rows(
     return rows
 
 
-def terminate_process_tree(pid: int, timeout_seconds: float = 5.0) -> bool:
-    """有界结束 Worker 进程树；参数为根 PID 和最长等待秒数。"""
+def terminate_process_tree(
+    pid: int,
+    timeout_seconds: float = 5.0,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> bool:
+    """有界结束 Worker 进程树。
+
+    Args:
+        pid: Worker 根进程编号。
+        timeout_seconds: 最长等待秒数。
+        runner: Windows taskkill 命令执行器。
+    """
     if sys.platform == "win32":
-        return terminate_process(pid)
+        try:
+            # /T 保证同时结束 Worker 启动的 soffice.com 及其后代进程。
+            completed = runner(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        # 非零退出可能表示只结束了父进程，不能伪报整棵进程树已清理。
+        return completed.returncode == 0
     if sys.platform != "darwin":
         raise RuntimeError(f"不支持的运行平台：{sys.platform}")
     try:

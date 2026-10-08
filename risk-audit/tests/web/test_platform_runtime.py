@@ -73,3 +73,51 @@ def test_macos_open_path_uses_absolute_system_open(monkeypatch, tmp_path: Path) 
     platform_runtime.open_path(target)
 
     assert calls == [["/usr/bin/open", str(target)]]
+
+
+def test_windows_process_tree_uses_taskkill(monkeypatch) -> None:
+    """Windows 强制停止必须同时结束 Worker 及其子进程。
+
+    Args:
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import platform_runtime
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run_taskkill(arguments, **options):
+        """记录 taskkill 命令并模拟成功。
+
+        Args:
+            arguments: 子进程命令参数。
+            options: 子进程运行选项。
+        """
+        calls.append((arguments, options))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(platform_runtime.sys, "platform", "win32")
+
+    assert platform_runtime.terminate_process_tree(321, runner=run_taskkill)
+    assert calls == [(["taskkill", "/PID", "321", "/T", "/F"], {
+        "check": False,
+        "capture_output": True,
+        "text": True,
+        "timeout": 5.0,
+    })]
+
+
+def test_windows_process_tree_rejects_partial_taskkill_failure(monkeypatch) -> None:
+    """taskkill 非零退出不得因 Worker 已退出而伪报整树清理成功。
+
+    Args:
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import platform_runtime
+
+    monkeypatch.setattr(platform_runtime.sys, "platform", "win32")
+    monkeypatch.setattr(platform_runtime, "is_process_alive", lambda _pid: False)
+
+    assert not platform_runtime.terminate_process_tree(
+        321,
+        runner=lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )

@@ -13,12 +13,11 @@ from typing import Any
 
 from risk_audit_web.platform_runtime import (
     is_process_alive,
-    terminate_process,
     terminate_process_tree,
 )
 from risk_audit_web.task_contracts import SCHEMA_VERSION, TaskEvent, TaskRecord, TaskState
 from risk_audit_web.task_repository import ACTIVE_STATUSES, TaskDatabaseError, TaskRepository
-from risk_audit_web.worker import cleanup_task_runtime
+from risk_audit_web.worker import cleanup_task_runtime, task_runtime_directory
 
 
 @dataclass(frozen=True)
@@ -56,7 +55,6 @@ class TaskManager:
         *,
         popen_factory: Callable[..., Any] = subprocess.Popen,
         process_alive: Callable[[int], bool] = is_process_alive,
-        process_terminator: Callable[[int], bool] = terminate_process,
         process_tree_terminator: Callable[[int, float], bool] = terminate_process_tree,
         process_supervisor: Any | None = None,
         worker_arguments_factory: Callable[[Path, Path, str], list[str]] | None = None,
@@ -66,7 +64,6 @@ class TaskManager:
         self.executable = executable
         self.popen_factory = popen_factory
         self.process_alive = process_alive
-        self.process_terminator = process_terminator
         self.process_tree_terminator = process_tree_terminator
         self.process_supervisor = process_supervisor
         self.worker_arguments_factory = worker_arguments_factory or (
@@ -215,11 +212,12 @@ class TaskManager:
         # 终止前重新核对 PID，防止结束已经复用 PID 的无关进程。
         if state.worker_pid != expected_pid or not self.process_alive(expected_pid):
             return False
-        if not self.process_terminator(expected_pid):
+        # 强制停止必须包含 LibreOffice 子进程，否则 Windows 仍会锁定临时文件。
+        if not self.process_tree_terminator(expected_pid, 5.0):
             return False
         if not self._wait_for_process_exit(task_id, expected_pid):
             return False
-        cleanup_task_runtime(self.repository, Path(record.output_root) / ".task", task_id)
+        cleanup_task_runtime(self.repository, task_runtime_directory(task_id), task_id)
         latest_state = self.repository.read_state(task_id)
         if latest_state.status not in ACTIVE_STATUSES:
             return True

@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import shutil
+import tempfile
 import threading
 import traceback
 from typing import Any
@@ -18,6 +19,7 @@ from risk_audit_web.task_repository import TaskRepository
 
 
 AuditFunction = Callable[..., dict[str, Any]]
+TASK_RUNTIME_DIRECTORY_NAME = "risk-audit"
 
 
 def _now() -> str:
@@ -57,24 +59,39 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def task_runtime_directory(task_id: str) -> Path:
+    """返回不受用户目录名影响的任务临时目录。
+
+    Args:
+        task_id: 任务编号。
+    """
+    # 系统临时目录不拼接材料名或输出名，避免 Windows 路径逐层膨胀。
+    return Path(tempfile.gettempdir()).resolve() / TASK_RUNTIME_DIRECTORY_NAME / task_id
+
+
 def cleanup_task_runtime(
     repository: TaskRepository,
-    task_dir: Path,
+    runtime_dir: Path,
     task_id: str,
 ) -> None:
-    """清理任务临时资源；参数为仓储、任务目录和任务编号。"""
-    for path in (task_dir / "work", task_dir / "libreoffice-profile"):
-        try:
-            if path.exists():
-                shutil.rmtree(path)
-        except OSError as error:
-            repository.append_event(TaskEvent(
-                SCHEMA_VERSION,
-                task_id,
-                "cleanup_warning",
-                _now(),
-                {"path": str(path), "message": str(error)},
-            ))
+    """清理任务临时资源。
+
+    Args:
+        repository: 用于记录清理警告的任务仓储。
+        runtime_dir: 任务独立临时目录。
+        task_id: 任务编号。
+    """
+    try:
+        if runtime_dir.exists():
+            shutil.rmtree(runtime_dir)
+    except OSError as error:
+        repository.append_event(TaskEvent(
+            SCHEMA_VERSION,
+            task_id,
+            "cleanup_warning",
+            _now(),
+            {"path": str(runtime_dir), "message": str(error)},
+        ))
 
 
 def run_worker(
@@ -96,13 +113,11 @@ def run_worker(
         return 1
 
     output_root = Path(request.output_root)
-    task_dir = output_root / ".task"
-    log_path = task_dir / "worker.log"
-    work_dir = task_dir / "work"
-    profile_dir = task_dir / "libreoffice-profile"
-    task_dir.mkdir(parents=True, exist_ok=True)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    profile_dir.mkdir(parents=True, exist_ok=True)
+    result_dir = output_root / ".task"
+    runtime_dir = task_runtime_directory(task_id)
+    log_path = result_dir / "worker.log"
+    work_dir = runtime_dir / "work"
+    profile_dir = runtime_dir / "libreoffice-profile"
     state_lock = threading.Lock()
 
     def update_state(changes: dict[str, Any]) -> None:
@@ -157,6 +172,10 @@ def run_worker(
     heartbeat_thread: threading.Thread | None = None
     exit_code = 0
     try:
+        # 目录初始化也必须进入统一失败发布和 finally 清理边界。
+        result_dir.mkdir(parents=True, exist_ok=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        profile_dir.mkdir(parents=True, exist_ok=True)
         started_at = _now()
         update_state({
             "status": "running",
@@ -189,10 +208,10 @@ def run_worker(
             entity_file=Path(request.entity_file),
             project_root=Path(request.baseline_root),
             # 报告属于任务结果，必须与可清理临时目录分离。
-            runs_root=task_dir,
+            runs_root=result_dir,
             write=True,
             run_id=task_id,
-            run_directory=task_dir / "report",
+            run_directory=result_dir / "report",
             work_root=work_dir,
             config_file=Path(request.config_file) if request.config_file else None,
             progress_callback=report_progress,
@@ -273,7 +292,7 @@ def run_worker(
             else:
                 os.environ[name] = previous_value
         try:
-            cleanup_task_runtime(repository, task_dir, task_id)
+            cleanup_task_runtime(repository, runtime_dir, task_id)
         except Exception:
             exit_code = 1
     return exit_code

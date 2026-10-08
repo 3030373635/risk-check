@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import subprocess
+import tempfile
 from types import SimpleNamespace
 
 
@@ -73,15 +74,30 @@ def test_exited_worker_is_marked_interrupted(tmp_path: Path) -> None:
     assert task.state.status == "interrupted"
 
 
-def test_force_stop_waits_for_exit_then_publishes_cancelled(tmp_path: Path) -> None:
-    """强制停止必须等待退出后再发布取消终态；tmp_path 为隔离根。"""
+def test_force_stop_waits_for_exit_then_publishes_cancelled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """强制停止必须等待退出、清理临时目录后再发布取消终态。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
     from risk_audit_web.task_manager import TaskManager
+    from risk_audit_web.worker import task_runtime_directory
 
     repository, _record = create_task(tmp_path, status="cancelling")
+    system_temp_root = tmp_path / "system-temp"
+    system_temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_temp_root))
+    runtime_dir = task_runtime_directory("task-1")
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "conversion.tmp").write_bytes(b"temporary")
     alive = {321: True}
 
-    def terminate(pid: int) -> bool:
-        """模拟结束进程；pid 为目标进程号。"""
+    def terminate_tree(pid: int, _timeout_seconds: float) -> bool:
+        """模拟结束进程树；pid 为根进程号，_timeout_seconds 为等待时限。"""
         alive[pid] = False
         return True
 
@@ -89,11 +105,12 @@ def test_force_stop_waits_for_exit_then_publishes_cancelled(tmp_path: Path) -> N
         repository,
         Path("python"),
         process_alive=lambda pid: alive.get(pid, False),
-        process_terminator=terminate,
+        process_tree_terminator=terminate_tree,
     )
 
     assert manager.force_stop("task-1", expected_pid=321) is True
     assert repository.read_state("task-1").status == "cancelled"
+    assert not runtime_dir.exists()
 
 
 def test_force_stop_does_not_publish_before_process_exit(tmp_path: Path) -> None:
@@ -110,7 +127,7 @@ def test_force_stop_does_not_publish_before_process_exit(tmp_path: Path) -> None
         repository,
         Path("python"),
         process_alive=lambda pid: True,
-        process_terminator=lambda pid: True,
+        process_tree_terminator=lambda _pid, _timeout_seconds: True,
     )
     manager._processes[record.task_id] = process
 
