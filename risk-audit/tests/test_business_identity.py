@@ -134,6 +134,21 @@ def test_identify_business_uses_direct_parent_directory_code(business_registry: 
     )
 
 
+def test_identify_business_uses_selected_root_for_direct_package_variant(business_registry: dict):
+    """业务包根目录包含模板变体时，必须同时识别业务及变体。"""
+    result = identify_business(
+        Path("03风控矩阵.xlsx"),
+        business_registry,
+        "测试主体-03 电网基建 35千伏-220千伏",
+    )
+
+    assert (result.business_id, result.business_code, result.variant_id) == (
+        "grid_construction",
+        "03",
+        "35-220kv",
+    )
+
+
 def test_identify_business_ignores_business_name_in_filename(business_registry: dict):
     """文件名中的其他业务名不得覆盖直接父目录确定的业务。"""
     result = identify_business(
@@ -312,6 +327,75 @@ def test_confirmed_scanner_carries_unique_business_identity(tmp_path, business_r
         "28 教育培训": ("education_training", "28", "default"),
     }
     assert all(not any("业务模板" in error or "业务编号" in error for error in file.parse_errors) for file in files)
+
+
+@pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
+def test_scanner_recognizes_business_from_selected_package_root(tmp_path, scanner_name: str):
+    """tmp_path 为隔离目录，scanner_name 为扫描器版本；直接选择业务包时必须使用根目录名识别业务。"""
+    from risk_audit.inventory import scan_package
+    from risk_audit.inventory_v180 import scan_package_v180
+    from risk_audit.models import Entity
+
+    project_root = Path(__file__).resolve().parents[2]
+    registry = read_json(project_root / "risk-audit/rulepacks/releases/1.9.20/baseline_registry.json")
+    entity_name = "湖南星通电力信息通信有限公司"
+    package_root = tmp_path / f"{entity_name}第二批-02 财务管理风控矩阵（含三清单）"
+    package_root.mkdir()
+
+    matrix = Workbook()
+    matrix.active.append(["控制措施编号", "控制措施", "责任主体"])
+    matrix.save(package_root / "02风控矩阵-财务管理--星通公司.xlsx")
+
+    three_lists = Workbook()
+    three_lists.active.append(["部门", "岗位名称", "岗位职责"])
+    three_lists.save(package_root / "“三清单”--02 财务管理-星通公司.xlsx")
+
+    scanner = scan_package if scanner_name == "current" else scan_package_v180
+    files = scanner(
+        package_root,
+        {"A001": Entity("A001", entity_name)},
+        {},
+        registry,
+    )
+
+    assert len(files) == 2
+    assert {(file.business_id, file.business_code, file.variant_id) for file in files} == {
+        ("financial_management", "02", "default"),
+    }
+    assert {file.entity_code for file in files} == {"A001"}
+    assert all(not any("业务模板" in error for error in file.parse_errors) for file in files)
+
+
+@pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
+def test_selected_package_root_rejects_multiple_entity_names(tmp_path, scanner_name: str):
+    """业务包根目录包含多个正式单位全称时，必须保留主体冲突并拒绝猜测。"""
+    from risk_audit.inventory import scan_package
+    from risk_audit.inventory_v180 import scan_package_v180
+    from risk_audit.models import Entity
+
+    project_root = Path(__file__).resolve().parents[2]
+    registry = read_json(project_root / "risk-audit/rulepacks/releases/1.9.20/baseline_registry.json")
+    package_root = tmp_path / "已登记主体甲有限公司与已登记主体乙有限公司-02 财务管理"
+    package_root.mkdir()
+    workbook = Workbook()
+    workbook.active.append(["控制措施编号", "控制措施", "责任主体"])
+    workbook.save(package_root / "02风控矩阵.xlsx")
+
+    scanner = scan_package if scanner_name == "current" else scan_package_v180
+    files = scanner(
+        package_root,
+        {
+            "A001": Entity("A001", "已登记主体甲有限公司"),
+            "B001": Entity("B001", "已登记主体乙有限公司"),
+        },
+        {},
+        registry,
+    )
+
+    assert len(files) == 1
+    assert files[0].entity_code is None
+    assert files[0].entity_conflict
+    assert "主体证据冲突" in files[0].parse_errors
 
 
 def test_load_baselines_isolates_duplicate_display_codes(tmp_path):

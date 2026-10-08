@@ -73,7 +73,8 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
             business, variant = None, 'default'
         elif business_registry and business_registry.get('schema_version') == '2.0':
             try:
-                business_identity = identify_business_v2(relative, business_registry)
+                # 直接选择单个业务包时，根目录名称是业务识别的唯一目录证据。
+                business_identity = identify_business_v2(relative, business_registry, base.name)
                 business_id = business_identity.business_id
                 business = business_identity.business_code
                 variant = business_identity.variant_id

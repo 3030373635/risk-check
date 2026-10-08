@@ -133,15 +133,21 @@ def _select_longest_match(
     return winners[0]
 
 
-def identify_business(relative_path: Path, registry: dict[str, Any]) -> BusinessIdentity:
+def identify_business(
+    relative_path: Path,
+    registry: dict[str, Any],
+    input_root_name: str = "",
+) -> BusinessIdentity:
     """使用文件直接父目录识别唯一业务。
 
     Args:
         relative_path: 材料文件在输入根目录下的相对路径。
         registry: schema_version 为 2.0 的模板业务配置。
+        input_root_name: 输入根目录名称，仅在材料直接位于根目录时用于业务识别。
     """
 
-    business_directory = relative_path.parent.name
+    # 单业务包可被直接选为输入目录，此时相对路径没有父目录，必须使用输入根目录名。
+    business_directory = relative_path.parent.name or input_root_name
     directory_text = normalize_business_text(business_directory)
     business_matches: list[tuple[int, str, dict[str, Any]]] = []
     for business in registry.get("businesses", []):
@@ -181,7 +187,9 @@ def identify_business(relative_path: Path, registry: dict[str, Any]) -> Business
 
     variants = business.get("variants", [])
     # 业务由父目录确定；电压等模板变体仍可由整条路径补充判断。
-    path_text = normalize_business_text(str(relative_path))
+    # 根目录参与业务识别时也必须参与变体识别，避免丢失电压范围等关键信息。
+    identity_path = Path(input_root_name) / relative_path if not relative_path.parent.name else relative_path
+    path_text = normalize_business_text(str(identity_path))
     variant_matches: list[tuple[int, str, dict[str, Any]]] = []
     for variant in variants:
         if variant.get("variant_id") == "default":

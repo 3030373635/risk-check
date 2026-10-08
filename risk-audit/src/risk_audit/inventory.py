@@ -101,7 +101,8 @@ def scan_package(
             business, variant = None, "default"
         elif business_registry and business_registry.get("schema_version") == "2.0":
             try:
-                identity = identify_business_v2(rel, business_registry)
+                # 直接选择单个业务包时，根目录名称是业务识别的唯一目录证据。
+                identity = identify_business_v2(rel, business_registry, base.name)
                 business_id, business, variant = identity.business_id, identity.business_code, identity.variant_id
             except BusinessIdentityError as error:
                 business, variant, business_error = None, "default", str(error)

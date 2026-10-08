@@ -34,7 +34,40 @@ def material_directory_name(path, root, business_registry=None, business_id=None
 
 
 def directory_material_entity(path, root, entities, business_registry=None, business_id=None, business_code=None):
-    """按单位目录识别；path/root 为材料与输入根，entities 为名册，其余参数用于排除业务目录。"""
+    """按单位目录识别材料主体。
+
+    Args:
+        path: 当前材料的绝对路径。
+        root: 用户选择的输入根目录。
+        entities: 以单位代码为键的正式主体名册。
+        business_registry: 可选的模板业务配置。
+        business_id: 当前材料已识别的稳定业务标识。
+        business_code: 当前材料已识别的业务编号。
+    """
+    from risk_audit.submission_scope import _matches_configured_business_directory, unit_directory
+
+    root = Path(root)
+    directory = unit_directory(path, root, business_registry, business_id, business_code)
+    if directory == root and _matches_configured_business_directory(root.name, business_registry, business_id):
+        # 单业务包根目录可同时包含正式单位全称和业务名称，优先保留最长的单位全称证据。
+        normalized_root = norm_text(root.name)
+        matches = [
+            (code, norm_text(entity.name))
+            for code, entity in entities.items()
+            if norm_text(entity.name) and norm_text(entity.name) in normalized_root
+        ]
+        maximal_matches = [
+            (code, name)
+            for code, name in matches
+            if not any(name != other_name and name in other_name for _, other_name in matches)
+        ]
+        if len(maximal_matches) == 1:
+            code = maximal_matches[0][0]
+            return code, [f'业务包根目录全称:{entities[code].name}'], False
+        if len(maximal_matches) > 1:
+            evidence = [f'业务包根目录全称:{entities[code].name}' for code, _ in maximal_matches]
+            return None, evidence, True
+
     name = material_directory_name(path, root, business_registry, business_id, business_code)
     codes = [code for code, entity in entities.items() if norm_text(name) == norm_text(entity.name)]
     if len(codes) == 1:
