@@ -118,7 +118,7 @@ def test_frontend_uses_automatic_name_and_readable_incomplete_items_modal() -> N
     assert "查看未完成项" in html
     assert "/incomplete-items" in app_source
     assert 'appendIncompleteDetail(card, "失败阶段", item.stage)' in app_source
-    assert 'appendIncompleteDetail(card, "异常类型", item.error_type)' in app_source
+    assert 'appendIncompleteDetail(card, "异常类型", item.error_type)' not in app_source
     assert 'appendIncompleteDetail(card, "详细日志", item.log_reference)' in app_source
     assert "summary.incomplete_items_report" in tasks_source
     assert "summary.incomplete_items" in tasks_source

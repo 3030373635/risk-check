@@ -131,7 +131,6 @@ function incompleteItemCard(item) {
   appendIncompleteDetail(card, "所属主体", item.entity_name || item.entity_code);
   appendIncompleteDetail(card, "所属业务", item.business_name || item.business_code);
   appendIncompleteDetail(card, "失败阶段", item.stage);
-  appendIncompleteDetail(card, "异常类型", item.error_type);
   appendIncompleteDetail(card, "检查规则", item.rule_id);
   appendIncompleteDetail(card, "检查项", item.check_id);
   appendIncompleteDetail(card, "工作表", item.sheet);
