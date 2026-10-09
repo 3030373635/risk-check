@@ -37,7 +37,7 @@ def test_macos_build_entrypoint_passes_locked_builder_arguments() -> None:
     assert "--libreoffice" in source
     assert "--output" in source
     assert "--usage-guide" in source
-    assert "风控矩阵审核器-v2.1.1-macOS-arm64.zip" in source
+    assert "风控矩阵审核器-v2.1.2-macOS-arm64.zip" in source
 
 
 def test_portable_builder_direct_entrypoint_loads_project_modules(tmp_path: Path) -> None:
@@ -125,7 +125,7 @@ print -n -- "portable-zip" > "${output_path}-macOS-arm64.zip"
     )
 
     output_path = Path(argument_log.read_text(encoding="utf-8").strip())
-    final_archive = repository_root / "dist/风控矩阵审核器-v2.1.1-macOS-arm64.zip"
+    final_archive = repository_root / "dist/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
     assert result.returncode == 0, result.stderr
     assert repository_root not in output_path.parents
     assert final_archive.read_bytes() == b"portable-zip"

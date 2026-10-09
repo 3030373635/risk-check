@@ -13,7 +13,7 @@ BUILD_PYTHON="$AUDITOR_ROOT/.venv/bin/python"
 LIBREOFFICE_ROOT="${1:-/Applications/LibreOffice.app}"
 PYTHON_ARCHIVE="${2:-}"
 DIST_ROOT="$REPOSITORY_ROOT/dist"
-EXPECTED_ARCHIVE="$DIST_ROOT/风控矩阵审核器-v2.1.1-macOS-arm64.zip"
+EXPECTED_ARCHIVE="$DIST_ROOT/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
 
 if [[ ! -x "$BUILD_PYTHON" ]]; then
   print -u2 -- "构建失败：缺少项目 Python：risk-audit/.venv/bin/python"
@@ -34,8 +34,8 @@ if [[ -z "$STAGING_ROOT" || ! -d "$STAGING_ROOT" ]]; then
   print -u2 -- "构建失败：无法创建临时组装目录。"
   exit 2
 fi
-OUTPUT_ROOT="$STAGING_ROOT/风控矩阵审核器-v2.1.1"
-STAGED_ARCHIVE="$STAGING_ROOT/风控矩阵审核器-v2.1.1-macOS-arm64.zip"
+OUTPUT_ROOT="$STAGING_ROOT/风控矩阵审核器-v2.1.2"
+STAGED_ARCHIVE="$STAGING_ROOT/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
 
 # 清理本次构建的临时目录；无参数。
 cleanup_staging_root() {
