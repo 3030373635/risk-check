@@ -105,11 +105,12 @@ def test_frontend_only_selects_input_and_keeps_output_readonly() -> None:
 
 
 def test_frontend_uses_automatic_name_and_readable_incomplete_items_modal() -> None:
-    """页面不得要求任务名，并应在弹窗中展示全部未完成项；无参数。"""
+    """页面不得要求任务名，未完成项应突出原因并仅展示客户所需字段；无参数。"""
     root = static_root()
     html = (root / "index.html").read_text(encoding="utf-8")
     app_source = (root / "js/app.js").read_text(encoding="utf-8")
     tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
+    theme_source = (root / "css/theme.css").read_text(encoding="utf-8")
 
     assert 'id="task-name"' not in html
     assert "任务名称由系统自动生成" in html
@@ -117,9 +118,21 @@ def test_frontend_uses_automatic_name_and_readable_incomplete_items_modal() -> N
     assert 'id="incomplete-items-modal"' in html
     assert "查看未完成项" in html
     assert "/incomplete-items" in app_source
-    assert 'appendIncompleteDetail(card, "失败阶段", item.stage)' in app_source
-    assert 'appendIncompleteDetail(card, "异常类型", item.error_type)' not in app_source
-    assert 'appendIncompleteDetail(card, "详细日志", item.log_reference)' in app_source
+    for detail in (
+        'appendIncompleteDetail(card, "文件", item.file)',
+        'appendIncompleteDetail(card, "所属主体", item.entity_name || item.entity_code)',
+        'appendIncompleteDetail(card, "所属业务", item.business_name || item.business_code)',
+        'appendIncompleteDetail(card, "失败阶段", item.stage)',
+        'appendIncompleteDetail(card, "工作表", item.sheet)',
+    ):
+        assert detail in app_source
+    for hidden_detail in ("异常类型", "检查规则", "检查项", "详细日志"):
+        assert f'appendIncompleteDetail(card, "{hidden_detail}"' not in app_source
+    assert 'reason.className = "incomplete-error-reason"' in app_source
+    assert 'icon.className = "bi bi-exclamation-circle"' in app_source
+    assert "card.append(reason);" in app_source
+    assert ".incomplete-error-reason {" in theme_source
+    assert "align-items: center" in theme_source
     assert "summary.incomplete_items_report" in tasks_source
     assert "summary.incomplete_items" in tasks_source
     assert "unaudited-files" not in app_source

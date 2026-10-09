@@ -124,17 +124,22 @@ function incompleteItemCard(item) {
   card.className = "incomplete-item-card";
   const title = document.createElement("h3");
   title.textContent = item.title || "未完成项";
-  const reason = document.createElement("p");
-  reason.textContent = item.message || "该项内容未完成审核";
-  card.append(title, reason);
+  const reason = document.createElement("div");
+  reason.className = "incomplete-error-reason";
+  const icon = document.createElement("i");
+  icon.className = "bi bi-exclamation-circle";
+  icon.setAttribute("aria-hidden", "true");
+  const message = document.createElement("p");
+  message.textContent = item.message || "该项内容未完成审核";
+  reason.append(icon, message);
+  card.append(title);
   appendIncompleteDetail(card, "文件", item.file);
   appendIncompleteDetail(card, "所属主体", item.entity_name || item.entity_code);
   appendIncompleteDetail(card, "所属业务", item.business_name || item.business_code);
   appendIncompleteDetail(card, "失败阶段", item.stage);
-  appendIncompleteDetail(card, "检查规则", item.rule_id);
-  appendIncompleteDetail(card, "检查项", item.check_id);
   appendIncompleteDetail(card, "工作表", item.sheet);
-  appendIncompleteDetail(card, "详细日志", item.log_reference);
+  // 原因放在业务字段之后单独高亮，避免与标题混在一起。
+  card.append(reason);
   return card;
 }
 
