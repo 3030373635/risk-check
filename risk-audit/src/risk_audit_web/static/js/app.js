@@ -171,6 +171,36 @@ async function postTaskAction(suffix) {
   }
 }
 
+/** 显示当前任务的安全停止确认框；无参数。 */
+function showCancelTaskModal() {
+  if (!currentTaskIdValue()) return;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById("cancel-task-modal")).show();
+}
+
+/** 提交当前任务的安全停止请求；无参数。 */
+async function requestTaskCancellation() {
+  const taskId = currentTaskIdValue();
+  if (!taskId) return;
+  const confirmButton = document.getElementById("confirm-cancel-task-button");
+  confirmButton.disabled = true;
+  confirmButton.textContent = "正在提交…";
+  try {
+    const task = await apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}/cancellations`, {
+      method: "POST",
+      body: "{}",
+    });
+    // 直接使用停止接口响应刷新详情，避免等待下一次轮询才出现反馈。
+    renderTaskDetail(task);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("cancel-task-modal")).hide();
+    showToast("停止请求已提交，任务将在当前工作单元完成后停止");
+  } catch (error) {
+    if (error.message !== "SESSION_EXPIRED") showToast(error.message);
+  } finally {
+    confirmButton.disabled = false;
+    confirmButton.textContent = "确认停止";
+  }
+}
+
 /** 请求立即退出或安全停止后退出；无参数。 */
 async function requestShutdown() {
   const running = runningTaskCount;
@@ -193,7 +223,8 @@ function bindEvents() {
   document.getElementById("refresh-tasks-button").addEventListener("click", loadTasks);
   document.getElementById("input-directory-button").addEventListener("click", selectInputDirectory);
   document.getElementById("create-task-form").addEventListener("submit", createTask);
-  document.getElementById("cancel-task-button").addEventListener("click", () => postTaskAction("cancellations"));
+  document.getElementById("cancel-task-button").addEventListener("click", showCancelTaskModal);
+  document.getElementById("confirm-cancel-task-button").addEventListener("click", requestTaskCancellation);
   document.getElementById("open-output-button").addEventListener("click", () => postTaskAction("output-openings"));
   document.getElementById("open-statistics-button").addEventListener("click", () => postTaskAction("statistics-openings"));
   document.getElementById("view-incomplete-items-button").addEventListener("click", showIncompleteItems);

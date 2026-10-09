@@ -140,6 +140,25 @@ def test_frontend_uses_automatic_name_and_readable_incomplete_items_modal() -> N
     assert "review-openings" not in app_source
 
 
+def test_cancel_task_flow_confirms_and_reports_request_state() -> None:
+    """停止任务必须先确认，并在提交后给出明确的进行中反馈；无参数。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app_source = (root / "js/app.js").read_text(encoding="utf-8")
+    tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
+
+    assert 'id="cancel-task-modal"' in html
+    assert 'id="confirm-cancel-task-button"' in html
+    assert "等待当前工作单元完成" in html
+    assert "showCancelTaskModal" in app_source
+    assert "requestTaskCancellation" in app_source
+    assert 'confirmButton.textContent = "正在提交…"' in app_source
+    assert 'showToast("停止请求已提交，任务将在当前工作单元完成后停止")' in app_source
+    assert 'renderTaskDetail(task);' in app_source
+    assert 'cancelButton.disabled = task.status !== "running";' in tasks_source
+    assert 'cancellationPending ? "正在安全停止" : "安全停止任务"' in tasks_source
+
+
 def test_markdown_guides_use_cross_platform_script_terms() -> None:
     """Markdown 说明必须去除 EXE/PyInstaller 口径并覆盖双平台启动。"""
     project_root = static_root().parents[2]

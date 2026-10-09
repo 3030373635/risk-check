@@ -191,7 +191,7 @@
                 <button class="btn btn-light w-100" id="open-statistics-button" type="button"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> 打开统计表</button>
                 <button class="btn btn-light w-100" id="view-incomplete-items-button" type="button"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> <span id="incomplete-items-button-label">查看未完成项</span></button>
                 <hr>
-                <button class="btn btn-outline-danger w-100" id="cancel-task-button" type="button"><i class="bi bi-stop-circle" aria-hidden="true"></i> 安全停止任务</button>
+                <button class="btn btn-outline-danger w-100" id="cancel-task-button" type="button"><i class="bi bi-stop-circle" aria-hidden="true"></i> <span id="cancel-task-button-label">安全停止任务</span></button>
               </aside>
               <aside class="panel mt-4 metadata-panel">
                 <h2>任务信息</h2>
@@ -214,6 +214,9 @@
     </div>
   </div>
 
+  <div class="modal fade" id="cancel-task-modal" tabindex="-1" aria-labelledby="cancel-task-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="cancel-task-modal-title">安全停止任务</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><p>确认停止当前任务？程序会等待当前工作单元完成，已生成的输出将予以保留。</p></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">继续审核</button><button class="btn btn-danger" id="confirm-cancel-task-button" type="button">确认停止</button></div></div></div>
+  </div>
   <div class="modal fade" id="shutdown-modal" tabindex="-1" aria-labelledby="shutdown-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="shutdown-modal-title">退出审核器</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><p id="shutdown-message">确认关闭本机服务？</p></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">继续使用</button><button class="btn btn-danger" id="confirm-shutdown-button" type="button">确认退出</button></div></div></div>
   </div>

@@ -139,7 +139,11 @@ function renderTaskDetail(task) {
   setText("result-warnings", summary.warnings);
   setText("result-limitations", summary.limitations);
   setText("result-incomplete", summary.incomplete_items);
-  document.getElementById("cancel-task-button").disabled = !["running", "cancelling"].includes(task.status);
+  const cancelButton = document.getElementById("cancel-task-button");
+  const cancellationPending = task.status === "cancelling";
+  // 停止请求提交后禁止重复点击，并明确展示后端正在安全停止。
+  cancelButton.disabled = task.status !== "running";
+  document.getElementById("cancel-task-button-label").textContent = cancellationPending ? "正在安全停止" : "安全停止任务";
   document.getElementById("open-statistics-button").disabled = !summary.audit_statistics_report;
   const incompleteButton = document.getElementById("view-incomplete-items-button");
   incompleteButton.disabled = !summary.incomplete_items_report || !summary.incomplete_items;
