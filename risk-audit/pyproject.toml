@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "risk-audit"
-version = "2.1.0"
+version = "2.1.1"
 description = "完全离线的本机 Web 风控矩阵及三清单审核器"
 requires-python = ">=3.11"
 dependencies = [

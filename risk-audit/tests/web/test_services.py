@@ -161,7 +161,7 @@ def test_system_status_reports_auditor_and_rule_versions(web_services) -> None:
     """系统状态必须区分审核器版本和规则版本；web_services 为真实服务。"""
     status = web_services.system_status()
 
-    assert status["app_version"] == "2.1.0"
+    assert status["app_version"] == "2.1.1"
     assert status["rule_version"] == "1.9.19"
 
 
