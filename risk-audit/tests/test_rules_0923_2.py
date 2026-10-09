@@ -195,8 +195,8 @@ def test_preprocessing_reuses_enum_column_and_preserves_third_level(tmp_path: Pa
     assert sheet["C2"].value == "三级部署系统"
 
 
-def test_preprocessing_recomputes_first_or_second_level_from_owner(tmp_path: Path) -> None:
-    """旧的一、二级分类必须按管理主体重算，无法判定时清空。
+def test_preprocessing_preserves_existing_valid_system_types(tmp_path: Path) -> None:
+    """已填写的合法系统类型必须原样保留，不得按管理主体覆盖或清空。
 
     Args:
         tmp_path: pytest 提供的隔离目录。
@@ -218,9 +218,9 @@ def test_preprocessing_recomputes_first_or_second_level_from_owner(tmp_path: Pat
 
     result = load_workbook(Path(source_file._preprocessed_path))
     assert [result.active.cell(row, 3).value for row in range(2, 5)] == [
-        None,
-        "二级部署系统",
         "一级部署系统",
+        "一级部署系统",
+        "二级部署系统",
     ]
 
 

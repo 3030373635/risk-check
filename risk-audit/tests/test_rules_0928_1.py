@@ -63,13 +63,18 @@ def test_unknown_system_owner_emits_preprocessing_notice() -> None:
 
 @pytest.mark.parametrize(
     ("system_owner", "system_type"),
-    [("总部", "一级部署系统"), ("长沙供电分公司", "三级部署系统")],
+    [
+        ("总部", "一级部署系统"),
+        ("长沙供电分公司", "一级部署系统"),
+        ("长沙供电分公司", "二级部署系统"),
+        ("长沙供电分公司", "三级部署系统"),
+    ],
 )
 def test_resolved_or_preserved_system_type_has_no_preprocessing_notice(
     system_owner: str,
     system_type: str,
 ) -> None:
-    """可自动识别或人工确认三级部署时不得生成预处理提示。
+    """可自动识别或已填写合法系统类型时不得生成预处理提示。
 
     Args:
         system_owner: 系统规则管理主体。

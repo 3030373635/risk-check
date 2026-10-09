@@ -444,12 +444,13 @@ def preprocess_system_types(file: FileRecord, work_dir: Path, aliases: dict[str,
                 unresolved_rows = []
                 for record in sheet.records:
                     type_cell = worksheet.cell(record.row, type_column)
-                    if norm_text(type_cell.value) == SYSTEM_TYPE_THIRD:
+                    # 人工已填写的合法枚举值属于确认结果，重新审核时不得覆盖或清空。
+                    if norm_text(type_cell.value) in SYSTEM_TYPE_VALUES:
                         continue
                     owner = worksheet.cell(record.row, owner_column).value if owner_column else ""
                     expected = classify_system_owner(str(owner or ""))
                     if expected is None:
-                        # 一、二级必须按管理主体重算，未决行不保留旧分类。
+                        # 空值或非法值无法自动判定时保持为空，交由预处理提示引导人工补充。
                         type_cell.value = None
                         unresolved_rows.append(record.row)
                         continue

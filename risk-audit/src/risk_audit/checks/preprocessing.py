@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from risk_audit.system_type_preprocessing import (
-    SYSTEM_TYPE_THIRD,
+    SYSTEM_TYPE_VALUES,
     classify_system_owner,
 )
 from risk_audit.util import norm_text
@@ -22,8 +22,8 @@ def system_type_notice_v1(context: Any, params: dict[str, Any]) -> list[dict[str
     del params
     issues = []
     for record in context.records:
-        # 人工明确填写三级部署系统时，预处理必须保留原结论且不再提示。
-        if norm_text(record.value("system_type")) == SYSTEM_TYPE_THIRD:
+        # 人工已填写任一合法枚举值时，不再生成补充提示。
+        if norm_text(record.value("system_type")) in SYSTEM_TYPE_VALUES:
             continue
         if classify_system_owner(record.value("system_owner")) is not None:
             continue
