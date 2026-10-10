@@ -115,17 +115,17 @@ jobs:
 
           mkdir -p "$RELEASE_ROOT"
           /usr/bin/ditto --noextattr --noqtn --noacl \
-            "dist/风控矩阵审核器-v2.1.2-macOS-arm64.zip" \
-            "$RELEASE_ROOT/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
+            "dist/风控矩阵审核器-v2.1.3-macOS-arm64.zip" \
+            "$RELEASE_ROOT/风控矩阵审核器-v2.1.3-macOS-arm64.zip"
 
           "risk-audit/.venv/bin/python" "risk-audit/tools/verify_portable_distribution.py" \
-            "$RELEASE_ROOT/风控矩阵审核器-v2.1.2-macOS-arm64.zip" \
+            "$RELEASE_ROOT/风控矩阵审核器-v2.1.3-macOS-arm64.zip" \
             --platform macos-arm64
 
       - name: 记录最终归档摘要
         shell: bash
         run: |
-          archive_path="$RELEASE_ROOT/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
+          archive_path="$RELEASE_ROOT/风控矩阵审核器-v2.1.3-macOS-arm64.zip"
           archive_hash="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
           {
             echo "### macOS Apple Silicon 离线 Web 便携版"
@@ -135,8 +135,8 @@ jobs:
       - name: 上传 macOS Apple Silicon 便携版
         uses: actions/upload-artifact@v7
         with:
-          name: 风控矩阵审核器-v2.1.2-macOS-arm64
-          path: "release/风控矩阵审核器-v2.1.2-macOS-arm64.zip"
+          name: 风控矩阵审核器-v2.1.3-macOS-arm64
+          path: "release/风控矩阵审核器-v2.1.3-macOS-arm64.zip"
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

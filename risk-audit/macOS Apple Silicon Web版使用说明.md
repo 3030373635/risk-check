@@ -4,7 +4,7 @@
 
 ## 启动
 
-1. 完整解压 `风控矩阵审核器-v2.1.2-macOS-arm64.zip`。
+1. 完整解压 `风控矩阵审核器-v2.1.3-macOS-arm64.zip`。
 2. 双击解压目录中的 `启动审核器.command`。
 3. macOS 会打开终端并运行本机服务，然后用默认浏览器打开审核页面。
 
@@ -16,8 +16,8 @@
 
 ```bash
 cd "$HOME/Downloads"
-xattr -dr com.apple.quarantine "风控矩阵审核器-v2.1.2"
-chmod +x "风控矩阵审核器-v2.1.2/启动审核器.command"
+xattr -dr com.apple.quarantine "风控矩阵审核器-v2.1.3"
+chmod +x "风控矩阵审核器-v2.1.3/启动审核器.command"
 ```
 
 命令只作用于这个已确认来源的具体发布目录，不要把目标替换为用户主目录、“下载”根目录或其他宽泛路径。解除这个目录的隔离标记后，程序仍会完全离线运行。

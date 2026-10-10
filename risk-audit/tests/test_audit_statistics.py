@@ -1,4 +1,4 @@
-"""审核统计表按单位、业务和规则组合汇总的行为验证。"""
+"""审核统计表按单位、业务、规则组合和意见内容汇总的行为验证。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,8 +25,8 @@ def _file(tmp_path: Path, relative_path: str, material_type: str, business_code:
     )
 
 
-def test_statistics_groups_nested_unit_businesses_and_rule_combinations(tmp_path):
-    """tmp_path 为隔离目录；单位取业务上级完整路径，备注合并矩阵与三清单意见。"""
+def test_statistics_groups_same_rule_combination_by_opinion_text(tmp_path):
+    """tmp_path 为隔离目录；同一规则组合的不同意见必须分别统计。"""
     matrix = _file(tmp_path, 'a/b/c/d/风控矩阵.xlsx', 'matrix', '09')
     lists = _file(tmp_path, 'a/b/c/d/三清单.xlsx', 'three_lists', '09')
     system = _file(tmp_path, 'a/b/c/e/风控矩阵.xlsx', 'matrix', '07')
@@ -51,7 +51,8 @@ def test_statistics_groups_nested_unit_businesses_and_rule_combinations(tmp_path
     assert list(sheet.values) == [
         ('单位', '备注'),
         ('包名/a/b/c',
-         'd：\n【第3条】【第5条】待核实：未能读取必需字段。 2条。\n'
+         'd：\n【第3条】【第5条】字段对应待核实。 1条。\n'
+         '【第3条】【第5条】待核实：未能读取必需字段。 1条。\n'
          '【第10条】岗位职责请按照国网标准句式编制。 2条。\n\n'
          'e：\n【第7条】请核实与矩阵对应的系统规则是否应该做出修改。 1条。'),
     ]

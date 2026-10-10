@@ -71,7 +71,7 @@ def test_web_build_workflow_pins_libreoffice_and_uploads_zip() -> None:
     assert "f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660" in workflow
     assert "Get-FileHash" in workflow
     assert "f86b3cbd425e1c446b56aa24e20a7be1223c1a8146e5e3a68c8e18d08b76e810" in workflow
-    assert "风控矩阵审核器-v2.1.2-Windows-x64.zip" in workflow
+    assert "风控矩阵审核器-v2.1.3-Windows-x64.zip" in workflow
     assert "actions/upload-artifact@v7" in workflow
     assert "if-no-files-found: error" in workflow
     assert r"program\soffice.com" in install_step
@@ -96,7 +96,7 @@ def test_web_build_workflow_uploads_only_final_archive() -> None:
     workflow = read_workflow()
     upload_block = workflow.split("uses: actions/upload-artifact@v7", 1)[1]
 
-    assert 'path: "release/风控矩阵审核器-v2.1.2-Windows-x64.zip"' in upload_block
+    assert 'path: "release/风控矩阵审核器-v2.1.3-Windows-x64.zip"' in upload_block
     assert "release/**" not in upload_block
 
 
@@ -140,7 +140,7 @@ def test_macos_build_workflow_pins_inputs_builds_and_verifies_archive() -> None:
     assert "build_macos_portable.command" in workflow
     assert "verify_portable_distribution.py" in workflow
     assert "--platform macos-arm64" in workflow
-    assert "风控矩阵审核器-v2.1.2-macOS-arm64.zip" in workflow
+    assert "风控矩阵审核器-v2.1.3-macOS-arm64.zip" in workflow
 
 
 def test_macos_build_workflow_uploads_only_final_archive() -> None:
@@ -148,7 +148,7 @@ def test_macos_build_workflow_uploads_only_final_archive() -> None:
     workflow = read_macos_workflow()
     upload_block = workflow.split("uses: actions/upload-artifact@v7", 1)[1]
 
-    assert 'path: "release/风控矩阵审核器-v2.1.2-macOS-arm64.zip"' in upload_block
+    assert 'path: "release/风控矩阵审核器-v2.1.3-macOS-arm64.zip"' in upload_block
     assert "release/**" not in upload_block
     assert "if-no-files-found: error" in upload_block
     assert "compression-level: 0" in upload_block

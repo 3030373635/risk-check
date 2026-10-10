@@ -1,4 +1,4 @@
-"""生成与审核规则文档解耦的单位业务审核统计表。"""
+"""按单位、业务、规则编号和意见内容生成审核统计表。"""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -175,9 +175,12 @@ def _collect_statistics(
                     logger.warning('审核统计表未能识别意见规则序号：文件=%s，意见=%s',
                                    output_path, message)
                     continue
+                normalized_message = _normalized_message(message, group)
+                # 规则编号相同但整改要求不同的意见必须分别统计，不能仅按规则编号合并。
+                statistics_key = (group[0], group[1], normalized_message)
                 item = grouped[unit_name][business_name].setdefault(
-                    group,
-                    {'message': _normalized_message(message, group), 'occurrences': set()},
+                    statistics_key,
+                    {'message': normalized_message, 'occurrences': set()},
                 )
                 occurrence = (output_path, state.get('sheet', ''), state.get('cell', ''), message)
                 # ownership 是最终写回结果，相同单元格内的完全相同意见只计一次。
