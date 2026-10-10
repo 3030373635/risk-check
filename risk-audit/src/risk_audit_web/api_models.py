@@ -33,3 +33,9 @@ class ShutdownRequest(StrictModel):
 
 class EmptyRequest(StrictModel):
     """描述不允许携带业务字段的修改请求。"""
+
+
+class ReportOpeningRequest(StrictModel):
+    """描述需要用本机默认程序打开的统计报告格式。"""
+
+    format: Literal["excel", "html"]

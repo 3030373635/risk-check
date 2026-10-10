@@ -347,6 +347,18 @@ class ApplicationServices:
         self.open_path(target)
         return {"status": "opened"}
 
+    def open_audit_statistics(self, task_id: str, report_format: str) -> dict[str, str]:
+        """打开审核统计报告；task_id 为任务编号，report_format 为 excel 或 html。"""
+        result_fields = {
+            "excel": "audit_statistics_report",
+            "html": "audit_statistics_html_report",
+        }
+        # 请求模型已经限制格式，这里仍使用显式映射，禁止字段名直接来自客户端。
+        field_name = result_fields.get(report_format)
+        if field_name is None:
+            raise ApiProblem(400, "INVALID_REPORT_FORMAT", "不支持的统计报告格式")
+        return self.open_result(task_id, field_name)
+
     def get_unaudited_files(self, task_id: str) -> dict[str, Any]:
         """读取未审核文件列表；task_id 为任务编号，返回客户可读的结构化数据。"""
         task = self.get_task(task_id)

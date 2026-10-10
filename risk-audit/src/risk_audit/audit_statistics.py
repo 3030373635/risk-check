@@ -11,6 +11,7 @@ import tempfile
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
+from risk_audit.audit_statistics_html import render_audit_statistics_html
 from risk_audit.models import FileRecord
 from risk_audit.submission_scope import BUSINESS_DIRECTORY_KEYWORDS
 from risk_audit.util import natural_key, norm_text
@@ -202,6 +203,40 @@ def _collect_statistics(
     return grouped
 
 
+def _business_records(items: dict) -> list[str]:
+    """生成一个业务的展示记录；items 为该业务归集后的意见和失败信息。"""
+    records: list[str] = []
+    for group, item in sorted(items.items()):
+        if group[0] == 'failure':
+            failure = item['failure']
+            records.extend([
+                '【审核状态】已跳过，未完成审核',
+                f'【失败阶段】{failure["stage"]}',
+                f'【涉及文件】{"；".join(failure.get("files") or ["未定位具体文件"])}',
+                f'【异常类型】{failure["error_type"]}',
+                f'【跳过原因】{failure["reason"]}',
+                f'【详细日志】{failure["log_reference"]}',
+            ])
+            continue
+        records.append(f'{item["message"]} {len(item["occurrences"])}条。')
+    return records or ['无']
+
+
+def _statistics_source_data(grouped: dict) -> dict[str, list[dict[str, object]]]:
+    """转换为两种报告共用的数据结构；grouped 为按主体和业务归集的数据。"""
+    units: list[dict[str, object]] = []
+    for unit_name in sorted(grouped, key=natural_key):
+        businesses = [
+            {
+                'name': business_name,
+                'records': _business_records(grouped[unit_name][business_name]),
+            }
+            for business_name in sorted(grouped[unit_name], key=natural_key)
+        ]
+        units.append({'path': unit_name, 'businesses': businesses})
+    return {'units': units}
+
+
 def write_audit_statistics(
     path: Path,
     files: list[FileRecord],
@@ -219,30 +254,21 @@ def write_audit_statistics(
         business_failures: 已跳过业务的结构化失败信息。
     """
     grouped = _collect_statistics(files, ownership, package_name, business_failures)
+    source_data = _statistics_source_data(grouped)
     book = Workbook()
     sheet = book.active
     sheet.title = '审核统计表'
     sheet.append(['单位', '备注'])
 
-    for unit_name in sorted(grouped, key=natural_key):
-        business_sections = []
-        for business_name in sorted(grouped[unit_name], key=natural_key):
-            opinion_lines = []
-            for group, item in sorted(grouped[unit_name][business_name].items()):
-                if group[0] == 'failure':
-                    failure = item['failure']
-                    opinion_lines.extend([
-                        '【审核状态】已跳过，未完成审核',
-                        f'【失败阶段】{failure["stage"]}',
-                        f'【涉及文件】{"；".join(failure.get("files") or ["未定位具体文件"])}',
-                        f'【异常类型】{failure["error_type"]}',
-                        f'【跳过原因】{failure["reason"]}',
-                        f'【详细日志】{failure["log_reference"]}',
-                    ])
-                    continue
-                opinion_lines.append(f'{item["message"]} {len(item["occurrences"])}条。')
-            business_sections.append(f'{business_name}：\n' + ('\n'.join(opinion_lines) or '无'))
-        sheet.append([_safe_excel_text(unit_name), _safe_excel_text('\n\n'.join(business_sections))])
+    for unit in source_data['units']:
+        business_sections = [
+            f'{business["name"]}：\n' + '\n'.join(business['records'])
+            for business in unit['businesses']
+        ]
+        sheet.append([
+            _safe_excel_text(unit['path']),
+            _safe_excel_text('\n\n'.join(business_sections)),
+        ])
 
     header_fill = PatternFill('solid', fgColor='305496')
     header_font = Font(bold=True, color='FFFFFF')
@@ -275,6 +301,38 @@ def write_audit_statistics(
     try:
         # 先写同目录临时文件，成功后原子替换，避免中途失败留下损坏工作簿。
         book.save(temporary_path)
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def write_audit_statistics_html(
+    path: Path,
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    business_failures: list[dict] | None = None,
+) -> None:
+    """写入审核统计 HTML。
+
+    Args:
+        path: HTML 报告输出路径。
+        files: 本次审核扫描到的文件。
+        ownership: 实际写回审核意见的单元格归属。
+        package_name: 审核包名称。
+        business_failures: 已跳过业务的结构化失败信息。
+    """
+    grouped = _collect_statistics(files, ownership, package_name, business_failures)
+    document = render_audit_statistics_html(_statistics_source_data(grouped))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix='.audit-statistics-', suffix='.html', dir=path.parent,
+    )
+    os.close(descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        # HTML 同样先写入同目录临时文件，避免异常中断留下半份报告。
+        temporary_path.write_text(document, encoding='utf-8')
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)

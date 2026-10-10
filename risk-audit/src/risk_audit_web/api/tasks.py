@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, status
 
 from risk_audit_web.api.system import get_services
-from risk_audit_web.api_models import EmptyRequest, TaskCreateRequest
+from risk_audit_web.api_models import EmptyRequest, ReportOpeningRequest, TaskCreateRequest
 from risk_audit_web.services import ApplicationServices, task_response
 
 
@@ -66,14 +66,14 @@ def open_output(
     return services.open_output(task_id)
 
 
-@router.post("/{task_id}/statistics-openings", status_code=status.HTTP_201_CREATED)
-def open_statistics(
+@router.post("/{task_id}/report-openings", status_code=status.HTTP_201_CREATED)
+def open_report(
     task_id: str,
-    _request: EmptyRequest,
+    request: ReportOpeningRequest,
     services: ApplicationServices = Depends(get_services),
 ) -> dict[str, str]:
-    """打开统计表；task_id 为任务编号，_request 禁止额外字段。"""
-    return services.open_result(task_id, "audit_statistics_report")
+    """打开指定格式统计报告；task_id 为任务编号，request 为受控报告格式。"""
+    return services.open_audit_statistics(task_id, request.format)
 
 
 @router.get("/{task_id}/unaudited-files")

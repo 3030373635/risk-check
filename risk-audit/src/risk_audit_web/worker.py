@@ -41,11 +41,14 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
         for key in ("input_files", "findings", "warnings", "limitations", "incomplete_items")
     }
     statistics_report = result.get("audit_statistics_report")
+    statistics_html_report = result.get("audit_statistics_html_report")
     run_dir = result.get("run_dir")
     log_reference = result.get("log_reference")
     incomplete_items_report = result.get("incomplete_items_report")
     if isinstance(statistics_report, str):
         summary["audit_statistics_report"] = statistics_report
+    if isinstance(statistics_html_report, str):
+        summary["audit_statistics_html_report"] = statistics_html_report
     if isinstance(log_reference, str):
         # 只传递任务结果引用，不把数据库位置等内部资源暴露给界面。
         summary["log_reference"] = log_reference

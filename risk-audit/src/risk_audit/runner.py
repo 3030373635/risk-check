@@ -31,7 +31,7 @@ from risk_audit.models import CheckStatus, FileRecord, Finding
 from risk_audit.review_tasks import build_review_tasks, write_review_tasks
 from risk_audit.issue_routing import build_internal_diagnostics, write_internal_diagnostics
 from risk_audit.submission_scope import resolve_submission_scopes, write_submission_scope_report, submission_group
-from risk_audit.audit_statistics import write_audit_statistics
+from risk_audit.audit_statistics import write_audit_statistics, write_audit_statistics_html
 from risk_audit.progress import (
     AuditCancelled,
     AuditProgressEvent,
@@ -208,11 +208,14 @@ def _remove_legacy_opinion_outputs(output_root: Path) -> None:
         # _risk_audit 是程序管理目录；迁移后不得在交付目录留下旧辅助资料。
         shutil.rmtree(audit_directory)
 
-    statistics_report = output_root / "审核统计表.xlsx"
-    if statistics_report.is_symlink() or statistics_report.is_file():
-        statistics_report.unlink()
-    elif statistics_report.exists():
-        raise RuntimeError(f"审核统计表路径不是文件，拒绝清理: {statistics_report}")
+    for statistics_report in (
+        output_root / "审核统计表.xlsx",
+        output_root / "审核统计表.html",
+    ):
+        if statistics_report.is_symlink() or statistics_report.is_file():
+            statistics_report.unlink()
+        elif statistics_report.exists():
+            raise RuntimeError(f"审核统计表路径不是文件，拒绝清理: {statistics_report}")
 
 
 def _load_previous_ownership(runs_root: Path, output_root: Path, current_run_dir: Path) -> dict[str, list[dict[str, Any]]]:
@@ -701,9 +704,18 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     warnings.extend(scope_report['alerts'])
     if write:
         audit_statistics_report = output_resolved / '审核统计表.xlsx'
+        audit_statistics_html_report = output_resolved / '审核统计表.html'
         # 统计表是独立代码产物，不依赖已删除的意见反馈规则或报告。
         write_audit_statistics(
             audit_statistics_report,
+            files,
+            output_state.ownership,
+            input_resolved.name,
+            business_failures=business_failures,
+        )
+        # HTML 与 Excel 使用同一批审核结果独立生成，方便浏览器快速定位问题。
+        write_audit_statistics_html(
+            audit_statistics_html_report,
             files,
             output_state.ownership,
             input_resolved.name,
@@ -768,6 +780,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     result['log_reference'] = log_reference
     if write:
         result['audit_statistics_report'] = str(audit_statistics_report)
+        result['audit_statistics_html_report'] = str(audit_statistics_html_report)
         result['audit_metadata_dir'] = str(audit_directory)
     write_json(run_dir / "summary.json", result)
     return result

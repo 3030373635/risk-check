@@ -171,6 +171,20 @@ async function postTaskAction(suffix) {
   }
 }
 
+/** 打开当前任务的统计报告；reportFormat 为 excel 或 html。 */
+async function openStatisticsReport(reportFormat) {
+  const taskId = currentTaskIdValue();
+  if (!taskId) return;
+  try {
+    await apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}/report-openings`, {
+      method: "POST",
+      body: JSON.stringify({ format: reportFormat }),
+    });
+  } catch (error) {
+    if (error.message !== "SESSION_EXPIRED") showToast(error.message);
+  }
+}
+
 /** 显示当前任务的安全停止确认框；无参数。 */
 function showCancelTaskModal() {
   if (!currentTaskIdValue()) return;
@@ -226,7 +240,9 @@ function bindEvents() {
   document.getElementById("cancel-task-button").addEventListener("click", showCancelTaskModal);
   document.getElementById("confirm-cancel-task-button").addEventListener("click", requestTaskCancellation);
   document.getElementById("open-output-button").addEventListener("click", () => postTaskAction("output-openings"));
-  document.getElementById("open-statistics-button").addEventListener("click", () => postTaskAction("statistics-openings"));
+  for (const option of document.querySelectorAll("[data-report-format]")) {
+    option.addEventListener("click", () => openStatisticsReport(option.dataset.reportFormat));
+  }
   document.getElementById("view-incomplete-items-button").addEventListener("click", showIncompleteItems);
   document.getElementById("shutdown-button").addEventListener("click", () => {
     const running = runningTaskCount;

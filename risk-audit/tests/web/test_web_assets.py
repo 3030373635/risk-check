@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import subprocess
 
+from lxml import html
+
 
 def static_root() -> Path:
     """返回仓库内 Web 静态目录；无参数。"""
@@ -26,6 +28,19 @@ def test_frontend_has_no_remote_runtime_resources() -> None:
         for name in ("api.js", "tasks.js", "app.js")
     )
     assert "innerHTML" not in owned_scripts
+
+
+def test_statistics_button_offers_excel_and_html_reports() -> None:
+    """统计表按钮必须展开 EXCEL 与 HTML 两个受控选项；无参数。"""
+    document = html.fromstring((static_root() / "index.html").read_text(encoding="utf-8"))
+    toggle = document.get_element_by_id("open-statistics-button")
+    options = document.xpath("//*[@data-report-format]")
+
+    assert "打开统计表" in "".join(toggle.itertext())
+    assert [("".join(option.itertext()).strip(), option.get("data-report-format")) for option in options] == [
+        ("EXCEL", "excel"),
+        ("HTML", "html"),
+    ]
 
 
 def test_bootstrap_icon_font_reference_resolves_locally() -> None:

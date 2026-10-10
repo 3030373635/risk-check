@@ -64,6 +64,10 @@ def test_worker_maps_result_to_sqlite_terminal_state(
             "[]" if write_completed else '[{"type":"file_parsing_failed"}]',
             encoding="utf-8",
         )
+        excel_report = Path(request.output_root) / "审核统计表.xlsx"
+        html_report = Path(request.output_root) / "审核统计表.html"
+        excel_report.write_bytes(b"excel")
+        html_report.write_text("<main>html</main>", encoding="utf-8")
         return {
             "write_completed": write_completed,
             "input_files": 2,
@@ -74,6 +78,8 @@ def test_worker_maps_result_to_sqlite_terminal_state(
             "incomplete_items_report": str(incomplete_items_report),
             "business_results": [{}, {}],
             "run_dir": str(kwargs["run_directory"]),
+            "audit_statistics_report": str(excel_report),
+            "audit_statistics_html_report": str(html_report),
         }
 
     code = worker.run_worker(repository.database_path, request.task_id, audit_func=audit_func)
@@ -83,6 +89,8 @@ def test_worker_maps_result_to_sqlite_terminal_state(
     assert state.status == expected_status
     assert state.result_summary["incomplete_items"] == (0 if write_completed else 1)
     assert state.result_summary["incomplete_items_report"].endswith("未完成项.json")
+    assert state.result_summary["audit_statistics_report"].endswith("审核统计表.xlsx")
+    assert state.result_summary["audit_statistics_html_report"].endswith("审核统计表.html")
     assert state.message == (
         "审核已完成"
         if write_completed

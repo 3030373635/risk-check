@@ -1,11 +1,13 @@
 """审核统计表按单位、业务、规则组合和意见内容汇总的行为验证。"""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from lxml import html
 from openpyxl import load_workbook
 
-from risk_audit.audit_statistics import write_audit_statistics
+from risk_audit.audit_statistics import write_audit_statistics, write_audit_statistics_html
 from risk_audit.models import FileRecord
 
 
@@ -56,6 +58,34 @@ def test_statistics_groups_same_rule_combination_by_opinion_text(tmp_path):
          '【第10条】岗位职责请按照国网标准句式编制。 2条。\n\n'
          'e：\n【第7条】请核实与矩阵对应的系统规则是否应该做出修改。 1条。'),
     ]
+
+
+def test_html_statistics_uses_same_grouped_content_as_excel(tmp_path: Path) -> None:
+    """HTML 必须以与 Excel 相同的主体、业务和意见数据生成；tmp_path 为隔离目录。"""
+    matrix = _file(tmp_path, '一区/07物资采购/风控矩阵.xlsx', 'matrix', '07')
+    ownership = {
+        str(matrix.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': '【第10条】请补充岗位职责。</script><script>unsafe()</script>',
+        }],
+    }
+    target = tmp_path / '审核统计表.html'
+
+    write_audit_statistics_html(target, [matrix], ownership, '报送包')
+
+    document = html.fromstring(target.read_text(encoding='utf-8'))
+    source = document.get_element_by_id('audit-source-data').text
+    assert json.loads(source) == {
+        'units': [{
+            'path': '报送包/一区',
+            'businesses': [{
+                'name': '07物资采购',
+                'records': ['【第10条】请补充岗位职责。</script><script>unsafe()</script> 1条。'],
+            }],
+        }],
+    }
+    assert '<script>unsafe()</script>' not in target.read_text(encoding='utf-8')
 
 
 def test_statistics_writes_none_for_recognized_business_without_opinions(tmp_path):

@@ -96,6 +96,53 @@ def test_output_opening_never_accepts_client_path(client, input_root: Path) -> N
     assert response.json()["error_code"] == "INVALID_REQUEST"
 
 
+def test_report_opening_selects_excel_or_html_from_task_results(
+    client,
+    web_services,
+    input_root: Path,
+) -> None:
+    """报告打开接口只能按受控格式打开任务结果；参数为客户端、服务和输入目录。"""
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    ).json()
+    task = web_services.get_task(created["task_id"])
+    excel_report = Path(task.record.output_root) / "审核统计表.xlsx"
+    html_report = Path(task.record.output_root) / "审核统计表.html"
+    excel_report.parent.mkdir(parents=True, exist_ok=True)
+    excel_report.write_bytes(b"excel")
+    html_report.write_text("<main>html</main>", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task.record.task_id,
+        {"result_summary": {
+            "audit_statistics_report": str(excel_report),
+            "audit_statistics_html_report": str(html_report),
+        }},
+    )
+
+    excel_response = client.post(
+        f"/api/v1/tasks/{task.record.task_id}/report-openings",
+        headers=authorized_post_headers(client),
+        json={"format": "excel"},
+    )
+    html_response = client.post(
+        f"/api/v1/tasks/{task.record.task_id}/report-openings",
+        headers=authorized_post_headers(client),
+        json={"format": "html"},
+    )
+    invalid_response = client.post(
+        f"/api/v1/tasks/{task.record.task_id}/report-openings",
+        headers=authorized_post_headers(client),
+        json={"format": "pdf"},
+    )
+
+    assert excel_response.status_code == 201
+    assert html_response.status_code == 201
+    assert invalid_response.status_code == 400
+    assert web_services.opened_paths == [excel_report.resolve(), html_report.resolve()]
+
+
 def test_read_incomplete_items_returns_every_visible_reason(
     client,
     web_services,

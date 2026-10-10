@@ -893,6 +893,9 @@ def test_new_pack_audit_and_repeat_rebuild_opinions(tmp_path):
     assert Path(result['audit_statistics_report']) == tmp_path / 'output/审核统计表.xlsx'
     assert Path(result['audit_statistics_report']).is_file()
     assert load_workbook(result['audit_statistics_report']).sheetnames == ['审核统计表']
+    assert Path(result['audit_statistics_html_report']) == tmp_path / 'output/审核统计表.html'
+    assert Path(result['audit_statistics_html_report']).is_file()
+    assert 'id="audit-source-data"' in Path(result['audit_statistics_html_report']).read_text(encoding='utf-8')
     assert not (tmp_path / 'output/_risk_audit').exists()
     audit_directory = Path(result['run_dir']) / '_risk_audit'
     assert (audit_directory / 'ownership.json').is_file()
