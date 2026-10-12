@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "purpose": "重庆未提供地区专用术语库"
+  },
+  "schema_version": "1.0",
+  "terms": {
+    "carrier": [],
+    "department": [],
+    "position": []
+  }
+}

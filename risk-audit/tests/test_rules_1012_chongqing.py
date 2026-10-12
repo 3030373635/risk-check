@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from openpyxl import Workbook
 
 from risk_audit.checks.registry import CheckContext, build_registry
 from risk_audit.business_identity import identify_business
@@ -19,6 +20,7 @@ from risk_audit.engine import run_engine
 from risk_audit.models import Entity, FieldValue, FileRecord, ParsedSheet, Record
 from risk_audit.runner import CONFIRMED_RULE_VERSIONS, PREPROCESSING_RULE_VERSIONS
 from risk_audit.pipeline_versions import SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+from risk_audit.readers.excel import parse_workbook
 from risk_audit.system_type_preprocessing import classify_system_owner
 from risk_audit.util import sha256_file
 from tools.publish_rules_1012_chongqing import (
@@ -34,9 +36,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源" / SOURCE_NAME
 RELEASE = ROOT / "rulepacks/releases/1.9.22"
 SPLIT_LISTS_RELEASE = ROOT / "rulepacks/releases/1.9.23"
-CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.26"
+CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.27"
 UPDATED_SOURCE = ROOT / "规则来源/风控矩阵1012-重庆.docx"
 UPDATED_RELEASE = ROOT / "rulepacks/releases/1.9.26"
+REVISED_SOURCE = ROOT / "规则来源/风控矩阵及三清单审核规则 审核确认稿（重庆公司版）.docx"
 
 
 def make_record(record_type: str, row: int, business_id: str = "financial_management", **values: str) -> Record:
@@ -912,9 +915,105 @@ def test_updated_release_identifies_every_chongqing_business_directory_uniquely(
 
 def test_current_release_uses_confirmed_scan_and_preprocessing_pipeline() -> None:
     """当前重庆发布包必须进入新版扫描和基准预处理流程。"""
-    assert "1.9.26" in CONFIRMED_RULE_VERSIONS
-    assert "1.9.26" in PREPROCESSING_RULE_VERSIONS
-    assert "1.9.26" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+    assert "1.9.27" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.27" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.27" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+
+
+@pytest.mark.parametrize(("headers", "values"), [
+    (
+        ["控制措施编号", "控制措施", "控制系统", "控制载体", "责任主体", "业务备注"],
+        ["1.1", "测试措施", "ERP", "制度", "重庆公司-财务部-会计", "正常"],
+    ),
+    (
+        [
+            "控制措施编号",
+            "控制措施",
+            "控制系统",
+            "控制载体",
+            "责任主体",
+            "是否适用及原因",
+            "业务备注",
+        ],
+        ["1.1", "测试措施", "ERP", "制度", "重庆公司-财务部-会计", "/", "正常"],
+    ),
+])
+def test_current_release_does_not_enforce_deleted_applicability_requirements(
+    tmp_path: Path,
+    headers: list[str],
+    values: list[str],
+) -> None:
+    """重庆新版第3条不得再检查适用性字段存在、内容或末列位置。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+        headers: 待审核矩阵的业务表头。
+        values: 与业务表头对应的一行测试数据。
+    """
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "风控矩阵"
+    sheet.append(["风控矩阵"])
+    sheet.append(headers)
+    sheet.append(values)
+    source = tmp_path / "02财务管理矩阵.xlsx"
+    workbook.save(source)
+
+    pack = copy.deepcopy(load_pack(CURRENT_RELEASE))
+    pack["rules"] = [rule for rule in pack["rules"] if rule["display_code"] == "R03"]
+    pack["submission_scope"] = {
+        "batch": "second",
+        "entity_codes": ["CQ001"],
+        "businesses": [{
+            "business_id": "financial_management",
+            "business_code": "02",
+            "variant_id": "default",
+            "required": True,
+        }],
+    }
+    file = FileRecord(
+        source,
+        Path(source.name),
+        sha256_file(source),
+        "xlsx",
+        "CQ001",
+        [],
+        False,
+        "02",
+        "default",
+        "matrix",
+        business_id="financial_management",
+        preservation={"template_match": {"status": "matched"}},
+    )
+    file.sheets = parse_workbook(file, source, pack["field_aliases"])
+
+    findings, _ = run_engine(
+        pack,
+        build_registry(),
+        [file],
+        {"CQ001": Entity("CQ001", "国网重庆市电力公司")},
+        {},
+        run_id="chongqing-applicability-revision-test",
+    )
+
+    assert findings == []
+
+
+def test_current_release_freezes_revised_source_and_removes_applicability_rule() -> None:
+    """重庆 1.9.27 必须冻结新稿，并移除已删除的适用性填写子规则。"""
+
+    pack = load_pack(CURRENT_RELEASE)
+    rules = {rule["rule_id"]: rule for rule in pack["rules"]}
+    schema_params = rules["schema.applicability"]["checks"][0]["params"]
+
+    assert pack["manifest"]["version"] == "1.9.27"
+    assert pack["manifest"]["source_document_sha256"] == sha256_file(REVISED_SOURCE)
+    assert "applicability.values" not in rules
+    assert "applicability" not in schema_params["required_fields"]
+    assert "check_applicability_tail" not in schema_params
+    assert schema_params["compare_baseline"] is True
+    assert "matrices.measure_applicability" in rules
 
 
 def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
@@ -955,7 +1054,10 @@ def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
     assert capability.runner(context, naming_check["params"]) == []
 
 
-@pytest.mark.parametrize("release", [RELEASE, SPLIT_LISTS_RELEASE, CURRENT_RELEASE])
+@pytest.mark.parametrize(
+    "release",
+    [RELEASE, SPLIT_LISTS_RELEASE, UPDATED_RELEASE, CURRENT_RELEASE],
+)
 def test_release_contains_no_hunan_specific_resources(release: Path) -> None:
     """重庆发布包不得包含湖南主体、地名或冻结样本引用。
 
@@ -979,7 +1081,7 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.26")):
+    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.27")):
         manifest = json.loads(
             (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
         )
@@ -1123,6 +1225,28 @@ def test_updated_release_is_deterministic_and_does_not_activate_release() -> Non
         [
             sys.executable,
             str(ROOT / "tools/publish_rules_1012_chongqing_1926.py"),
+            "--verify-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
+    assert active_path.read_bytes() == before
+
+
+def test_revised_release_is_deterministic_and_does_not_activate_release() -> None:
+    """重庆 1.9.27 必须可重复构建，复验时不得改动全局激活指针。"""
+
+    active_path = ROOT / "rulepacks/active.json"
+    before = active_path.read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/publish_rules_1012_chongqing_1927.py"),
             "--verify-only",
         ],
         cwd=ROOT,

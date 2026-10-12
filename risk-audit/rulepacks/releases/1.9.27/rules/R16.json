@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "system_control_consistency",
+      "location_policy": "material",
+      "message": {
+        "review": "【第16条】{opinion}",
+        "violation": "【第16条】{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "system_control_consistency",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R16",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "chongqing.system_control_consistency",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵及三清单审核规则 审核确认稿（重庆公司版）.docx 有效正文",
+  "title": "系统控制清单与矩阵一致性"
+}

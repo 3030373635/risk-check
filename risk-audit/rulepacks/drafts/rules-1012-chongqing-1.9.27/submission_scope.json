@@ -1,0 +1,12 @@
+{
+  "batch":"first-batch-2026-09",
+  "entity_codes":["205H"],
+  "businesses":[
+    {"business_code":"06","variant_id":"default","required":true},
+    {"business_code":"07","variant_id":"default","required":true},
+    {"business_code":"08","variant_id":"default","required":true},
+    {"business_code":"09","variant_id":"default","required":true},
+    {"business_code":"10","variant_id":"default","required":true}
+  ],
+  "source":"三级公司及所属单位风控矩阵应用清单第10行；只使用第一批列"
+}

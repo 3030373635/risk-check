@@ -1,0 +1,11 @@
+{
+  "audit_as_of": "2026-10-12",
+  "engine_compatibility": ">=1.9.27,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "29d47798acd21072dc6e7b9f4aacb138c67c0d80ff3763bbf07d824c3b3693e4",
+  "status": "draft",
+  "title": "重庆适用性审核口径修订规则包",
+  "version": "1.9.27"
+}
