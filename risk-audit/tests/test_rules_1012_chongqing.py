@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import shutil
 import subprocess
@@ -12,7 +13,9 @@ import pytest
 from docx import Document
 
 from risk_audit.checks.registry import CheckContext, build_registry
-from risk_audit.models import Entity, FieldValue, FileRecord, Record
+from risk_audit.configuration.loader import load_pack
+from risk_audit.engine import run_engine
+from risk_audit.models import Entity, FieldValue, FileRecord, ParsedSheet, Record
 from risk_audit.system_type_preprocessing import classify_system_owner
 from tools.publish_rules_1012_chongqing import (
     BASE_VERSION,
@@ -27,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源" / SOURCE_NAME
 RELEASE = ROOT / "rulepacks/releases/1.9.22"
 SPLIT_LISTS_RELEASE = ROOT / "rulepacks/releases/1.9.23"
+CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.24"
 
 
 def make_record(record_type: str, row: int, business_id: str = "financial_management", **values: str) -> Record:
@@ -546,7 +550,7 @@ def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
     assert capability.runner(context, naming_check["params"]) == []
 
 
-@pytest.mark.parametrize("release", [RELEASE, SPLIT_LISTS_RELEASE])
+@pytest.mark.parametrize("release", [RELEASE, SPLIT_LISTS_RELEASE, CURRENT_RELEASE])
 def test_release_contains_no_hunan_specific_resources(release: Path) -> None:
     """重庆发布包不得包含湖南主体、地名或冻结样本引用。
 
@@ -570,12 +574,89 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.23")):
+    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.24")):
         manifest = json.loads(
             (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
         )
         assert profiles[region_code]["rulepack_version"] == version
         assert profiles[region_code]["rulepack_content_hash"] == manifest["content_hash"]
+
+
+@pytest.mark.parametrize(("rule_id", "rule_number", "record_values"), [
+    (
+        "chongqing.system_control_consistency",
+        16,
+        {"measure_id": "29.1", "control_mode": "系统已建"},
+    ),
+    (
+        "chongqing.power_supply_branch_key_points",
+        17,
+        {"measure_id": "29.1"},
+    ),
+])
+def test_current_chongqing_special_opinion_includes_rule_number(
+    rule_id: str,
+    rule_number: int,
+    record_values: dict[str, str],
+) -> None:
+    """当前重庆专项规则命中时，最终审核意见必须显示规则编号。
+
+    Args:
+        rule_id: 单独执行的重庆专项规则标识。
+        rule_number: 意见前必须显示的规则条款编号。
+        record_values: 用于稳定触发当前规则的矩阵字段。
+    """
+
+    index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
+    chongqing = next(
+        item for item in index["regions"] if item["region_code"] == "chongqing"
+    )
+    release = ROOT / "rulepacks/releases" / chongqing["rulepack_version"]
+    pack = copy.deepcopy(load_pack(release))
+    pack["rules"] = [
+        rule
+        for rule in pack["rules"]
+        if rule["rule_id"] == rule_id
+    ]
+    pack["submission_scope"] = {
+        "batch": "second",
+        "entity_codes": ["CQ001"],
+        "businesses": [{
+            "business_id": "financial_management",
+            "business_code": "02",
+            "variant_id": "default",
+            "required": True,
+        }],
+    }
+    record = make_record("matrix", 3, **record_values)
+    sheet = ParsedSheet("风控矩阵", "matrix", [2], {}, {}, 8, 3, [record])
+    file = FileRecord(
+        Path("财务管理.xlsx"),
+        Path("财务管理.xlsx"),
+        "hash",
+        "xlsx",
+        "CQ001",
+        [],
+        False,
+        "02",
+        "default",
+        "matrix",
+        [sheet],
+        business_id="financial_management",
+    )
+
+    findings, _ = run_engine(
+        pack,
+        build_registry(),
+        [file],
+        {"CQ001": Entity("CQ001", "国网重庆市电力公司某供电分公司")},
+        {},
+        run_id="chongqing-rule-17-number-test",
+    )
+
+    assert findings
+    expected_prefix = f"【第{rule_number}条】"
+    assert all(finding.message.startswith(expected_prefix) for finding in findings)
 
 
 def test_verify_only_is_deterministic_and_does_not_activate_release() -> None:
@@ -603,6 +684,28 @@ def test_split_lists_release_is_deterministic_and_does_not_activate_release() ->
     before = active_path.read_bytes()
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools/publish_chongqing_split_lists_1923.py"), "--verify-only"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
+    assert active_path.read_bytes() == before
+
+
+def test_rule_number_release_is_deterministic_and_does_not_activate_release() -> None:
+    """规则编号修复包必须可重建，复验时不得改动全局激活指针。"""
+
+    active_path = ROOT / "rulepacks/active.json"
+    before = active_path.read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/publish_chongqing_rule_numbers_1924.py"),
+            "--verify-only",
+        ],
         cwd=ROOT,
         text=True,
         capture_output=True,
