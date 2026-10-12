@@ -3,7 +3,7 @@ from collections import defaultdict
 from pathlib import Path
 import re
 
-from risk_audit.util import norm_text, write_json
+from risk_audit.util import norm_text, write_compact_json
 
 
 def build_entity_alerts(files, entities, missing_code=()):
@@ -54,7 +54,7 @@ def write_entity_alerts(directory, alerts):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     report = directory / '主体代码待确认.md'
-    write_json(directory / 'entity_alerts.json', alerts)
+    write_compact_json(directory / 'entity_alerts.json', alerts)
     lines = ['# 主体代码待确认', '']
     if not alerts:
         lines.append('本次材料没有待确认的主体代码。')

@@ -3,7 +3,7 @@ from collections import Counter
 from pathlib import Path
 import csv
 
-from risk_audit.util import norm_text, sha256_json, write_json
+from risk_audit.util import norm_text, sha256_json, write_compact_json
 
 CHECKS = {'broad_responsibility_pattern', 'explicit_role_responsibility'}
 
@@ -49,8 +49,17 @@ def build_patterns(files, findings, limitations, scopes):
 
 
 def write_patterns(output, patterns):
+    """写出责任表述集中确认报告。
+
+    Args:
+        output: 责任表述报告目录。
+        patterns: ``build_patterns`` 生成的责任表述分组。
+
+    Returns:
+        责任表述分组、影响行和意见数量摘要。
+    """
     output = Path(output)
-    write_json(output/'responsibility_patterns.json', patterns)
+    write_compact_json(output/'responsibility_patterns.json', patterns)
     with (output/'责任表述集中确认.csv').open('w',encoding='utf-8-sig',newline='') as h:
         w=csv.writer(h);w.writerow(['句式编号','角色','职责原文','具体问题','影响行数','涉及主体数','单位意见数','示例位置'])
         for p in patterns:
@@ -63,5 +72,5 @@ def write_patterns(output, patterns):
              'unit_opinions':sum(p['unit_opinions'] for p in patterns),
              'internal_patterns':sum(any(x['channel']=='内部解析' for x in p['problems']) for p in patterns),
              'automatic_approvals':0}
-    write_json(output/'responsibility_patterns_summary.json',summary)
+    write_compact_json(output/'responsibility_patterns_summary.json',summary)
     return summary

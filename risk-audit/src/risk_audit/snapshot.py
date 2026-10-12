@@ -7,7 +7,7 @@ from typing import Any
 from risk_audit import __version__
 from risk_audit.models import FileRecord
 from risk_audit.readers.excel import COLUMN_VISIBILITY_POLICY
-from risk_audit.util import sha256_json, write_json
+from risk_audit.util import sha256_json, write_compact_json
 
 
 def build_snapshot(
@@ -65,4 +65,4 @@ def build_snapshot(
 
 def save_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
     """写入快照；path 为目标路径，snapshot 为已构建的快照。"""
-    write_json(path, snapshot)
+    write_compact_json(path, snapshot)

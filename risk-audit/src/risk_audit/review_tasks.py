@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter,defaultdict
 from pathlib import Path
 import csv
-from risk_audit.util import measure_id_key,norm_text,sha256_json,write_json
+from risk_audit.util import measure_id_key,norm_text,sha256_json,write_compact_json
 
 LABELS={'department':'部门','position':'岗位名称','person_names':'人员姓名','role':'角色','duty':'岗位职责',
         'measure_id':'控制措施编号','applicability':'本单位适用情况','responsibility':'责任主体','carrier':'控制载体','duty_id':'岗位职责编号'}
@@ -112,7 +112,7 @@ def build_review_tasks(files,findings,scopes):
 def write_review_tasks(output,tasks):
     """写出复核事项；output 为报告目录，tasks 为 build_review_tasks 的归并结果。"""
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    write_json(output/'review_tasks.json',tasks)
+    write_compact_json(output/'review_tasks.json',tasks)
     with (output/'复核事项.csv').open('w',encoding='utf-8-sig',newline='') as h:
         w=csv.writer(h);w.writerow(['事项编号','范围','类型','处理事项','关联规则','影响行数','原意见数','示例位置'])
         for t in tasks:
@@ -128,5 +128,5 @@ def write_review_tasks(output,tasks):
     lines.extend(f'| {k} | {v} |' for k,v in summary['in_scope_by_kind'].items())
     lines.extend(['','详见同目录的“复核事项.csv”；原意见与全部行位置在 review_tasks.json 保留。'])
     (output/'集中复核事项.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
-    write_json(output/'review_tasks_summary.json',summary)
+    write_compact_json(output/'review_tasks_summary.json',summary)
     return summary

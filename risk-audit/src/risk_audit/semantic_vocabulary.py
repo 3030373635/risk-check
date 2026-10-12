@@ -2,10 +2,22 @@
 from collections import defaultdict
 from pathlib import Path
 import csv
-from risk_audit.util import norm_text,sha256_json,write_json
+from risk_audit.util import norm_text,sha256_json,write_compact_json
 
 
 def write_semantic_vocabulary(run_dir,files,diagnostics,findings,limitations):
+    """写出带来源位置的语义词库候选。
+
+    Args:
+        run_dir: 本次任务报告目录。
+        files: 已读取的材料记录。
+        diagnostics: 语义辅助产生的诊断事件。
+        findings: 本次审核意见。
+        limitations: 本次审核限制项。
+
+    Returns:
+        候选数量、来源覆盖和关系分组统计。
+    """
     run_dir=Path(run_dir);event_sources=defaultdict(list)
     hashes={str(f.relative_path):f.sha256 for f in files}
     records={(r.file_path,r.sheet,r.row):r for f in files for s in f.sheets for r in s.records}
@@ -43,7 +55,7 @@ def write_semantic_vocabulary(run_dir,files,diagnostics,findings,limitations):
                          'sources':located,'automatic_equivalence':False,
                          'constraints':['同主体及业务范围','同控制措施编号的岗位候选','否定与角色等关键差异必须单独核对'],
                          'counterexamples_required':True}
-    entries=list(groups.values());write_json(run_dir/'semantic_vocabulary_candidates.json',entries)
+    entries=list(groups.values());write_compact_json(run_dir/'semantic_vocabulary_candidates.json',entries)
     with (run_dir/'语义词库候选.csv').open('w',encoding='utf-8-sig',newline='') as out:
         writer=csv.writer(out);writer.writerow(['类别','原文','候选写法','相似度（非正确概率）','适用范围','是否已认定等价','来源位置'])
         for e in entries:
@@ -56,7 +68,16 @@ def write_semantic_vocabulary(run_dir,files,diagnostics,findings,limitations):
 
 
 def write_relation_groups(run_dir,diagnostics,event_sources):
-    """Group reviewable relations, retaining each measure's own target evidence."""
+    """写出可复核的语义关系分组，并保留每条措施的独立证据。
+
+    Args:
+        run_dir: 本次任务报告目录。
+        diagnostics: 语义辅助产生的诊断事件。
+        event_sources: 按语义事件哈希归集的来源位置。
+
+    Returns:
+        关系分组、实例数量和候选排除原因统计。
+    """
     from collections import Counter
     groups={};excluded=Counter();abstained=Counter()
     for event in diagnostics.get('events',[]):
@@ -94,7 +115,7 @@ def write_relation_groups(run_dir,diagnostics,event_sources):
         g['source_row_count']=len({(s['file'],s['sheet'],s['row']) for i in g['instances'] for s in i['sources']})
         g['requires_confirmation']='先核对代表关系；即使确认名称对应，各措施仍须使用该措施自身的岗位记录，不跨措施补齐。'
     ordered=sorted(groups.values(),key=lambda g:(-g['source_row_count'],g['id']))
-    write_json(run_dir/'semantic_relation_groups.json',ordered)
+    write_compact_json(run_dir/'semantic_relation_groups.json',ordered)
     with (run_dir/'语义关系集中核对.csv').open('w',encoding='utf-8-sig',newline='') as out:
         writer=csv.writer(out);writer.writerow(['关系编号','主体/业务/矩阵类型','矩阵部门','矩阵岗位','清单部门','清单岗位',
             '涉及措施数','涉及矩阵行数','存在多个接近候选','存在泛称单位','判断状态','代表矩阵位置','代表清单位置'])
@@ -107,7 +128,7 @@ def write_relation_groups(run_dir,diagnostics,event_sources):
     summary={'groups':len(ordered),'relation_instances':sum(len(g['instances']) for g in ordered),
         'excluded_candidate_reasons':dict(excluded),'abstained_query_reasons':dict(abstained),
         'automatic_approvals':0,'audit_opinions_removed_by_grouping':0}
-    write_json(run_dir/'semantic_relation_summary.json',summary)
+    write_compact_json(run_dir/'semantic_relation_summary.json',summary)
     lines=['# 语义关系集中核对说明','',
         f"本次将{summary['relation_instances']}条有来源的候选关系归为{len(ordered)}组。分组只减少重复查看关系，不改变任何审核结论。",'',
         '先查看语义关系集中核对.csv中的高频关系，完整同编号原文、矩阵来源与清单来源见semantic_relation_groups.json。',

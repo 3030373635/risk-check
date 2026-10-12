@@ -20,7 +20,7 @@ from openpyxl.utils import get_column_letter, column_index_from_string
 
 from risk_audit.models import Entity, FileRecord, Finding
 from risk_audit.readers.ooxml import load_compatible_workbook
-from risk_audit.util import sha256_file, write_json
+from risk_audit.util import sha256_file, write_compact_json
 
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -86,7 +86,7 @@ def record_business_failure(
         })
         existing_files.add(relative_path)
     # 异常业务不会进入常规写回流程，因此必须在捕获点立即持久化。
-    write_json(metadata_dir / '未审核文件.json', output_state.unparsed)
+    write_compact_json(metadata_dir / '未审核文件.json', output_state.unparsed)
 
 
 def _sheet_paths(zf: zipfile.ZipFile) -> dict[str, str]:
@@ -408,7 +408,7 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
     warnings = [] ; ownership: dict[str, list[dict[str, Any]]] = {}
     # 整个包没有可承载意见的表格时保留待回填事项，runner 据此禁止标记完成。
     output_state.pending.extend(pending_material)
-    write_json(metadata_dir / '待回填资料级意见.json', output_state.pending)
+    write_compact_json(metadata_dir / '待回填资料级意见.json', output_state.pending)
     if pending_material: warnings.append({"type": "no_writable_sheet", "message": "缺件主体及所属报送单位无可承载意见的正式业务表，仍有待回填事项，流程未完成", "report": str(metadata_dir / '待回填资料级意见.json')})
     for file in files:
         if not file.sheets:
@@ -512,9 +512,9 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
         if file.true_format != "xls" and sha256_file(file.source) != file.sha256: raise RuntimeError(f"input changed during run: {file.source}")
     # 同批各主体共享状态，后续主体不能覆盖已经输出的归属与诊断清单。
     output_state.unparsed.extend(item for item in warnings if item['type'] in {'unparsed_business_file', 'output_incompatible_file'})
-    write_json(metadata_dir / '未审核文件.json', output_state.unparsed)
+    write_compact_json(metadata_dir / '未审核文件.json', output_state.unparsed)
     for file in files:
         output_state.ownership.pop(str(_output_path(file)), None)
     output_state.ownership.update(ownership)
-    write_json(ownership_path, output_state.ownership)
+    write_compact_json(ownership_path, output_state.ownership)
     return warnings, ownership

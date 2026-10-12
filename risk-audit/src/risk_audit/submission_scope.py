@@ -5,7 +5,7 @@ import re
 
 from risk_audit.business_identity import normalize_business_text
 from risk_audit.inventory import identify_business
-from risk_audit.util import norm_text, write_json
+from risk_audit.util import norm_text, write_compact_json
 
 
 BUSINESS_DIRECTORY_KEYWORDS = (
@@ -120,7 +120,7 @@ def write_submission_scope_report(directory, report, entities):
     directory.mkdir(parents=True, exist_ok=True)
     json_path = directory / '本次审核范围.json'
     text_path = directory / '本次审核范围.md'
-    write_json(json_path, report)
+    write_compact_json(json_path, report)
     lines = ['# 本次审核范围', '', '本次仅按实际上传的风控矩阵和三清单确定审核范围。',
              '适用性匹配统计表和应用清单不参与范围判断，也不产生漏报或声明冲突提示。', '',
              '| 单位 | 主体代码 | 清单匹配状态 | 纳入审核的业务及变体 |', '| --- | --- | --- | --- |']

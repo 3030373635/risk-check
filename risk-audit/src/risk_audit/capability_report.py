@@ -3,7 +3,7 @@ from collections import Counter, defaultdict
 import csv
 from pathlib import Path
 
-from risk_audit.util import norm_text, sha256_json, write_json
+from risk_audit.util import norm_text, sha256_json, write_compact_json
 
 
 def build_capability_report(files, limitations, findings, scopes):
@@ -71,8 +71,17 @@ def build_capability_report(files, limitations, findings, scopes):
 
 
 def write_capability_report(output, report):
+    """写出程序判定能力报告。
+
+    Args:
+        output: 能力报告输出目录。
+        report: ``build_capability_report`` 生成的完整报告。
+
+    Returns:
+        不包含逐项明细的能力统计摘要。
+    """
     output = Path(output)
-    write_json(output / 'capability_diagnostics.json', report)
+    write_compact_json(output / 'capability_diagnostics.json', report)
     labels = {'material_precondition': '材料前置问题', 'interpretation_unsupported': '适用含义尚未确定',
               'grammar_unsupported': '责任句式尚未解析', 'source_needs_investigation': '字段或矩阵来源待查'}
     with (output / '程序判定能力明细.csv').open('w', encoding='utf-8-sig', newline='') as h:

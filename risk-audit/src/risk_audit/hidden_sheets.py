@@ -1,6 +1,6 @@
 """Visible-only audit scope with a separate, non-finding notice for reviewers."""
 from pathlib import Path
-from risk_audit.util import write_json
+from risk_audit.util import write_compact_json
 
 
 def hidden_sheet_alerts(files):
@@ -12,11 +12,21 @@ def hidden_sheet_alerts(files):
 
 
 def write_hidden_sheet_alerts(directory, alerts, *, include_hidden=False):
+    """写出隐藏工作表提示及结构化明细。
+
+    Args:
+        directory: 隐藏工作表报告目录。
+        alerts: ``hidden_sheet_alerts`` 生成的提示列表。
+        include_hidden: 是否明确将隐藏工作表纳入审核。
+
+    Returns:
+        隐藏工作表的检测、跳过和审核数量摘要。
+    """
     directory = Path(directory)
     entries = [s for f in alerts for s in f['sheets']]
     skipped = sum(s['action'] == 'skipped_hidden' for s in entries)
     report = directory / '隐藏工作表处理提示.md'
-    write_json(directory / 'hidden_sheet_alerts.json', alerts)
+    write_compact_json(directory / 'hidden_sheet_alerts.json', alerts)
     summary = {'policy': 'include_hidden' if include_hidden else 'visible_only', 'files': len(alerts),
                'detected': len(entries), 'skipped': skipped,
                'audited': sum(s['action'] == 'audited' for s in entries), 'report': str(report)}

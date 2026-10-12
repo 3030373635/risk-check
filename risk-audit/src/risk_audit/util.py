@@ -51,8 +51,46 @@ def read_json(path: Path) -> Any:
 
 
 def write_json(path: Path, value: Any) -> None:
+    """使用便于人工阅读的格式写入 JSON 文件。
+
+    Args:
+        path: JSON 输出路径。
+        value: 可被 JSON 序列化的数据。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_compact_json(path: Path, value: Any) -> None:
+    """使用紧凑格式写入体积较大的内部 JSON 报告。
+
+    Args:
+        path: JSON 输出路径。
+        value: 可被 JSON 序列化的数据。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # 内部报告由程序读取，省略缩进可避免大量重复记录产生额外空间开销。
+    content = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    path.write_text(content + "\n", encoding="utf-8")
+
+
+def append_compact_json_line(path: Path, value: Any) -> None:
+    """向增量日志追加一行紧凑 JSON 数据。
+
+    Args:
+        path: JSON Lines 日志路径。
+        value: 可被 JSON 序列化的单条记录。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    # 每条业务明细独占一行，异常中断后仍可逐条恢复已经完成的结果。
+    with path.open("a", encoding="utf-8") as output:
+        output.write(content + "\n")
 
 
 def norm_text(value: Any) -> str:

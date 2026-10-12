@@ -5,7 +5,7 @@ from collections import Counter
 import csv
 from pathlib import Path
 
-from risk_audit.util import norm_text, sha256_json, write_json
+from risk_audit.util import norm_text, sha256_json, write_compact_json
 
 
 TECHNICAL = {
@@ -89,6 +89,16 @@ def route_issue(issue, check, policy):
 
 
 def build_internal_diagnostics(limitations, files, scopes):
+    """按根因汇总内部限制项，并给原始限制项标记根因编号。
+
+    Args:
+        limitations: 本次审核的完整限制项列表。
+        files: 本次审核读取的材料记录。
+        scopes: 按主体组织的应审业务范围。
+
+    Returns:
+        仅包含根因、数量和示例位置的诊断分组列表。
+    """
     selections = {(str(f.relative_path), x['sheet'], x['field']): x
                   for f in files for x in f.preservation.get('column_selections', [])}
     groups = {}
@@ -116,28 +126,46 @@ def build_internal_diagnostics(limitations, files, scopes):
         if source in selections: e['field_source'] = selections[source]
         group = groups.setdefault(root_id, {'root_cause_id': root_id, 'scope': scope, 'cause_type': cause,
                                            'status': '未完成，修复前置问题后重审', 'auto_pass': False,
-                                           'blocked_by': [], 'affected_locations': [], 'checks': [], 'details': []})
+                                           'blocked_by': [], 'checks': [], 'detail_count': 0,
+                                           'affected_location_count': 0, 'example_location': None,
+                                           'example_reason': '', '_location_keys': set()})
         location = {k: detail.get(k, '') for k in ('entity_code', 'business_id', 'business_code', 'variant_id', 'file_path', 'sheet', 'row')}
-        if location not in group['affected_locations']: group['affected_locations'].append(location)
+        location_key = tuple(location.values())
+        group['_location_keys'].add(location_key)
+        if group['example_location'] is None:
+            group['example_location'] = location
+            group['example_reason'] = e.get('unavailable_reason', '')
         if e.get('blocked_by') and e['blocked_by'] not in group['blocked_by']: group['blocked_by'].append(e['blocked_by'])
         if detail['check_id'] not in group['checks']: group['checks'].append(detail['check_id'])
-        group['details'].append(detail)
-    return sorted(groups.values(), key=lambda g: (g['scope'] != '应审范围', g['cause_type'], -len(g['details']), g['root_cause_id']))
+        group['detail_count'] += 1
+    for group in groups.values():
+        # 诊断文件只保留去重数量；完整位置可按 root_cause_id 从 limitations.json 查询。
+        group['affected_location_count'] = len(group.pop('_location_keys'))
+    return sorted(groups.values(), key=lambda g: (g['scope'] != '应审范围', g['cause_type'], -g['detail_count'], g['root_cause_id']))
 
 
 def write_internal_diagnostics(output, groups):
+    """写出内部诊断汇总文件。
+
+    Args:
+        output: 内部诊断报告目录。
+        groups: ``build_internal_diagnostics`` 生成的诊断分组。
+
+    Returns:
+        内部诊断分组数量及应审范围统计。
+    """
     output = Path(output); output.mkdir(parents=True, exist_ok=True)
-    write_json(output / 'internal_diagnostics.json', groups)
+    write_compact_json(output / 'internal_diagnostics.json', groups)
     labels = {'parser_incomplete': '解析规则待完善', 'field_source_unavailable': '字段来源待处理',
               'dependency_incomplete': '等待前置字段补齐', 'matrix_source_unconfirmed': '矩阵来源待确认',
               'baseline_inconsistency': '省公司模板口径待确认', 'scope_unconfirmed': '主体范围待确认'}
     with (output / '内部处理事项.csv').open('w', encoding='utf-8-sig', newline='') as h:
         w = csv.writer(h); w.writerow(['根因编号', '范围', '类型', '未完成检查数', '影响行数', '前置事项', '示例原因', '状态'])
         for g in groups:
-            w.writerow([g['root_cause_id'], g['scope'], labels.get(g['cause_type'], g['cause_type']), len(g['details']),
-                        len(g['affected_locations']), '、'.join(g['blocked_by']), g['details'][0]['evidence'].get('unavailable_reason', ''), g['status']])
+            w.writerow([g['root_cause_id'], g['scope'], labels.get(g['cause_type'], g['cause_type']), g['detail_count'],
+                        g['affected_location_count'], '、'.join(g['blocked_by']), g['example_reason'], g['status']])
     current = [g for g in groups if g['scope'] == '应审范围']
     return {'groups': len(groups), 'in_scope_groups': len(current),
-            'in_scope_unfinished_checks': sum(len(g['details']) for g in current),
+            'in_scope_unfinished_checks': sum(g['detail_count'] for g in current),
             'in_scope_by_cause': dict(Counter(g['cause_type'] for g in current)),
             'report': str(output / '内部处理事项.csv')}

@@ -24,7 +24,7 @@ from risk_audit.incomplete_items import collect_incomplete_items
 from risk_audit.inventory import scan_package
 from risk_audit.readers.excel import parse_files
 from risk_audit.snapshot import build_snapshot, save_snapshot
-from risk_audit.util import sha256_file, write_json
+from risk_audit.util import append_compact_json_line, sha256_file, write_compact_json
 from risk_audit.writer import OutputState, record_business_failure, validate_output_paths, write_outputs
 from risk_audit.program_logging import audit_logging, build_log_reference
 from risk_audit.models import CheckStatus, Entity, FileRecord, Finding
@@ -298,19 +298,25 @@ def _load_previous_ownership(runs_root: Path, output_root: Path, current_run_dir
     return ownership
 
 
-def _write_audit_result(directory: Path, result: dict[str, Any], findings: list[Finding],
-                        statuses: list[CheckStatus], limitations: list[dict[str, Any]],
-                        warnings: list[dict[str, Any]]) -> None:
-    """保存当前审核结果。
+def _write_audit_result(directory: Path, result: dict[str, Any]) -> None:
+    """保存业务或主体的当前审核进度。
 
-    directory 为业务或主体目录，result 为摘要，findings/statuses 为意见和检查状态，
-    limitations/warnings 为检查限制和输出告警。
+    Args:
+        directory: 业务或主体进度目录。
+        result: 当前业务或主体的汇总结果。
     """
-    write_json(directory / 'findings.json', [finding.to_dict() for finding in findings])
-    write_json(directory / 'statuses.json', [asdict(status) for status in statuses])
-    write_json(directory / 'limitations.json', limitations)
-    write_json(directory / 'warnings.json', warnings)
-    write_json(directory / 'result.json', result)
+    # 完整明细只在任务报告根目录保存一份，进度目录仅保留汇总状态。
+    write_compact_json(directory / 'result.json', result)
+
+
+def _write_audit_progress_details(path: Path, details: dict[str, Any]) -> None:
+    """追加一个已完成业务的完整进度明细。
+
+    Args:
+        path: 任务根目录中的 JSON Lines 增量日志路径。
+        details: 当前业务的意见、状态、限制项和告警。
+    """
+    append_compact_json_line(path, details)
 
 
 def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple[str, str, str]]:
@@ -372,9 +378,12 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     logger = logging.getLogger(__name__)
     audit_directory = run_dir / '_risk_audit'
     report_directory = audit_directory if write else run_dir
+    progress_details_path = run_dir / 'progress_details.jsonl'
+    # 同一运行标识重新开始时重建增量日志，避免混入上一次中断记录。
+    progress_details_path.unlink(missing_ok=True)
     if write:
         # 在任何业务副本写出前固定输出目录映射，中断运行的 ownership 也可被下一次重跑恢复。
-        write_json(audit_directory / 'run_context.json', {
+        write_compact_json(audit_directory / 'run_context.json', {
             'run_id': run_id,
             'output_root': str(output_resolved),
         })
@@ -764,13 +773,18 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                     'skip_reason': unit_failure['reason'],
                     'log_reference': unit_failure['log_reference'],
                 })
+            if unit_limitations:
+                # 增量日志中的限制项也携带根因编号，任务中断后仍能追溯诊断来源。
+                build_internal_diagnostics(unit_limitations, unit_files, scopes)
+            _write_audit_progress_details(progress_details_path, {
+                'findings': [finding.to_dict() for finding in unit_findings],
+                'statuses': [asdict(status) for status in unit_statuses],
+                'limitations': unit_limitations,
+                'warnings': unit_warnings,
+            })
             _write_audit_result(
                 unit_report_dir,
                 unit_result,
-                unit_findings,
-                unit_statuses,
-                unit_limitations,
-                unit_warnings,
             )
             if business_id != ENTITY_COMPLETENESS_BUSINESS_ID:
                 group_business_results.append(unit_result)
@@ -784,7 +798,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                                   'limitations': len(group_limitations), 'completed_businesses': len(group_business_results),
                                   'write_completed': False,
                                   'elapsed_seconds': round(perf_counter() - entity_started, 2)})
-            _write_audit_result(entity_dir, entity_result, group_findings, group_statuses, group_limitations, group_warnings)
+            _write_audit_result(entity_dir, entity_result)
             logger.log(logging.INFO if unit_completed or not write else logging.WARNING,
                        '业务%s%s：意见=%d，耗时=%.2f秒', unit_label,
                        '输出完成' if write and unit_completed else '试跑完成' if not write else '处理结束（存在未完成项）',
@@ -809,7 +823,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         entity_result.update({'findings': len(group_findings), 'warnings': len(group_warnings),
                               'limitations': len(group_limitations), 'completed_businesses': len(group_business_results),
                               'write_completed': group_completed, 'elapsed_seconds': round(perf_counter() - entity_started, 2)})
-        _write_audit_result(entity_dir, entity_result, group_findings, group_statuses, group_limitations, group_warnings)
+        _write_audit_result(entity_dir, entity_result)
         entity_results.append(entity_result)
         logger.log(logging.INFO if group_completed or not write else logging.WARNING,
                    '%s：%s（%s），意见=%d，写入完成=%s，耗时=%.2f秒',
@@ -835,8 +849,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         semantic_report=assistant.report()
         from risk_audit.semantic_vocabulary import write_semantic_vocabulary
         semantic_report['vocabulary']=write_semantic_vocabulary(run_dir,files,semantic_report,findings,limitations)
-        write_json(run_dir/'semantic_diagnostics.json',semantic_report)
-        write_json(run_dir/'applicability_interpretations.json',[
+        write_compact_json(run_dir/'semantic_diagnostics.json',semantic_report)
+        write_compact_json(run_dir/'applicability_interpretations.json',[
             {'file':r.file_path,'sheet':r.sheet,'row':r.row,'entity_code':r.entity_code,
              'business_id':r.business_id,'business_code':r.business_code,
              'variant_id':r.variant_id,'text':r.value('applicability'),'interpretation':interpret_record(r,pack).to_dict()}
@@ -888,19 +902,21 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     for source in scope_report['sources']:
         if sha256_file(Path(source['path'])) != source['sha256']:
             raise RuntimeError(f"范围来源文件运行期间发生变化: {source['path']}")
-    write_json(run_dir / "findings.json", [x.to_dict() for x in findings])
-    write_json(run_dir / "statuses.json", [asdict(x) for x in statuses])
-    write_json(run_dir / "limitations.json", limitations)
+    write_compact_json(run_dir / "findings.json", [x.to_dict() for x in findings])
+    write_compact_json(run_dir / "statuses.json", [asdict(x) for x in statuses])
+    write_compact_json(run_dir / "limitations.json", limitations)
     inventory = [{"path": str(f.relative_path), "sha256": f.sha256, "true_format": f.true_format, "entity_code": f.entity_code, "entity_evidence": f.entity_evidence, "entity_conflict": f.entity_conflict, "business_id": f.business_id, "business_code": f.business_code, "variant_id": f.variant_id, "material_type": f.material_type, "parse_errors": f.parse_errors, "sheets": [{"title": s.title, "type": s.sheet_type, "records": len(s.records), "columns": s.columns, "business_header_paths": s.business_header_paths, "audit_columns": s.audit_columns, "output_column": s.output_column} for s in f.sheets], "preservation": f.preservation} for f in files]
-    write_json(run_dir / "inventory.json", inventory)
-    write_json(run_dir / "warnings.json", warnings)
+    write_compact_json(run_dir / "inventory.json", inventory)
+    write_compact_json(run_dir / "warnings.json", warnings)
+    # 完整根目录报告已安全写出，成功任务不再保留增量明细副本。
+    progress_details_path.unlink(missing_ok=True)
     parsed_business_files = [f for f in files if f.material_type != "explanation"]
     # 即使同批其他文件已写入，无业务表的文件仍属于未审核，隐藏提示不能掩盖它。
     unparsed_file_paths = [str(file.relative_path) for file in parsed_business_files if not file.sheets]
     incomplete_items = collect_incomplete_items(files, statuses, warnings)
     incomplete_items_report = audit_directory / '未完成项.json'
     # 任务终态和页面明细共用同一份未完成项，避免状态与弹窗内容不一致。
-    write_json(incomplete_items_report, incomplete_items)
+    write_compact_json(incomplete_items_report, incomplete_items)
     has_failures = bool(incomplete_items)
     result = {"run_id": run_id, "run_dir": str(run_dir), "output_root": str(output_resolved), "input_files": len(parsed_business_files), "parsed_files": sum(bool(f.sheets) for f in parsed_business_files), "records": sum(len(s.records) for f in files for s in f.sheets), "findings": len(findings), "statuses": {k: sum(x.status == k for x in statuses) for k in {x.status for x in statuses}}, "missing_code_entities": len(missing_code), "write_completed": write and not has_failures, "warnings": len(warnings)}
     result['unparsed_files'] = len(unparsed_file_paths)
@@ -934,5 +950,5 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         result['audit_statistics_report'] = str(audit_statistics_report)
         result['audit_statistics_html_report'] = str(audit_statistics_html_report)
         result['audit_metadata_dir'] = str(audit_directory)
-    write_json(run_dir / "summary.json", result)
+    write_compact_json(run_dir / "summary.json", result)
     return result
