@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -12,12 +11,10 @@ from risk_audit.util import measure_id_key, norm_text
 
 
 _SYSTEM_MODES = {norm_text("系统待建"), norm_text("系统已建")}
-_NAME_SEPARATOR = re.compile(r"[、，,;；/\n]+")
 _RESPONSIBILITY_ITEM_SEPARATORS = {"、", "，", ",", ";", "；", "\n"}
 _RESPONSIBILITY_SEGMENT_SEPARATORS = {"-", "—", "－"}
 _RESPONSIBILITY_BRACKETS = {"(": ")", "（": "）", "[": "]", "【": "】"}
 _OPINIONS = {
-    "system_name_mismatch": "需核实系统规则清单中系统名称与矩阵中控制系统的一致性",
     "missing_key_points": "需核实适用的矩阵或关键控制点是否完整",
     "extra_business": "需核实该矩阵或关键控制点是否适用",
     "extra_key_point": "需核实该矩阵或关键控制点是否适用",
@@ -27,7 +24,7 @@ _OPINIONS = {
     "responsibility_position_mismatch": "请核实岗位责任清单中的岗位名称与矩阵责任主体中的岗位名称是否一致",
     "control_measure_incomplete": "请核实该关键控制点下控制措施是否完整",
 }
-_DEFAULT_SYSTEM_OPINION = "需核实系统规则清单中建设状态与矩阵中控制方式的一致性"
+_DEFAULT_SYSTEM_OPINION = "需核实系统规则清单与矩阵中的控制措施编号是否一致"
 _ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
 
 
@@ -60,11 +57,11 @@ def _record_key(record: Record) -> tuple[str, str, str, tuple[Any, ...]]:
     return record.entity_code, business_id, record.variant_id, measure_id_key(record.value("measure_id"))
 
 
-def _system_state(value: str) -> str:
-    """将建设状态收敛为「系统已建」或「系统待建」。
+def _matrix_control_mode(value: str) -> str:
+    """归一化矩阵控制方式，用于判断是否应存在系统规则记录。
 
     Args:
-        value: 矩阵控制方式或系统规则建设状态。
+        value: 矩阵控制方式。
     """
 
     normalized = norm_text(value)
@@ -75,18 +72,8 @@ def _system_state(value: str) -> str:
     return normalized
 
 
-def _system_names(value: str) -> set[str]:
-    """拆分并归一化一个或多个系统名称。
-
-    Args:
-        value: 系统名称单元格文本。
-    """
-
-    return {norm_text(item) for item in _NAME_SEPARATOR.split(value) if norm_text(item)}
-
-
 def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> list[dict[str, Any]]:
-    """核对矩阵控制方式、控制系统与系统规则清单。
+    """按控制措施编号数字键核对矩阵与系统规则清单的对应关系。
 
     Args:
         ctx: 包含矩阵与系统规则清单的审核上下文。
@@ -104,7 +91,8 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
     matrix_keys = {_record_key(record) for record in matrices}
     for matrix in matrices:
         rows = system_rows.get(_record_key(matrix), [])
-        control_mode = _system_state(matrix.value("control_mode"))
+        # 控制方式仅用于确定矩阵是否应有系统规则，不再与清单建设状态进行比较。
+        control_mode = _matrix_control_mode(matrix.value("control_mode"))
         if control_mode in _SYSTEM_MODES and not rows:
             issues.append(_issue(
                 matrix,
@@ -113,41 +101,8 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
                 control_mode=matrix.value("control_mode"),
             ))
             continue
-        if rows and control_mode not in _SYSTEM_MODES:
-            issues.append(_issue(
-                matrix,
-                "control_mode_mismatch",
-                measure_id=matrix.value("measure_id"),
-                actual_control_mode=matrix.value("control_mode"),
-            ))
-            continue
 
-        expected_names = _system_names(matrix.value("control_system"))
-        # 同一措施可在系统清单中拆成多行，系统名称需合并后再比较。
-        actual_names = {
-            name
-            for row in rows
-            for name in _system_names(row.value("system_name"))
-        }
-        for row in rows:
-            if _system_state(row.value("build_status")) != control_mode:
-                issues.append(_issue(
-                    row,
-                    "build_status_mismatch",
-                    measure_id=row.value("measure_id"),
-                    expected_build_status=matrix.value("control_mode"),
-                    actual_build_status=row.value("build_status"),
-                ))
-        if rows and actual_names != expected_names:
-            issues.append(_issue(
-                rows[0],
-                "system_name_mismatch",
-                measure_id=rows[0].value("measure_id"),
-                expected_system_names=sorted(expected_names),
-                actual_system_names=sorted(actual_names),
-            ))
-
-    # 系统规则行本身存在时，矩阵必须有对应措施且标记为系统控制。
+    # 系统规则行本身存在时，矩阵必须有数字键相同的控制措施。
     for key, rows in system_rows.items():
         if key not in matrix_keys:
             for row in rows:

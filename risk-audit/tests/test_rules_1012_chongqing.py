@@ -397,8 +397,8 @@ def test_control_measure_completeness_isolates_business_and_variant() -> None:
     assert issues[0]["evidence"]["actual_count"] == 1
 
 
-def test_system_control_consistency_reports_missing_and_mismatched_rows() -> None:
-    """系统控制清单缺失、建设状态或系统名称不一致时应分别提示。"""
+def test_system_control_consistency_only_reports_missing_numeric_measure_key() -> None:
+    """参数说明：数字措施键存在时忽略建设状态和系统名称，仅报告缺失键。"""
 
     capability = build_registry().get("system_control_consistency", 1)
     assert capability is not None
@@ -414,15 +414,36 @@ def test_system_control_consistency_reports_missing_and_mismatched_rows() -> Non
 
     issues = capability.runner(make_context([matrix_missing, matrix_mismatch, system_mismatch]), {})
 
-    assert {issue["evidence"]["issue_type"] for issue in issues} == {
+    assert [issue["evidence"]["issue_type"] for issue in issues] == [
         "system_rule_missing",
-        "build_status_mismatch",
-        "system_name_mismatch",
-    }
+    ]
 
 
-def test_system_control_consistency_accepts_matching_rows() -> None:
-    """建设状态与系统名称均一致时不应报错。"""
+def test_system_control_consistency_matches_measure_ids_by_numbers_only() -> None:
+    """参数说明：数字键相同即建立对应关系，控制方式和其他编号文字不参与比较。"""
+
+    capability = build_registry().get("system_control_consistency", 1)
+    assert capability is not None
+    matrix = make_record(
+        "matrix",
+        3,
+        measure_id="营销售电业务-2.客户用电容量确定-控制措施02",
+        control_mode="线下管控",
+        control_system="营销2.0系统",
+    )
+    system = make_record(
+        "system_rule",
+        8,
+        measure_id="其他编号文字-2.不同名称-控制措施02",
+        build_status="系统待建",
+        system_name="营销2.0",
+    )
+
+    assert capability.runner(make_context([matrix, system]), {}) == []
+
+
+def test_system_control_consistency_accepts_matching_numeric_measure_key() -> None:
+    """参数说明：矩阵与系统规则清单存在相同数字措施键时不应报错。"""
 
     capability = build_registry().get("system_control_consistency", 1)
     matrix = make_record(
@@ -435,8 +456,8 @@ def test_system_control_consistency_accepts_matching_rows() -> None:
     assert capability.runner(make_context([matrix, system]), {}) == []
 
 
-def test_system_control_consistency_combines_system_names_across_rows() -> None:
-    """同一措施的多行系统名称应合并后与矩阵比较。"""
+def test_system_control_consistency_accepts_multiple_rows_with_same_numeric_key() -> None:
+    """参数说明：系统清单同一数字措施键存在多行时均视为已建立对应关系。"""
 
     capability = build_registry().get("system_control_consistency", 1)
     matrix = make_record(
