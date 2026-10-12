@@ -10,7 +10,7 @@ import pytest
 def request_payload(tmp_path: Path) -> dict:
     """构造完整请求字典；tmp_path 为绝对路径根。"""
     return {
-        "schema_version": "2.0",
+        "schema_version": "3.0",
         "task_id": "20260924-103015-a1b2",
         "display_name": "重庆 第一批资料",
         "region_code": "chongqing",
@@ -20,7 +20,8 @@ def request_payload(tmp_path: Path) -> dict:
         "input_root": str(tmp_path / "input"),
         "output_root": str(tmp_path / "output"),
         "rulepack": str(tmp_path / "runtime/resources/rulepacks/releases/1.9.19"),
-        "entity_file": str(tmp_path / "runtime/resources/entities/entities.xlsx"),
+        "entity_mode": "parent_directory",
+        "entity_file": None,
         "baseline_root": str(tmp_path / "runtime/resources/baselines"),
         "config_file": str(tmp_path / "runtime/resources/rulepacks/audit-config.json"),
         "soffice_path": str(tmp_path / "runtime/libreoffice/program/soffice.com"),
@@ -78,12 +79,23 @@ def test_task_request_rejects_relative_paths(tmp_path: Path) -> None:
         TaskRequest.from_dict(payload)
 
 
+def test_task_request_requires_registry_file(tmp_path: Path) -> None:
+    """名册识别模式必须提供绝对主体清单路径；tmp_path 为路径根。"""
+    from risk_audit_web.task_contracts import ContractError, TaskRequest
+
+    payload = request_payload(tmp_path)
+    payload["entity_mode"] = "registry"
+
+    with pytest.raises(ContractError, match="entity_file"):
+        TaskRequest.from_dict(payload)
+
+
 def test_task_state_accepts_only_documented_statuses() -> None:
     """拼写错误的状态不能进入任务列表。"""
     from risk_audit_web.task_contracts import ContractError, TaskState
 
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "3.0",
         "task_id": "task-1",
         "status": "queued",
         "stage": "startup",
@@ -110,7 +122,7 @@ def test_task_state_round_trip_keeps_progress_context() -> None:
     from risk_audit_web.task_contracts import TaskState
 
     state = TaskState(
-        schema_version="2.0",
+        schema_version="3.0",
         task_id="task-1",
         status="running",
         stage="audit",
@@ -136,7 +148,7 @@ def test_task_record_has_no_file_state_path(tmp_path: Path) -> None:
     from risk_audit_web.task_contracts import TaskRecord
 
     record = TaskRecord(
-        schema_version="2.0",
+        schema_version="3.0",
         task_id="task-1",
         display_name="重庆 资料",
         region_code="chongqing",

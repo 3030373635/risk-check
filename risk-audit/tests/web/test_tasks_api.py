@@ -293,7 +293,7 @@ def test_list_returns_every_created_task_status_without_internal_fields(
         web_services.repository.create_task(
             request,
             state,
-            TaskEvent("2.0", task_id, "created", created_at, {}),
+            TaskEvent("3.0", task_id, "created", created_at, {}),
         )
 
     response = client.get("/api/v1/tasks", headers={"X-Local-Token": "secret"})

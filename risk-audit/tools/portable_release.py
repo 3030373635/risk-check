@@ -191,7 +191,8 @@ def _copy_runtime_resources(project_root: Path, auditor_root: Path, distribution
             _copy_tree(source_release, profile.rulepack)
             copied_versions.add(profile.rulepack_version)
 
-        for destination in (profile.entity_file, profile.baseline_root, profile.config_file):
+        destinations = (profile.entity_file, profile.baseline_root, profile.config_file)
+        for destination in (path for path in destinations if path is not None):
             relative_path = destination.relative_to(resources_root).as_posix()
             source = _existing_region_source(
                 project_root,

@@ -27,7 +27,7 @@ from risk_audit.snapshot import build_snapshot, save_snapshot
 from risk_audit.util import sha256_file, write_json
 from risk_audit.writer import OutputState, record_business_failure, validate_output_paths, write_outputs
 from risk_audit.program_logging import audit_logging, build_log_reference
-from risk_audit.models import CheckStatus, FileRecord, Finding
+from risk_audit.models import CheckStatus, Entity, FileRecord, Finding
 from risk_audit.review_tasks import build_review_tasks, write_review_tasks
 from risk_audit.issue_routing import build_internal_diagnostics, write_internal_diagnostics
 from risk_audit.submission_scope import resolve_submission_scopes, write_submission_scope_report, submission_group
@@ -159,7 +159,7 @@ def audit(
     input_root: str | Path,
     output_root: str | Path,
     rulepack: str | Path,
-    entity_file: str | Path,
+    entity_file: str | Path | None,
     project_root: str | Path,
     runs_root: str | Path,
     write: bool = True,
@@ -174,16 +174,18 @@ def audit(
     model_root: str | Path | None = None,
     run_directory: str | Path | None = None,
     work_root: str | Path | None = None,
+    entity_mode: str = "registry",
 ) -> dict[str, Any]:
     """执行审核或试跑。
 
-    input_root/output_root 为输入/副本目录，rulepack 为规则包，entity_file 为主体名册，
+    input_root/output_root 为输入/副本目录，rulepack 为规则包，entity_file 为可选主体名册，
     project_root 为基准根目录，runs_root 为运行记录目录，write 控制副本写入，
     run_id 为可选运行标识，include_hidden 控制隐藏表，scope_file 为可选手动范围覆盖文件，
     config_file 为可选审核运行配置，enabled_rules 为仅本次运行启用的规则展示编号，
     progress_callback 为可选进度接收器，cancel_check 为安全取消检查器，model_root 为
     可选语义模型目录，run_directory 为可选持久报告目录，work_root 为可选临时
-    工作目录；默认直接从实际上传的风控矩阵和三清单确定范围。
+    工作目录，entity_mode 指定名册或业务上层目录识别；默认
+    直接从实际上传的风控矩阵和三清单确定范围。
     """
     input_resolved = Path(input_root).resolve(); output_resolved = Path(output_root).resolve()
     if write and (input_resolved == output_resolved or input_resolved in output_resolved.parents or output_resolved in input_resolved.parents):
@@ -219,6 +221,7 @@ def audit(
                 model_root=model_root,
                 work_root=resolved_work_root,
                 history_root=Path(runs_root).resolve(),
+                entity_mode=entity_mode,
             )
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='completed',
@@ -321,20 +324,49 @@ def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple
     return sorted(keys)
 
 
-def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_file: str | Path,
+def _load_entity_source(
+    entity_mode: str,
+    entity_file: str | Path | None,
+) -> tuple[dict[str, Entity], list[Entity], dict[str, str] | None]:
+    """加载主体识别资源。
+
+    Args:
+        entity_mode: `registry` 或 `parent_directory` 识别方式。
+        entity_file: 名册模式使用的 Excel 文件。
+
+    Returns:
+        正式主体、缺代码主体和可追溯名册摘要。
+    """
+    if entity_mode == "parent_directory":
+        if entity_file is not None:
+            raise ValueError("业务上层目录识别模式不得使用会计主体清单")
+        return {}, [], None
+    if entity_mode != "registry":
+        raise ValueError(f"不支持的主体识别方式：{entity_mode}")
+    if entity_file is None:
+        raise ValueError("名册识别模式必须提供会计主体清单")
+    resolved_file = Path(entity_file).resolve()
+    entities, missing_code = load_entities(resolved_file)
+    source = {"path": str(resolved_file), "sha256": sha256_file(resolved_file)}
+    return entities, missing_code, source
+
+
+def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_file: str | Path | None,
            project_root: str | Path, run_dir: Path, run_id: str, write: bool,
            include_hidden: bool, scope_file: str | Path | None,
            config_file: str | Path | None, enabled_rules: list[str] | None,
            progress_callback: ProgressCallback | None, cancel_check: CancelCheck | None,
-           model_root: str | Path | None, work_root: Path, history_root: Path) -> dict[str, Any]:
+           model_root: str | Path | None, work_root: Path, history_root: Path,
+           entity_mode: str) -> dict[str, Any]:
     """按主体、业务及矩阵类型执行增量审核。
 
-    input_root/output_root 为已校验目录，rulepack 为规则包，entity_file 为主体名册，
+    input_root/output_root 为已校验目录，rulepack 为规则包，entity_file 为可选主体名册，
     project_root 为基准根目录，run_dir/run_id 为本次运行目录及标识，write 控制副本输出，
     include_hidden 控制隐藏表，scope_file 为可选手动范围文件，config_file 为运行配置，
     enabled_rules 为仅本次运行启用的规则展示编号，progress_callback/cancel_check
     为桌面任务的进度和取消接口，model_root 为可选语义模型目录，work_root
-    为与持久报告分离的临时工作目录，history_root 为历史运行根目录。
+    为与持久报告分离的临时工作目录，history_root 为历史运行根目录，
+    entity_mode 为主体识别方式。
     """
     input_resolved, output_resolved = input_root, output_root
     logger = logging.getLogger(__name__)
@@ -346,7 +378,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             'run_id': run_id,
             'output_root': str(output_resolved),
         })
-    logger.debug('加载规则包和主体名册')
+    logger.debug('加载规则包和主体识别资源：%s', entity_mode)
     registry = build_registry(); pack = load_pack(rulepack); validate_pack(pack, registry)
     settings = load_audit_config(config_file) if config_file else {"disabled_rules": []}
     # 运行选择只修改内存中的规则副本，不改写已发布规则包。
@@ -356,7 +388,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         enabled_rules=enabled_rules,
     )
     validate_pack(pack, registry)
-    entities, missing_code = load_entities(entity_file)
+    entities, missing_code, entity_source = _load_entity_source(entity_mode, entity_file)
     logger.info('扫描报送材料')
     emit_progress(progress_callback, AuditProgressEvent(stage='scan', message='正在扫描报送材料'))
     if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS:
@@ -387,21 +419,40 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         raise ValueError(f'会计主体匹配失败，已终止审核（{len(errors)}份文件）：'
                          + '；'.join(errors) + f'。请核对主体名册或简称映射；详细报告：{entity_report}')
     # 每个主体使用本次材料的范围，历史默认单位范围不参与实际报送审核。
-    scopes, scope_report = resolve_submission_scopes(input_resolved, files, entities, pack['entity_aliases'],
-                                                    pack['submission_scope'].get('batch', ''), include_hidden=include_hidden,
-                                                    business_registry=pack['baseline_registry'])
+    scopes, scope_report = resolve_submission_scopes(
+        input_resolved,
+        files,
+        entities,
+        pack['entity_aliases'],
+        pack['submission_scope'].get('batch', ''),
+        include_hidden=include_hidden,
+        business_registry=pack['baseline_registry'],
+        entity_mode=entity_mode,
+    )
     # 仅依据业务材料建立本次主体分组；辅助附件不补充或覆盖主体归属。
     entity_groups = prepare_entity_groups(
-        files, input_resolved, entities, missing_code, pack['baseline_registry'],
+        files,
+        input_resolved,
+        entities,
+        missing_code,
+        pack['baseline_registry'],
+        entity_mode=entity_mode,
     )
     entity_alerts = build_entity_alerts(files, entities, missing_code)
     for alert in entity_alerts:
         logger.warning('主体清单匹配提示，已继续审核：%s，%s，文件=%s',
                        alert['unit_label'], alert['reason'], [item['file'] for item in alert['files']])
-    scopes, scope_report = resolve_submission_scopes(input_resolved, files, entities, pack['entity_aliases'],
-                                                    pack['submission_scope'].get('batch', ''),
-                                                    include_hidden=include_hidden, source_report=scope_report,
-                                                    business_registry=pack['baseline_registry'])
+    scopes, scope_report = resolve_submission_scopes(
+        input_resolved,
+        files,
+        entities,
+        pack['entity_aliases'],
+        pack['submission_scope'].get('batch', ''),
+        include_hidden=include_hidden,
+        source_report=scope_report,
+        business_registry=pack['baseline_registry'],
+        entity_mode=entity_mode,
+    )
     if scope_file:
         automatic_scopes = scopes
         scopes = json.loads(Path(scope_file).read_text(encoding='utf-8'))
@@ -442,11 +493,26 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         # 复用输出目录时同步移除旧版程序报告，避免被误认为本次审核产物。
         _remove_legacy_opinion_outputs(output_resolved)
     entity_keys = list(scopes)
-    logger.info('识别到%d个主体：%s', len(entity_keys),
-                '、'.join(f'{entities[key].name}（{key}）' if key in entities else
-                         f'{entity_groups[key]["entity_name"]}（主体代码待确认）' for key in entity_keys))
+    entity_labels = []
+    for key in entity_keys:
+        if key in entities:
+            entity_labels.append(f'{entities[key].name}（{key}）')
+        elif entity_groups[key]['entity_registry_status'] == 'directory_matched':
+            # 目录模式明确不使用主体代码，日志不得误报“待确认”。
+            entity_labels.append(f'{entity_groups[key]["entity_name"]}（目录识别）')
+        else:
+            entity_labels.append(f'{entity_groups[key]["entity_name"]}（主体代码待确认）')
+    logger.info('识别到%d个主体：%s', len(entity_keys), '、'.join(entity_labels))
     write_submission_scope_report(report_directory, scope_report, entities)
-    snapshot = build_snapshot(pack, files, registry.versions(), run_id, {"path": str(Path(entity_file).resolve()), "sha256": sha256_file(Path(entity_file).resolve())}, include_hidden=include_hidden)
+    snapshot = build_snapshot(
+        pack,
+        files,
+        registry.versions(),
+        run_id,
+        entity_source,
+        include_hidden=include_hidden,
+        entity_mode=entity_mode,
+    )
     from risk_audit.util import sha256_json
     snapshot['submission_scopes'] = scopes
     snapshot['scope_source'] = scope_report

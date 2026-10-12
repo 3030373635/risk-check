@@ -67,12 +67,23 @@ def submission_group(file, root, business_registry=None):
     ).relative_to(root))
 
 
-def resolve_submission_scopes(root, files, entities, aliases, batch, *, include_hidden=False, source_report=None,
-                              business_registry=None):
+def resolve_submission_scopes(
+    root,
+    files,
+    entities,
+    aliases,
+    batch,
+    *,
+    include_hidden=False,
+    source_report=None,
+    business_registry=None,
+    entity_mode='registry',
+):
     """按实际上传材料确定审核范围。
 
     root 为输入目录，files 为扫描记录，entities/aliases 为主体名册及简称，batch 为本批标识；
-    include_hidden/source_report 保留给现有调用方，business_registry 用于识别并跳过业务目录；
+    include_hidden/source_report 保留给现有调用方，business_registry 用于识别并跳过业务目录，
+    entity_mode 控制是否生成名册待确认提示；
     范围不再读取适用性或应用清单附件。
     返回按主体分组的范围和核对报告。
     """
@@ -89,7 +100,7 @@ def resolve_submission_scopes(root, files, entities, aliases, batch, *, include_
         if file.business_id or file.business_code:
             uploaded[code].add((file.business_id or file.business_code, file.business_code or '', file.variant_id))
     for code in uploaded:
-        if code not in entities:
+        if code not in entities and entity_mode == 'registry':
             report['alerts'].append({'type': 'scope_entity_unconfirmed', 'unit_label': code,
                                      'message': '本单位按单位目录名确定范围，主体代码仍待确认；同名单位目录已合并。'})
     scopes = {code: {'batch': batch, 'entity_codes': [code] if code in entities else [],
@@ -121,7 +132,11 @@ def write_submission_scope_report(directory, report, entities):
         status = identity.get('entity_registry_message') or ('主体已匹配会计主体清单' if code in entities else '主体代码待确认，已继续审核')
         businesses = '、'.join(item['business_code'] + (f"（{item['variant_id']}）" if item['variant_id'] != 'default' else '')
                                for item in scope['businesses'])
-        lines.append(f'| {name} | {code if code in entities else "待确认"} | {status} | {businesses or "无已确定业务"} |')
+        if identity.get('entity_registry_status') == 'directory_matched':
+            entity_code = '不适用（目录识别）'
+        else:
+            entity_code = code if code in entities else '待确认'
+        lines.append(f'| {name} | {entity_code} | {status} | {businesses or "无已确定业务"} |')
     lines.extend(['', '## 核对提示', ''])
     for alert in report['alerts']:
         location = f"{alert.get('entity_code') or alert.get('unit_label', '')} {alert.get('business_code', '')} {alert.get('file', '')}".strip()

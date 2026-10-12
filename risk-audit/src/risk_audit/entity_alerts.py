@@ -10,6 +10,9 @@ def build_entity_alerts(files, entities, missing_code=()):
     """集中记录匹配提示；files 为扫描记录，entities 为名册，missing_code 为缺代码的名册单位。"""
     groups = defaultdict(list)
     for file in files:
+        identity = file.preservation.get('entity_identity', {})
+        if identity.get('entity_registry_status') == 'directory_matched' and not file.entity_conflict:
+            continue
         if file.entity_code in entities and not file.entity_conflict:
             continue
         directory = next((part for part in file.relative_path.parts[:-1]
@@ -19,7 +22,6 @@ def build_entity_alerts(files, entities, missing_code=()):
                               if re.search(r'公司(?:本部)?$', part)), '')
         # This is a verbatim directory label, not a confirmed entity mapping.
         label = re.sub(r'^\d+[\s.、-]*', '', directory) if directory else '未识别单位（见文件路径）'
-        identity = file.preservation.get('entity_identity', {})
         label = identity.get('entity_name', label)
         missing = [e for e in missing_code if (norm_text(e.name) == norm_text(label) if identity else
                                              norm_text(e.name) in norm_text(str(file.source)))]

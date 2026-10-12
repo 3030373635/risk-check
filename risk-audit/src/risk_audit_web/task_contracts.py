@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, Mapping, TypeVar
 
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "3.0"
+ENTITY_MODES = frozenset({"registry", "parent_directory"})
 TASK_STATUSES = frozenset({
     "running",
     "cancelling",
@@ -49,6 +50,21 @@ def _validate_absolute_paths(value: Mapping[str, str | None], field_names: tuple
             raise ContractError(f"路径字段 {field_name} 必须是绝对路径：{raw_path}")
 
 
+def _validate_entity_source(entity_mode: str, entity_file: str | None) -> None:
+    """验证主体识别输入。
+
+    Args:
+        entity_mode: 名册或业务上层目录识别方式。
+        entity_file: 名册模式的主体清单绝对路径。
+    """
+    if entity_mode not in ENTITY_MODES:
+        raise ContractError(f"不支持的主体识别方式：{entity_mode}")
+    if entity_mode == "registry" and entity_file is None:
+        raise ContractError("名册识别模式必须提供 entity_file")
+    if entity_mode == "parent_directory" and entity_file is not None:
+        raise ContractError("业务上层目录识别模式不得提供 entity_file")
+
+
 @dataclass(frozen=True)
 class TaskRequest:
     """描述 Worker 的完整输入；所有路径均为绝对路径。"""
@@ -63,7 +79,8 @@ class TaskRequest:
     input_root: str
     output_root: str
     rulepack: str
-    entity_file: str
+    entity_mode: str
+    entity_file: str | None
     baseline_root: str
     config_file: str | None
     soffice_path: str
@@ -78,6 +95,7 @@ class TaskRequest:
             "input_root", "output_root", "rulepack", "entity_file",
             "baseline_root", "config_file", "soffice_path",
         ))
+        _validate_entity_source(str(known["entity_mode"]), known["entity_file"])
         return cls(**known)
 
     def to_dict(self) -> dict[str, Any]:

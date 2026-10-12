@@ -27,22 +27,60 @@ def write_request_rulepack(request):
     return replace(request, rulepack_content_hash=content_hash)
 
 
-def create_worker_task(tmp_path: Path, task_id: str = "task-1"):
-    """创建可供 Worker 执行的数据库任务；tmp_path 为隔离根，task_id 为任务编号。"""
+def create_worker_task(
+    tmp_path: Path,
+    task_id: str = "task-1",
+    region_code: str = "hunan",
+):
+    """创建可供 Worker 执行的数据库任务。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        task_id: 任务编号。
+        region_code: 任务固定的地区代码。
+    """
     from risk_audit_web.task_contracts import TaskEvent
     from risk_audit_web.task_repository import TaskRepository
     from tests.web.test_task_repository import make_request, make_state
 
     repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
     repository.initialize()
-    request = write_request_rulepack(make_request(tmp_path, task_id))
+    request = write_request_rulepack(make_request(tmp_path, task_id, region_code))
     Path(request.output_root).mkdir(parents=True)
     repository.create_task(
         request,
         make_state(task_id),
-        TaskEvent("2.0", task_id, "created", request.created_at, {}),
+        TaskEvent("3.0", task_id, "created", request.created_at, {}),
     )
     return repository, request
+
+
+def test_worker_forwards_parent_directory_entity_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker 必须把重庆目录识别方式原样传给审核引擎。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path, region_code="chongqing")
+    monkeypatch.setattr(worker, "configure_conversion_runtime", lambda *args: None)
+    observed: dict[str, object] = {}
+
+    def audit_func(*_args, **kwargs):
+        """记录主体识别参数；_args 为位置参数，kwargs 为审核参数。"""
+        observed["entity_mode"] = kwargs["entity_mode"]
+        observed["entity_file"] = kwargs["entity_file"]
+        return {"write_completed": True, "business_results": []}
+
+    code = worker.run_worker(repository.database_path, request.task_id, audit_func=audit_func)
+
+    assert code == 0
+    assert observed == {"entity_mode": "parent_directory", "entity_file": None}
 
 
 def test_worker_rejects_changed_pinned_rulepack(
@@ -235,7 +273,7 @@ def test_worker_uses_system_temp_for_long_output_path(
     repository.create_task(
         request,
         make_state(task_id),
-        TaskEvent("2.0", task_id, "created", request.created_at, {}),
+        TaskEvent("3.0", task_id, "created", request.created_at, {}),
     )
     observed_paths: dict[str, Path] = {}
 

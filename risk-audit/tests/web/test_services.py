@@ -162,7 +162,7 @@ def test_system_status_reports_auditor_and_available_regions(web_services) -> No
     status = web_services.system_status()
 
     assert status["app_version"] == "2.2.0"
-    assert status["available_region_count"] == 1
+    assert status["available_region_count"] == 2
     assert "rule_version" not in status
 
 

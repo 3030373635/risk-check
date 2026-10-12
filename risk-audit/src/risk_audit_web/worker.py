@@ -233,7 +233,8 @@ def run_worker(
             input_root=Path(request.input_root),
             output_root=output_root,
             rulepack=Path(request.rulepack),
-            entity_file=Path(request.entity_file),
+            entity_file=Path(request.entity_file) if request.entity_file else None,
+            entity_mode=request.entity_mode,
             project_root=Path(request.baseline_root),
             # 报告属于任务结果，必须与可清理临时目录分离。
             runs_root=result_dir,

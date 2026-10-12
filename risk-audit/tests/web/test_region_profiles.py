@@ -29,16 +29,19 @@ def _region_payload(
     content_hash: str,
 ) -> dict[str, object]:
     """生成地区索引条目；参数为地区代码、规则版本和规则内容哈希。"""
-    return {
+    payload: dict[str, object] = {
         "region_code": region_code,
         "region_name": "湖南" if region_code == "hunan" else "重庆",
         "rulepack_version": version,
         "rulepack_content_hash": content_hash,
-        "entity_file": f"entities/{region_code}/entities.xlsx",
+        "entity_mode": "registry" if region_code == "hunan" else "parent_directory",
         "baseline_root": f"baselines/{region_code}/templates",
         "config_file": f"configs/{region_code}/audit-config.json",
         "enabled": True,
     }
+    if payload["entity_mode"] == "registry":
+        payload["entity_file"] = f"entities/{region_code}/entities.xlsx"
+    return payload
 
 
 def _write_index(resources_root: Path, regions: list[dict[str, object]]) -> None:
@@ -76,15 +79,28 @@ def resources_root(tmp_path: Path) -> Path:
     return root
 
 
-def test_load_region_catalog_rejects_missing_entity_file(resources_root: Path) -> None:
-    """一个地区缺主体清单时只禁用该地区；resources_root 为地区资源根。"""
+def test_load_region_catalog_allows_parent_directory_without_entity_file(
+    resources_root: Path,
+) -> None:
+    """目录识别地区不需要主体清单；resources_root 为地区资源根。"""
     catalog = load_region_catalog(resources_root)
 
     assert catalog.require("hunan").available is True
-    assert catalog.require("chongqing").available is False
-    assert catalog.require("chongqing").unavailable_reasons == (
-        f"会计主体清单文件缺失：{resources_root / 'entities/chongqing/entities.xlsx'}",
-    )
+    assert catalog.require("chongqing").available is True
+    assert catalog.require("chongqing").entity_mode == "parent_directory"
+    assert catalog.require("chongqing").entity_file is None
+    assert catalog.require("chongqing").unavailable_reasons == ()
+
+
+def test_load_region_catalog_requires_registry_entity_file(resources_root: Path) -> None:
+    """名册识别地区仍必须具备主体清单；resources_root 为地区资源根。"""
+    entity_file = resources_root / "entities/hunan/entities.xlsx"
+    entity_file.unlink()
+
+    profile = load_region_catalog(resources_root).require("hunan")
+
+    assert profile.available is False
+    assert profile.unavailable_reasons == (f"会计主体清单文件缺失：{entity_file}",)
 
 
 def test_load_region_catalog_allows_missing_templates_and_config(
@@ -95,10 +111,6 @@ def test_load_region_catalog_allows_missing_templates_and_config(
     Args:
         resources_root: 已包含地区规则包的测试资源根目录。
     """
-
-    entity_file = resources_root / "entities/chongqing/entities.xlsx"
-    entity_file.parent.mkdir(parents=True, exist_ok=True)
-    entity_file.write_bytes(b"xlsx")
 
     profile = load_region_catalog(resources_root).require("chongqing")
 
@@ -185,18 +197,28 @@ def test_load_region_catalog_rejects_cross_region_rulepack(resources_root: Path)
 def test_load_region_catalog_rejects_cross_region_business_resources(
     resources_root: Path,
 ) -> None:
-    """重庆地区不得引用湖南的名册、模板或配置。"""
+    """重庆地区不得引用湖南的模板或配置。"""
 
     index_path = resources_root / "regions" / "index.json"
     payload = json.loads(index_path.read_text(encoding="utf-8"))
     payload["regions"][1].update({
-        "entity_file": "entities/hunan/entities.xlsx",
         "baseline_root": "baselines/hunan/templates",
         "config_file": "configs/hunan/audit-config.json",
     })
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     with pytest.raises(RegionProfileError, match="必须属于地区 chongqing"):
+        load_region_catalog(resources_root)
+
+
+def test_load_region_catalog_rejects_unknown_entity_mode(resources_root: Path) -> None:
+    """未知主体识别方式必须拒绝；resources_root 为地区资源根。"""
+    index_path = resources_root / "regions/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["regions"][1]["entity_mode"] = "unknown"
+    index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(RegionProfileError, match="entity_mode"):
         load_region_catalog(resources_root)
 
 

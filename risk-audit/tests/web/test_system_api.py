@@ -37,7 +37,7 @@ def test_system_status_reports_diagnostics_and_running_count(client) -> None:
     assert response.status_code == 200
     assert response.json()["service_status"] == "ok"
     assert response.json()["app_version"] == "2.2.0"
-    assert response.json()["available_region_count"] == 1
+    assert response.json()["available_region_count"] == 2
     assert "rule_version" not in response.json()
     assert response.json()["diagnostics"][0]["ok"]
 

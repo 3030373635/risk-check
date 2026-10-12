@@ -19,7 +19,7 @@ def make_request(
     rulepack_version = "1.9.21" if region_code == "hunan" else "1.9.22"
     resource_root = tmp_path / "resources" / region_code
     return TaskRequest(
-        schema_version="2.0",
+        schema_version="3.0",
         task_id=task_id,
         display_name=f"{region_name} 资料",
         region_code=region_code,
@@ -29,7 +29,12 @@ def make_request(
         input_root=str((tmp_path / "input").resolve()),
         output_root=str((tmp_path / "outputs" / task_id).resolve()),
         rulepack=str((resource_root / "rulepacks" / rulepack_version).resolve()),
-        entity_file=str((resource_root / "entities.xlsx").resolve()),
+        entity_mode="registry" if region_code == "hunan" else "parent_directory",
+        entity_file=(
+            str((resource_root / "entities.xlsx").resolve())
+            if region_code == "hunan"
+            else None
+        ),
         baseline_root=str((resource_root / "baselines").resolve()),
         config_file=str((resource_root / "audit-config.json").resolve()),
         soffice_path=str((tmp_path / "soffice").resolve()),
@@ -42,7 +47,7 @@ def make_state(task_id: str = "task-1"):
     from risk_audit_web.task_contracts import TaskState
 
     return TaskState(
-        schema_version="2.0",
+        schema_version="3.0",
         task_id=task_id,
         status="running",
         stage="startup",
@@ -66,7 +71,7 @@ def make_event(task_id: str = "task-1"):
     from risk_audit_web.task_contracts import TaskEvent
 
     return TaskEvent(
-        schema_version="2.0",
+        schema_version="3.0",
         task_id=task_id,
         event="created",
         occurred_at="2026-09-30T10:00:00+08:00",
@@ -84,7 +89,7 @@ def test_initialize_creates_versioned_wal_database(tmp_path: Path) -> None:
     repository.initialize()
 
     with sqlite3.connect(database_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         tables = {
             row[0]
@@ -140,7 +145,7 @@ def test_initialize_rejects_version_one_without_deleting_data(tmp_path: Path) ->
         connection.execute("INSERT INTO legacy_tasks VALUES ('legacy-1')")
         connection.execute("PRAGMA user_version = 1")
 
-    with pytest.raises(TaskDatabaseError, match="版本：1，当前版本：2"):
+    with pytest.raises(TaskDatabaseError, match="版本：1，当前版本：3"):
         TaskRepository(database_path).initialize()
 
     with sqlite3.connect(database_path) as connection:
@@ -154,7 +159,7 @@ def test_initialize_rejects_incomplete_versioned_schema(tmp_path: Path) -> None:
     database_path = tmp_path / "tasks.sqlite3"
     with sqlite3.connect(database_path) as connection:
         connection.execute("CREATE TABLE tasks (task_id TEXT PRIMARY KEY)")
-        connection.execute("PRAGMA user_version = 2")
+        connection.execute("PRAGMA user_version = 3")
 
     with pytest.raises(TaskDatabaseError, match="缺少字段"):
         TaskRepository(database_path).initialize()
@@ -210,6 +215,8 @@ def test_parallel_regions_keep_pinned_resources_isolated(tmp_path: Path) -> None
     assert restored["task-hunan"] == requests[0]
     assert restored["task-chongqing"] == requests[1]
     assert restored["task-hunan"].entity_file != restored["task-chongqing"].entity_file
+    assert restored["task-hunan"].entity_mode == "registry"
+    assert restored["task-chongqing"].entity_mode == "parent_directory"
     assert restored["task-hunan"].baseline_root != restored["task-chongqing"].baseline_root
     assert restored["task-hunan"].config_file != restored["task-chongqing"].config_file
     assert restored["task-hunan"].rulepack_content_hash != restored["task-chongqing"].rulepack_content_hash
@@ -245,7 +252,7 @@ def test_cancel_and_field_updates_do_not_overwrite_each_other(tmp_path: Path) ->
         """连续追加事件；无参数。"""
         for index in range(20):
             repository.append_event(TaskEvent(
-                "2.0",
+                "3.0",
                 "task-1",
                 "progress",
                 f"2026-09-30T10:01:{index:02d}+08:00",

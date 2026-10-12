@@ -2,6 +2,7 @@
 import pytest
 from openpyxl import Workbook
 
+from risk_audit.entity_alerts import build_entity_alerts
 from risk_audit.entity_groups import prepare_entity_groups
 from risk_audit.inventory_v180 import scan_package_v180
 from risk_audit.models import Entity, FileRecord
@@ -44,6 +45,25 @@ def test_unlisted_directory_remains_one_marked_subject(tmp_path):
     assert identity['entity_registry_message'] == '主体不在会计主体清单中'
     assert len({file.entity_code for file in files}) == 1
     assert all(not file.entity_conflict for file in files)
+
+
+def test_parent_directory_mode_uses_directory_as_confirmed_subject(tmp_path):
+    """目录识别模式直接使用业务上层目录，不生成名册待确认提示。"""
+    name = '重庆样例供电分公司'
+    directory = tmp_path / name / '07物资（服务）采购与实施'
+    directory.mkdir(parents=True)
+    Workbook().save(directory / '07风控矩阵.xlsx')
+    files = scan_package_v180(tmp_path, {}, {})
+
+    groups = prepare_entity_groups(files, tmp_path, {}, entity_mode='parent_directory')
+
+    identity = next(iter(groups.values()))
+    assert identity['entity_name'] == name
+    assert identity['entity_code'] == ''
+    assert identity['entity_registry_status'] == 'directory_matched'
+    assert identity['entity_registry_message'] == '主体已按业务上层目录识别'
+    assert files[0].entity_code.startswith('@目录主体:')
+    assert build_entity_alerts(files, {}) == []
 
 
 def test_same_unlisted_directory_name_merges_across_all_business_directories(tmp_path):

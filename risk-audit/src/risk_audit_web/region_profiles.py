@@ -15,16 +15,18 @@ from risk_audit.util import sha256_file, sha256_json
 
 
 _INDEX_FIELDS = {"schema_version", "regions"}
-_REGION_FIELDS = {
+_REGION_REQUIRED_FIELDS = {
     "region_code",
     "region_name",
     "rulepack_version",
     "rulepack_content_hash",
-    "entity_file",
+    "entity_mode",
     "baseline_root",
     "config_file",
     "enabled",
 }
+_REGION_OPTIONAL_FIELDS = {"entity_file"}
+_ENTITY_MODES = {"registry", "parent_directory"}
 _REGION_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -41,7 +43,8 @@ class RegionProfile:
     rulepack_version: str
     rulepack_content_hash: str
     rulepack: Path
-    entity_file: Path
+    entity_mode: str
+    entity_file: Path | None
     baseline_root: Path
     config_file: Path
     enabled: bool
@@ -205,11 +208,12 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
     """解析一个地区条目；参数为资源根、原始条目和序号，返回固定地区配置。"""
     if not isinstance(raw_profile, dict):
         raise RegionProfileError(f"地区条目 {position} 必须是 JSON 对象")
-    unknown_fields = set(raw_profile) - _REGION_FIELDS
+    allowed_fields = _REGION_REQUIRED_FIELDS | _REGION_OPTIONAL_FIELDS
+    unknown_fields = set(raw_profile) - allowed_fields
     if unknown_fields:
         raise RegionProfileError(f"地区条目 {position} 存在未知字段：{sorted(unknown_fields)}")
-    if set(raw_profile) != _REGION_FIELDS:
-        missing = sorted(_REGION_FIELDS - set(raw_profile))
+    missing = sorted(_REGION_REQUIRED_FIELDS - set(raw_profile))
+    if missing:
         raise RegionProfileError(f"地区条目 {position} 缺少字段：{missing}")
 
     region_code = _required_text(raw_profile, "region_code", position)
@@ -222,6 +226,11 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
     if version in {".", ".."} or "/" in version or "\\" in version:
         raise RegionProfileError(f"规则包版本路径无效：{version}")
     content_hash = _required_text(raw_profile, "rulepack_content_hash", position)
+    entity_mode = _required_text(raw_profile, "entity_mode", position)
+    if entity_mode not in _ENTITY_MODES:
+        raise RegionProfileError(
+            f"地区条目 {position} 的 entity_mode 不支持：{entity_mode}"
+        )
     enabled = raw_profile.get("enabled")
     if not isinstance(enabled, bool):
         raise RegionProfileError(f"地区条目 {position} 的 enabled 必须是布尔值")
@@ -232,11 +241,18 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
         f"rulepacks/releases/{version}",
         "rulepack_version",
     )
-    entity_file = _safe_resource_path(
-        resources_root,
-        _required_text(raw_profile, "entity_file", position),
-        "entity_file",
-    )
+    if entity_mode == "registry":
+        entity_file = _safe_resource_path(
+            resources_root,
+            _required_text(raw_profile, "entity_file", position),
+            "entity_file",
+        )
+    else:
+        if "entity_file" in raw_profile:
+            raise RegionProfileError(
+                f"地区条目 {position} 使用 parent_directory 时不得配置 entity_file"
+            )
+        entity_file = None
     baseline_root = _safe_resource_path(
         resources_root,
         _required_text(raw_profile, "baseline_root", position),
@@ -248,15 +264,17 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
         "config_file",
     )
     expected_roots = {
-        "entity_file": resources_root / "entities" / region_code,
         "baseline_root": resources_root / "baselines" / region_code,
         "config_file": resources_root / "configs" / region_code,
     }
-    for field, path in (
-        ("entity_file", entity_file),
+    region_resources = [
         ("baseline_root", baseline_root),
         ("config_file", config_file),
-    ):
+    ]
+    if entity_file is not None:
+        expected_roots["entity_file"] = resources_root / "entities" / region_code
+        region_resources.append(("entity_file", entity_file))
+    for field, path in region_resources:
         expected_root = expected_roots[field].resolve(strict=False)
         if path != expected_root and expected_root not in path.parents:
             raise RegionProfileError(f"{field} 必须属于地区 {region_code} 的独立资源目录")
@@ -268,10 +286,11 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
         region_code,
         region_name,
     )
-    # 主体清单决定审核范围和材料归属，缺失时不能创建任务。
-    entity_reason = _inspect_region_resource(entity_file, "会计主体清单")
-    if entity_reason:
-        reasons.append(entity_reason)
+    if entity_mode == "registry" and entity_file is not None:
+        # 名册模式依赖主体清单；目录模式不读取该资源。
+        entity_reason = _inspect_region_resource(entity_file, "会计主体清单")
+        if entity_reason:
+            reasons.append(entity_reason)
     # 模板和运行配置均支持降级：无模板时执行其他规则，无配置时使用默认规则选择。
     return RegionProfile(
         region_code=region_code,
@@ -279,6 +298,7 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
         rulepack_version=version,
         rulepack_content_hash=content_hash,
         rulepack=rulepack,
+        entity_mode=entity_mode,
         entity_file=entity_file,
         baseline_root=baseline_root,
         config_file=config_file,

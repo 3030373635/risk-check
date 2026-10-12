@@ -21,7 +21,7 @@ from risk_audit_web.task_contracts import (
 )
 
 
-DATABASE_VERSION = 2
+DATABASE_VERSION = 3
 BUSY_TIMEOUT_MILLISECONDS = 10_000
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "cancelled", "interrupted"})
 ACTIVE_STATUSES = TASK_STATUSES - TERMINAL_STATUSES
@@ -160,7 +160,8 @@ class TaskRepository:
                 input_root TEXT NOT NULL,
                 output_root TEXT NOT NULL UNIQUE,
                 rulepack TEXT NOT NULL,
-                entity_file TEXT NOT NULL,
+                entity_mode TEXT NOT NULL CHECK (entity_mode IN ('registry', 'parent_directory')),
+                entity_file TEXT,
                 baseline_root TEXT NOT NULL,
                 config_file TEXT,
                 soffice_path TEXT NOT NULL,
@@ -206,7 +207,7 @@ class TaskRepository:
             "tasks": {
                 "task_id", "schema_version", "display_name", "input_root", "output_root",
                 "region_code", "region_name", "rulepack_version", "rulepack_content_hash",
-                "rulepack", "entity_file", "baseline_root", "config_file", "soffice_path",
+                "rulepack", "entity_mode", "entity_file", "baseline_root", "config_file", "soffice_path",
                 "created_at", "status", "stage", "completed_units", "total_units",
                 "progress_percent", "current_entity", "current_business", "current_file",
                 "worker_pid", "started_at", "heartbeat_at", "message", "error_code",
@@ -256,7 +257,7 @@ class TaskRepository:
             request.task_id, request.schema_version, request.display_name, request.input_root,
             request.region_code, request.region_name, request.rulepack_version,
             request.rulepack_content_hash, request.output_root, request.rulepack,
-            request.entity_file, request.baseline_root, request.config_file,
+            request.entity_mode, request.entity_file, request.baseline_root, request.config_file,
             request.soffice_path, request.created_at, state.status,
             state.stage, state.completed_units, state.total_units, state.progress_percent,
             state.current_entity, state.current_business, state.current_file, state.worker_pid,
@@ -269,12 +270,12 @@ class TaskRepository:
                     """
                     INSERT INTO tasks (
                         task_id, schema_version, display_name, input_root, region_code, region_name,
-                        rulepack_version, rulepack_content_hash, output_root, rulepack, entity_file,
+                        rulepack_version, rulepack_content_hash, output_root, rulepack, entity_mode, entity_file,
                         baseline_root, config_file, soffice_path, created_at, status, stage,
                         completed_units, total_units, progress_percent, current_entity,
                         current_business, current_file, worker_pid, started_at, heartbeat_at,
                         message, error_code, result_summary_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
@@ -553,6 +554,7 @@ class TaskRepository:
             input_root=row["input_root"],
             output_root=row["output_root"],
             rulepack=row["rulepack"],
+            entity_mode=row["entity_mode"],
             entity_file=row["entity_file"],
             baseline_root=row["baseline_root"],
             config_file=row["config_file"],

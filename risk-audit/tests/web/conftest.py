@@ -42,11 +42,12 @@ def portable_paths(tmp_path: Path):
             "region_name": region_name,
             "rulepack_version": version,
             "rulepack_content_hash": content_hash,
-            "entity_file": f"entities/{region_code}/entities.xlsx",
+            "entity_mode": "registry" if region_code == "hunan" else "parent_directory",
             "baseline_root": f"baselines/{region_code}/templates",
             "config_file": f"configs/{region_code}/audit-config.json",
             "enabled": True,
         })
+    regions[0]["entity_file"] = "entities/hunan/entities.xlsx"
     hunan_entity_file = paths.resources_root / "entities/hunan/entities.xlsx"
     hunan_entity_file.parent.mkdir(parents=True)
     hunan_entity_file.write_bytes(b"xlsx")

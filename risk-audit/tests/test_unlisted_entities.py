@@ -90,6 +90,32 @@ def test_different_unlisted_entities_remain_separate(tmp_path, monkeypatch):
     assert len([item for item in findings if item['check_id'] == 'required_matrix_and_lists']) == 2
 
 
+def test_parent_directory_audit_does_not_load_entity_registry(tmp_path, monkeypatch):
+    """重庆目录识别模式不读取主体清单，并在快照中记录目录识别方式。"""
+    input_root, _roster_path, sources = create_business_batch(tmp_path, [('06', 'default')])
+    use_business_baseline(input_root, sources, monkeypatch)
+
+    result = runner.audit(
+        input_root,
+        tmp_path / 'output',
+        ROOT / 'risk-audit/rulepacks/releases/1.8.0',
+        None,
+        ROOT,
+        tmp_path / 'runs',
+        run_id='directory-mode',
+        write=False,
+        entity_mode='parent_directory',
+    )
+
+    entity = next(item for item in result['entity_results'] if item['input_files'])
+    assert entity['entity_name'] == 'A001'
+    assert entity['entity_registry_status'] == 'directory_matched'
+    assert result['entity_code_alerts']['files'] == 0
+    snapshot = json.loads((tmp_path / 'runs/directory-mode/snapshot.json').read_text())
+    assert snapshot['entity_mode'] == 'parent_directory'
+    assert snapshot['entity_registry'] is None
+
+
 @pytest.mark.parametrize('candidate,missing,status', [
     (None, False, 'not_listed'), (None, True, 'missing_code'), ('UNKNOWN', False, 'code_not_listed')])
 def test_registry_status_retains_original_code_evidence(tmp_path, candidate, missing, status):

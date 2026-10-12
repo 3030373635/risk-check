@@ -23,8 +23,8 @@ def test_list_regions_exposes_availability(client) -> None:
     payload = response.json()
     assert [item["region_code"] for item in payload["regions"]] == ["hunan", "chongqing"]
     assert payload["regions"][0]["available"] is True
-    assert payload["regions"][1]["available"] is False
-    assert payload["regions"][1]["unavailable_reasons"]
+    assert payload["regions"][1]["available"] is True
+    assert payload["regions"][1]["unavailable_reasons"] == []
 
 
 def test_create_task_rejects_unknown_region(client, input_root: Path) -> None:
@@ -39,19 +39,22 @@ def test_create_task_rejects_unknown_region(client, input_root: Path) -> None:
     assert response.json()["error_code"] == "UNKNOWN_REGION"
 
 
-def test_create_task_rejects_region_without_entity_file(client, input_root: Path) -> None:
-    """缺少会计主体清单时必须返回具体原因；参数为客户端和输入目录。"""
+def test_create_task_allows_parent_directory_without_entity_file(
+    client,
+    web_services,
+    input_root: Path,
+) -> None:
+    """目录识别地区无主体清单也必须可创建任务。"""
     response = client.post(
         "/api/v1/tasks",
         headers=_post_headers(client),
         json={"input_root": str(input_root), "region_code": "chongqing"},
     )
 
-    assert response.status_code == 422
-    assert response.json()["error_code"] == "REGION_NOT_READY"
-    assert response.json()["details"]["unavailable_reasons"][0].startswith(
-        "会计主体清单文件缺失："
-    )
+    assert response.status_code == 201
+    request = web_services.repository.read_request(response.json()["task_id"])
+    assert request.entity_mode == "parent_directory"
+    assert request.entity_file is None
 
 
 def test_create_task_rechecks_entity_file_after_startup(
@@ -98,10 +101,7 @@ def test_create_task_allows_region_without_templates_and_config(
 
     from risk_audit_web.region_profiles import load_region_catalog
 
-    entity_file = web_services.paths.resources_root / "entities/chongqing/entities.xlsx"
-    entity_file.parent.mkdir(parents=True, exist_ok=True)
-    entity_file.write_bytes(b"xlsx")
-    # 服务启动时会缓存地区目录，这里模拟补齐主体清单后重启应用。
+    # 服务启动时会缓存地区目录，重新加载后仍不依赖可选资源。
     web_services._region_catalog = load_region_catalog(web_services.paths.resources_root)
 
     response = client.post(
@@ -114,6 +114,8 @@ def test_create_task_allows_region_without_templates_and_config(
     task_id = response.json()["task_id"]
     request = web_services.repository.read_request(task_id)
     assert request.config_file is None
+    assert request.entity_mode == "parent_directory"
+    assert request.entity_file is None
     assert request.baseline_root.endswith("/baselines/chongqing/templates")
 
 

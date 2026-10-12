@@ -45,23 +45,27 @@ def _write_region(
     manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
     content_hash = str(manifest["content_hash"])
     if ready:
-        entity_file = resources_root / "entities" / region_code / "entities.xlsx"
-        entity_file.parent.mkdir(parents=True, exist_ok=True)
-        entity_file.write_bytes(b"xlsx")
+        if region_code == "hunan":
+            entity_file = resources_root / "entities" / region_code / "entities.xlsx"
+            entity_file.parent.mkdir(parents=True, exist_ok=True)
+            entity_file.write_bytes(b"xlsx")
         (resources_root / "baselines" / region_code / "templates").mkdir(parents=True)
         config_file = resources_root / "configs" / region_code / "audit-config.json"
         config_file.parent.mkdir(parents=True, exist_ok=True)
         config_file.write_text("{}", encoding="utf-8")
-    return {
+    profile: dict[str, object] = {
         "region_code": region_code,
         "region_name": "湖南" if region_code == "hunan" else "重庆",
         "rulepack_version": version,
         "rulepack_content_hash": content_hash,
-        "entity_file": f"entities/{region_code}/entities.xlsx",
+        "entity_mode": "registry" if region_code == "hunan" else "parent_directory",
         "baseline_root": f"baselines/{region_code}/templates",
         "config_file": f"configs/{region_code}/audit-config.json",
         "enabled": True,
     }
+    if region_code == "hunan":
+        profile["entity_file"] = "entities/hunan/entities.xlsx"
+    return profile
 
 
 def _write_region_index(resources_root: Path, regions: list[dict[str, object]]) -> None:
@@ -179,7 +183,7 @@ def test_startup_diagnostics_allows_one_unavailable_region(tmp_path: Path) -> No
     report = run_startup_diagnostics(paths)
 
     assert report.can_start
-    assert any("可用地区 1 个" in item.message for item in report.items)
+    assert any("可用地区 2 个" in item.message for item in report.items)
 
 
 def test_startup_diagnostics_rejects_catalog_without_available_region(tmp_path: Path) -> None:
@@ -190,8 +194,8 @@ def test_startup_diagnostics_rejects_catalog_without_available_region(tmp_path: 
     paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="win32")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
-    chongqing = _write_region(paths.resources_root, "chongqing", ready=False)
-    _write_region_index(paths.resources_root, [chongqing])
+    hunan = _write_region(paths.resources_root, "hunan", ready=False)
+    _write_region_index(paths.resources_root, [hunan])
 
     report = run_startup_diagnostics(paths)
 
