@@ -11,7 +11,7 @@ from risk_audit.audit_statistics import write_audit_statistics, write_audit_stat
 from risk_audit.models import FileRecord
 
 
-def _file(tmp_path: Path, relative_path: str, material_type: str, business_code: str) -> FileRecord:
+def _file(tmp_path: Path, relative_path: str, material_type: str, business_code: str | None) -> FileRecord:
     """构建审核统计样例文件；tmp_path 为测试目录，relative_path 为包内路径。"""
     return FileRecord(
         tmp_path / Path(relative_path).name,
@@ -89,8 +89,8 @@ def test_html_statistics_uses_same_grouped_content_as_excel(tmp_path: Path) -> N
     assert '<script>unsafe()</script>' not in target.read_text(encoding='utf-8')
 
 
-def test_statistics_merges_same_business_identity_with_different_display_names(tmp_path: Path) -> None:
-    """同一稳定业务身份不得因配置名称和目录名称不同而拆成两个统计分组。
+def test_statistics_groups_and_displays_business_by_directory(tmp_path: Path) -> None:
+    """统计必须使用业务目录归组和显示，不受文件上的业务身份影响。
 
     Args:
         tmp_path: pytest 提供的隔离目录。
@@ -108,9 +108,9 @@ def test_statistics_merges_same_business_identity_with_different_display_names(t
         tmp_path,
         '8.数字化与研发矩阵及“三清单”/岗位内控责任清单.xlsx',
         'three_lists',
-        '08',
+        '30',
     )
-    duties.business_id = 'digitalization_rd_investment'
+    duties.business_id = 'property_logistics'
     ownership = {
         str(matrix.relative_path): [{
             'sheet': '风控矩阵',
@@ -133,7 +133,7 @@ def test_statistics_merges_same_business_identity_with_different_display_names(t
         'units': [{
             'path': '新建文件',
             'businesses': [{
-                'name': '08 数字化与研发投入',
+                'name': '8.数字化与研发矩阵及“三清单”',
                 'records': [
                     '【第3条】请核实矩阵字段。 1条。',
                     '【第5条】请补充人员姓名。 1条。',
@@ -198,8 +198,22 @@ def test_statistics_writes_none_for_recognized_business_without_opinions(tmp_pat
     ]
 
 
-def test_statistics_keeps_root_files_with_duplicate_display_codes_separate(tmp_path):
-    """tmp_path 为隔离目录；根目录下两个 01 业务必须显示为两个统计分区。"""
+def test_statistics_writes_none_for_unmapped_business_directory(tmp_path):
+    """未映射规则身份的业务目录也必须出现在统计中，不能因无意见而消失。"""
+    file = _file(tmp_path, '测试主体/17.全新专项矩阵及“三清单”/风控矩阵.xlsx', 'matrix', None)
+    file.business_id = 'unmatched_directory_identity'
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(target, [file], {}, '包名')
+
+    assert list(load_workbook(target)['审核统计表'].values) == [
+        ('单位', '备注'),
+        ('包名/测试主体', '17.全新专项矩阵及“三清单”：\n无'),
+    ]
+
+
+def test_statistics_uses_selected_business_root_and_its_parent_subject(tmp_path):
+    """直接选择业务目录时，统计必须分别显示外层主体和业务根目录。"""
     sales = _file(tmp_path, '01风控矩阵-营销售电.xlsx', 'matrix', '01')
     sales.business_id = 'sales_electricity'
     sales.preservation['business_name'] = '营销售电'
@@ -208,11 +222,19 @@ def test_statistics_keeps_root_files_with_duplicate_display_codes_separate(tmp_p
     equity.preservation['business_name'] = '股权（产权）管理'
     target = tmp_path / '审核统计表.xlsx'
 
-    write_audit_statistics(target, [sales, equity], {}, '测试主体有限公司')
+    write_audit_statistics(
+        target,
+        [sales, equity],
+        {},
+        '11.财务管理矩阵及“三清单”',
+        root_subject_name='重庆报送主题',
+    )
 
     sheet = load_workbook(target)['审核统计表']
-    business_sections = {sheet['B2'].value, sheet['B3'].value}
-    assert business_sections == {'01 营销售电：\n无', '01 股权（产权）管理：\n无'}
+    assert list(sheet.values) == [
+        ('单位', '备注'),
+        ('重庆报送主题', '11.财务管理矩阵及“三清单”：\n无'),
+    ]
 
 
 def test_statistics_formats_header_and_protects_excel_text(tmp_path):
@@ -236,10 +258,10 @@ def test_statistics_formats_header_and_protects_excel_text(tmp_path):
     assert sheet['B2'].data_type == 's' and sheet['B2'].value.startswith("'=1+1：")
 
 
-def test_statistics_recognizes_business_before_unit_directory(tmp_path):
-    """tmp_path 为隔离目录；真实包中业务目录在单位之前时仍按单位合并。"""
-    sales = _file(tmp_path, '1.营销售电-ok/1.国网某供电分公司/01风控矩阵.xlsx', 'matrix', '01')
-    trade = _file(tmp_path, '2.交易与购电-ok/1.国网某供电分公司/02风控矩阵.xlsx', 'matrix', '02')
+def test_statistics_uses_subject_business_file_directory_order(tmp_path):
+    """tmp_path 为隔离目录；统计必须按主体、业务、文件的目录顺序归组。"""
+    sales = _file(tmp_path, '1.国网某供电分公司/1.营销售电-ok/01风控矩阵.xlsx', 'matrix', '01')
+    trade = _file(tmp_path, '1.国网某供电分公司/2.交易与购电-ok/02风控矩阵.xlsx', 'matrix', '02')
     ownership = {
         str(sales.relative_path): [
             {'sheet': '风控矩阵', 'cell': 'H2', 'program_text': '【第10条】请修改岗位职责。'},
@@ -261,8 +283,8 @@ def test_statistics_recognizes_business_before_unit_directory(tmp_path):
     ]
 
 
-def test_statistics_prefers_named_business_over_numbered_center_unit(tmp_path):
-    """tmp_path 为隔离目录；同编号业务与中心单位并存时优先识别业务名。"""
+def test_statistics_does_not_infer_inverted_directory_order(tmp_path):
+    """tmp_path 为隔离目录；统计不得根据名称猜测倒置的主体与业务目录。"""
     file = _file(tmp_path, '01营销售电/1.某技术技能培训中心/风控矩阵.xlsx', 'matrix', '01')
     ownership = {str(file.relative_path): [
         {'sheet': '风控矩阵', 'cell': 'H2', 'program_text': '【第10条】请修改岗位职责。'},
@@ -273,7 +295,7 @@ def test_statistics_prefers_named_business_over_numbered_center_unit(tmp_path):
 
     assert list(load_workbook(target)['审核统计表'].values) == [
         ('单位', '备注'),
-        ('包名/1.某技术技能培训中心', '01营销售电：\n【第10条】请修改岗位职责。 1条。'),
+        ('包名/01营销售电', '1.某技术技能培训中心：\n【第10条】请修改岗位职责。 1条。'),
     ]
 
 

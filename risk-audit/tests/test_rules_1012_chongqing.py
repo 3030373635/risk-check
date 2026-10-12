@@ -16,6 +16,8 @@ from risk_audit.checks.registry import CheckContext, build_registry
 from risk_audit.configuration.loader import load_pack
 from risk_audit.engine import run_engine
 from risk_audit.models import Entity, FieldValue, FileRecord, ParsedSheet, Record
+from risk_audit.runner import CONFIRMED_RULE_VERSIONS, PREPROCESSING_RULE_VERSIONS
+from risk_audit.pipeline_versions import SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 from risk_audit.system_type_preprocessing import classify_system_owner
 from tools.publish_rules_1012_chongqing import (
     BASE_VERSION,
@@ -30,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源" / SOURCE_NAME
 RELEASE = ROOT / "rulepacks/releases/1.9.22"
 SPLIT_LISTS_RELEASE = ROOT / "rulepacks/releases/1.9.23"
-CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.24"
+CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.25"
 
 
 def make_record(record_type: str, row: int, business_id: str = "financial_management", **values: str) -> Record:
@@ -182,21 +184,26 @@ def test_branch_key_points_only_applies_to_power_supply_branch() -> None:
     assert issues == []
 
 
-def test_branch_key_points_recognizes_unique_alias_for_unmatched_file() -> None:
-    """未匹配模板的文件只有一个业务别名命中时应使用该业务。"""
+def test_branch_key_points_uses_directory_when_unmatched_filename_conflicts() -> None:
+    """未匹配模板时只能按业务目录归一，文件名不得造成冲突。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
     record = make_record("matrix", 3, business_id="unmatched_1234", measure_id="29.1")
-    record.file_path = "财务管理风控矩阵.xlsx"
+    record.file_path = "11.财务管理矩阵及三清单/30物业后勤风控矩阵.xlsx"
     params = {
         "expected_key_points": {"financial_management": [[29]]},
-        "business_aliases": {"financial_management": ["财务管理"]},
+        "business_aliases": {
+            "financial_management": ["财务管理"],
+            "property_logistics": ["物业后勤"],
+        },
     }
 
     context = make_context([record], business_id="unmatched_1234")
     context.resources.update({
         "_entity_business_ids": ["unmatched_1234"],
-        "_entity_business_files": {"unmatched_1234": ["财务管理风控矩阵.xlsx"]},
+        "_entity_business_files": {
+            "unmatched_1234": ["11.财务管理矩阵及三清单/30物业后勤风控矩阵.xlsx"],
+        },
         "_current_business_id": "unmatched_1234",
     })
 
@@ -204,58 +211,59 @@ def test_branch_key_points_recognizes_unique_alias_for_unmatched_file() -> None:
 
 
 def test_branch_key_points_normalizes_unmatched_source_business() -> None:
-    """来源新业务未进入基准时应通过文件别名归一，不得同时报缺失和多报。"""
+    """来源新业务未进入基准时应通过目录别名归一，不得同时报缺失和多报。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
     record = make_record("matrix", 3, business_id="unmatched_abcd", measure_id="5.1")
-    record.file_path = "特高压建设风控矩阵.xlsx"
+    record.file_path = "13.特高压管理矩阵及三清单/财务管理风控矩阵.xlsx"
     context = make_context([record], business_id="unmatched_abcd")
     context.resources.update({
         "_entity_business_ids": ["unmatched_abcd"],
-        "_entity_business_files": {"unmatched_abcd": ["特高压建设风控矩阵.xlsx"]},
+        "_entity_business_files": {
+            "unmatched_abcd": ["13.特高压管理矩阵及三清单/财务管理风控矩阵.xlsx"],
+        },
         "_current_business_id": "unmatched_abcd",
     })
     params = {
         "expected_key_points": {"ultra_high_voltage_construction": [[5]]},
-        "business_aliases": {"ultra_high_voltage_construction": ["特高压建设"]},
+        "business_aliases": {"ultra_high_voltage_construction": ["特高压管理"]},
     }
 
     assert capability.runner(context, params) == []
 
 
-def test_branch_key_points_expands_multiple_businesses_in_one_unmatched_unit() -> None:
-    """同一 unmatched_* 单元中的多份来源业务文件应逐路径归一。"""
+def test_branch_key_points_keeps_files_in_same_directory_as_one_business() -> None:
+    """同一业务目录中的文件名不得把审核单元拆成其他业务。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
     ultra_high_voltage = make_record(
         "matrix", 3, business_id="unmatched_same", measure_id="5.1",
     )
-    ultra_high_voltage.file_path = "特高压建设风控矩阵.xlsx"
-    digital_platform = make_record(
+    ultra_high_voltage.file_path = "13.特高压管理矩阵及三清单/特高压建设风控矩阵.xlsx"
+    second_matrix = make_record(
         "matrix", 4, business_id="unmatched_same", measure_id="7.1",
     )
-    digital_platform.file_path = "数科平台业务风控矩阵.xlsx"
+    second_matrix.file_path = "13.特高压管理矩阵及三清单/数科平台业务风控矩阵.xlsx"
     context = make_context(
-        [ultra_high_voltage, digital_platform],
+        [ultra_high_voltage, second_matrix],
         business_id="unmatched_same",
     )
     context.resources.update({
         "_entity_business_ids": ["unmatched_same"],
         "_entity_business_files": {
             "unmatched_same": [
-                "特高压建设风控矩阵.xlsx",
-                "数科平台业务风控矩阵.xlsx",
+                "13.特高压管理矩阵及三清单/特高压建设风控矩阵.xlsx",
+                "13.特高压管理矩阵及三清单/数科平台业务风控矩阵.xlsx",
             ],
         },
         "_current_business_id": "unmatched_same",
     })
     params = {
         "expected_key_points": {
-            "ultra_high_voltage_construction": [[5]],
-            "digital_platform_business": [[7]],
+            "ultra_high_voltage_construction": [[5], [7]],
         },
         "business_aliases": {
-            "ultra_high_voltage_construction": ["特高压建设"],
+            "ultra_high_voltage_construction": ["特高压管理"],
             "digital_platform_business": ["数科平台业务"],
         },
     }
@@ -512,6 +520,34 @@ def test_release_accepts_combined_and_split_three_list_names() -> None:
     }
 
 
+def test_current_release_covers_actual_chongqing_business_directories() -> None:
+    """当前重庆规则包必须用实际业务目录名完成基准和专项规则映射。"""
+    pack = load_pack(CURRENT_RELEASE)
+    branch_rule = next(
+        rule
+        for rule in pack["rules"]
+        if rule["rule_id"] == "chongqing.power_supply_branch_key_points"
+    )
+    aliases = branch_rule["checks"][0]["params"]["business_aliases"]
+    sales = next(
+        business
+        for business in pack["baseline_registry"]["businesses"]
+        if business["business_id"] == "sales_electricity"
+    )
+
+    assert "营销与售电" in sales["aliases"]
+    assert "营销与售电" in aliases["sales_electricity"]
+    assert "特高压管理" in aliases["ultra_high_voltage_construction"]
+    assert "检修运维成本项目管理" in aliases["maintenance_cost_project_management"]
+
+
+def test_current_release_uses_confirmed_scan_and_preprocessing_pipeline() -> None:
+    """当前重庆发布包必须进入新版扫描和基准预处理流程。"""
+    assert "1.9.25" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.25" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.25" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+
+
 def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
     """工作簿标题已确认材料类型时，重庆不应再报文件名缺少关键字。"""
     rules = [json.loads(path.read_text(encoding="utf-8")) for path in (SPLIT_LISTS_RELEASE / "rules").glob("*.json")]
@@ -574,7 +610,7 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.24")):
+    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.25")):
         manifest = json.loads(
             (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
         )

@@ -1,16 +1,14 @@
 """为清单外主体建立本次审核分组，保留正式代码与名册匹配状态。"""
 from pathlib import Path
 
-from risk_audit.submission_scope import unit_directory
+from risk_audit.submission_scope import relative_directory_identity, unit_directory
 from risk_audit.entities import material_directory_name
 from risk_audit.util import norm_text
 
 
-def source_entity_name(file, root, business_registry=None):
-    """提取报送名称；file/root 为扫描记录与输入根，business_registry 用于排除业务目录。"""
-    return material_directory_name(
-        file.source, root, business_registry, file.business_id, file.business_code,
-    )
+def source_entity_name(file, root):
+    """提取报送名称；file 为扫描记录，root 为输入根目录。"""
+    return material_directory_name(file.source, root)
 
 
 def prepare_entity_groups(
@@ -33,19 +31,12 @@ def prepare_entity_groups(
     for file in files:
         candidate = file.entity_code
         if entity_mode == 'parent_directory':
-            name = source_entity_name(file, root, business_registry)
-            directory = unit_directory(
-                file.source, root, business_registry, file.business_id, file.business_code,
-            )
-            if name != '未识别单位（见文件路径）':
-                # 规范化目录名用作内部键，同名单位的不同业务必须稳定合并。
-                key = '@目录主体:' + norm_text(name)
-                status = 'directory_matched'
-                message = '主体已按业务上层目录识别'
-            else:
-                key = '@目录:' + str(directory.relative_to(root))
-                status = 'unconfirmed'
-                message = '未识别到单位目录，请核实材料目录'
+            directory = unit_directory(file.source, root)
+            name = directory.name
+            # 完整相对路径是主体身份；显示名仅使用业务上级目录的原始名称。
+            key = '@目录主体:' + relative_directory_identity(directory, root)
+            status = 'directory_matched'
+            message = '主体已按业务上层目录识别'
             candidate = None
             file.entity_code = key
             file.parse_errors = [
@@ -55,10 +46,8 @@ def prepare_entity_groups(
             name = entities[candidate].name
             key, status, message = candidate, 'matched', '主体已匹配会计主体清单'
         else:
-            name = source_entity_name(file, root, business_registry)
-            directory = unit_directory(
-                file.source, root, business_registry, file.business_id, file.business_code,
-            )
+            name = source_entity_name(file, root)
+            directory = unit_directory(file.source, root)
             missing = [entity for entity in missing_code if norm_text(entity.name) == norm_text(name)]
             if missing:
                 name, status, message = missing[0].name, 'missing_code', '会计主体清单中有单位名称，但单位代码为空'
@@ -68,12 +57,8 @@ def prepare_entity_groups(
                 status, message = 'not_listed', '主体不在会计主体清单中'
             else:
                 status, message = 'unconfirmed', '未识别到单位目录，请核实材料目录'
-            if name != '未识别单位（见文件路径）':
-                # 清单外主体直接按单位目录名分组，使所有业务目录中的同名单位统一审核。
-                key = '@名称:' + name
-            else:
-                # 无法取得单位目录名时保留完整目录路径，避免把未知单位错误合并。
-                key = '@目录:' + str(directory.relative_to(root))
+            # 清单外主体按完整目录路径分组，同名但不同路径的主体不得合并。
+            key = '@目录:' + relative_directory_identity(directory, root)
             # 非空分组标识使矩阵、三清单及资料级检查继续执行；正式代码仍为空。
             file.entity_code = key
             file.parse_errors = [error for error in file.parse_errors if error != '无法确定会计主体']

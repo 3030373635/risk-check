@@ -152,15 +152,16 @@ def test_identify_business_uses_selected_root_for_direct_package_variant(busines
     )
 
 
-def test_identify_business_rejects_conflicting_directory_and_filename(
+def test_identify_business_uses_directory_when_filename_conflicts(
     business_registry: dict,
 ):
-    """目录与文件名指向不同业务时不得猜测模板。"""
-    with pytest.raises(BusinessIdentityError, match="业务模板映射冲突"):
-        identify_business(
-            Path("01 营销售电/股权产权管理矩阵.xlsx"),
-            business_registry,
-        )
+    """文件名指向其他业务时，业务目录仍是唯一归属依据。"""
+    result = identify_business(
+        Path("01 营销售电/股权产权管理矩阵.xlsx"),
+        business_registry,
+    )
+
+    assert (result.business_id, result.business_code) == ("sales_electricity", "01")
 
 
 def test_identify_business_rejects_duplicate_directory_code(business_registry: dict):
@@ -169,30 +170,41 @@ def test_identify_business_rejects_duplicate_directory_code(business_registry: d
         identify_business(Path("01业务/清单.xlsx"), business_registry)
 
 
-def test_identify_business_uses_filename_when_directory_is_unknown(
+def test_identify_business_rejects_filename_only_match_when_directory_is_unknown(
     business_registry: dict,
 ):
-    """父目录无法识别时，应使用文件名中的唯一业务名。"""
-    result = identify_business(Path("未知目录/营销售电矩阵.xlsx"), business_registry)
+    """父目录无法识别时，文件名不得替代业务目录推定归属。"""
+    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
+        identify_business(Path("未知目录/营销售电矩阵.xlsx"), business_registry)
 
-    assert result.business_id == "sales_electricity"
 
-
-def test_identify_business_uses_workbook_title_evidence(
+def test_identify_business_rejects_workbook_only_match_when_directory_is_unknown(
     business_registry: dict,
 ):
-    """路径不含业务名时，应使用工作表名和表内标题识别模板。"""
+    """工作表名和表内标题不得替代业务目录推定归属。"""
+    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
+        identify_business(
+            Path("未知目录/报送资料.xlsx"),
+            business_registry,
+            workbook_evidence=["股权（产权）管理矩阵", "岗位清单"],
+        )
+
+
+def test_identify_business_uses_directory_for_variant_when_file_conflicts(
+    business_registry: dict,
+) -> None:
+    """文件名与业务目录的变体冲突时，必须使用目录中的变体。"""
     result = identify_business(
-        Path("未知目录/报送资料.xlsx"),
+        Path("03 电网基建 35千伏-220千伏/500千伏-750千伏矩阵.xlsx"),
         business_registry,
-        workbook_evidence=["股权（产权）管理矩阵", "岗位清单"],
+        workbook_evidence=["500千伏-750千伏电网基建"],
     )
 
-    assert result.business_id == "equity_management"
+    assert result.variant_id == "35-220kv"
 
 
 def test_workbook_business_evidence_excludes_body_rows(tmp_path, business_registry: dict) -> None:
-    """表内业务正文提到其他业务时不得造成模板映射冲突。"""
+    """工作簿证据读取不得把正文误当标题信息。"""
 
     from risk_audit.business_identity import workbook_business_evidence
 
@@ -205,9 +217,8 @@ def test_workbook_business_evidence_excludes_body_rows(tmp_path, business_regist
     workbook.save(path)
 
     evidence = workbook_business_evidence(path, "xlsx")
-    result = identify_business(path.relative_to(tmp_path), business_registry, workbook_evidence=evidence)
 
-    assert result.business_id == "equity_management"
+    assert "股权产权管理" in evidence
     assert all("合同管理制度" not in item for item in evidence)
 
 
@@ -255,11 +266,11 @@ def test_unknown_nested_child_does_not_inherit_registered_grandparent(
     assert files[0].entity_code is None
 
 
-def test_direct_unregistered_child_does_not_inherit_registered_parent(
+def test_direct_business_directory_uses_registered_parent_as_subject(
     tmp_path,
     business_registry: dict,
 ) -> None:
-    """材料直接位于未登记子单位目录时不得继承上级正式主体代码。"""
+    """材料直接父目录按业务处理，其上级登记目录必须作为主体。"""
 
     from risk_audit.inventory_v180 import scan_package_v180
     from risk_audit.models import Entity
@@ -279,14 +290,14 @@ def test_direct_unregistered_child_does_not_inherit_registered_parent(
     )
 
     assert len(files) == 1
-    assert files[0].entity_code is None
+    assert files[0].entity_code == "P001"
 
 
-def test_scan_package_uses_sheet_name_and_table_title_for_template_match(
+def test_scan_package_does_not_use_sheet_name_or_title_for_template_match(
     tmp_path: Path,
     business_registry: dict,
 ):
-    """目录和文件名均无业务名时，扫描应使用工作簿证据。"""
+    """目录无法识别时，工作表名和标题不得为业务补充归属。"""
     entity_name = "测试供电分公司"
     directory = tmp_path / entity_name / "未知业务"
     directory.mkdir(parents=True)
@@ -303,9 +314,9 @@ def test_scan_package_uses_sheet_name_and_table_title_for_template_match(
         business_registry,
     )
 
-    assert files[0].business_id == "equity_management"
-    assert files[0].business_code == "01"
-    assert files[0].preservation["template_match"]["status"] == "matched"
+    assert files[0].business_id.startswith("unmatched_")
+    assert files[0].business_code is None
+    assert files[0].preservation["template_match"]["status"] == "unmatched"
     assert files[0].parse_errors == []
 
 
@@ -372,7 +383,7 @@ def test_equal_length_business_alias_conflict_is_rejected(business_registry: dic
 
 def test_missing_business_and_variant_are_rejected(business_registry: dict):
     """未知业务或电网基建缺少电压信息时必须停止映射。"""
-    with pytest.raises(BusinessIdentityError, match="业务编号映射冲突"):
+    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
         identify_business(Path("未知业务/01风控矩阵.xlsx"), business_registry)
     with pytest.raises(BusinessIdentityError, match="模板变体无法确定"):
         identify_business(Path("03 电网基建/03风控矩阵.xlsx"), business_registry)
@@ -611,8 +622,8 @@ def test_confirmed_scanner_carries_unique_business_identity(tmp_path, business_r
 
 
 @pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
-def test_scanner_recognizes_business_from_selected_package_root(tmp_path, scanner_name: str):
-    """tmp_path 为隔离目录，scanner_name 为扫描器版本；直接选择业务包时必须使用根目录名识别业务。"""
+def test_selected_business_root_does_not_guess_subject_from_business_name(tmp_path, scanner_name: str):
+    """直接选择业务目录时可识别业务，但不得从同一目录名称猜测主体。"""
     from risk_audit.inventory import scan_package
     from risk_audit.inventory_v180 import scan_package_v180
     from risk_audit.models import Entity
@@ -643,13 +654,13 @@ def test_scanner_recognizes_business_from_selected_package_root(tmp_path, scanne
     assert {(file.business_id, file.business_code, file.variant_id) for file in files} == {
         ("financial_management", "02", "default"),
     }
-    assert {file.entity_code for file in files} == {"A001"}
+    assert {file.entity_code for file in files} == {None}
     assert all(not any("业务模板" in error for error in file.parse_errors) for file in files)
 
 
 @pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
-def test_selected_package_root_rejects_multiple_entity_names(tmp_path, scanner_name: str):
-    """业务包根目录包含多个正式单位全称时，必须保留主体冲突并拒绝猜测。"""
+def test_selected_business_root_ignores_embedded_entity_names(tmp_path, scanner_name: str):
+    """业务目录名称中的多个单位名称不得作为主体证据或制造冲突。"""
     from risk_audit.inventory import scan_package
     from risk_audit.inventory_v180 import scan_package_v180
     from risk_audit.models import Entity
@@ -675,8 +686,8 @@ def test_selected_package_root_rejects_multiple_entity_names(tmp_path, scanner_n
 
     assert len(files) == 1
     assert files[0].entity_code is None
-    assert files[0].entity_conflict
-    assert "主体证据冲突" in files[0].parse_errors
+    assert not files[0].entity_conflict
+    assert "无法确定会计主体" in files[0].parse_errors
 
 
 def test_load_baselines_isolates_duplicate_display_codes(tmp_path):

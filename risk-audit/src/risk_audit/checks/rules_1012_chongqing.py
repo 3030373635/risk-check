@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from risk_audit.checks.registry import CheckContext
@@ -171,14 +172,15 @@ def _entity_name(ctx: CheckContext, entity_code: str) -> str:
 
 
 def _business_id_from_text(value: str, aliases: dict[str, list[str]]) -> str | None:
-    """从文件路径或名称中返回唯一命中的业务标识。
+    """从文件的直接上级目录返回唯一命中的业务标识。
 
     Args:
-        value: 待识别的文件路径或名称。
+        value: 待识别文件的包内路径。
         aliases: 业务标识到可识别名称的显式映射。
     """
 
-    haystack = norm_text(value)
+    # 文件名可能残留其他模板名称，归属判断只允许读取业务目录。
+    haystack = norm_text(Path(value).parent.name)
     matches = {
         business_id
         for business_id, names in aliases.items()

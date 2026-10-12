@@ -21,12 +21,17 @@ def reported_entity_name(text):
     return ''
 
 
-def material_directory_name(path, root, business_registry=None, business_id=None, business_code=None):
-    """取得单位目录名称；path/root 为材料与输入根，其余参数用于排除当前业务目录。"""
+def material_directory_name(path, root):
+    """取得主体目录名称。
+
+    Args:
+        path: 当前材料的绝对路径。
+        root: 用户选择的输入根目录。
+    """
     from risk_audit.submission_scope import unit_directory
 
-    directory = unit_directory(path, root, business_registry, business_id, business_code)
-    label = re.sub(r'^\d+[\s.、-]*', '', directory.name)
+    directory = unit_directory(path, root)
+    label = directory.name
     # 输入根本身是单位目录时也保留全称，普通批次根不能当作单位名称。
     if directory != root or re.fullmatch(ENTITY_NAME_PATTERN, label) or label.endswith('公司'):
         return label
@@ -44,31 +49,11 @@ def directory_material_entity(path, root, entities, business_registry=None, busi
         business_id: 当前材料已识别的稳定业务标识。
         business_code: 当前材料已识别的业务编号。
     """
-    from risk_audit.submission_scope import _matches_configured_business_directory, unit_directory
+    from risk_audit.submission_scope import unit_directory
 
     root = Path(root)
-    directory = unit_directory(path, root, business_registry, business_id, business_code)
-    if directory == root and _matches_configured_business_directory(root.name, business_registry, business_id):
-        # 单业务包根目录可同时包含正式单位全称和业务名称，优先保留最长的单位全称证据。
-        normalized_root = norm_text(root.name)
-        matches = [
-            (code, norm_text(entity.name))
-            for code, entity in entities.items()
-            if norm_text(entity.name) and norm_text(entity.name) in normalized_root
-        ]
-        maximal_matches = [
-            (code, name)
-            for code, name in matches
-            if not any(name != other_name and name in other_name for _, other_name in matches)
-        ]
-        if len(maximal_matches) == 1:
-            code = maximal_matches[0][0]
-            return code, [f'业务包根目录全称:{entities[code].name}'], False
-        if len(maximal_matches) > 1:
-            evidence = [f'业务包根目录全称:{entities[code].name}' for code, _ in maximal_matches]
-            return None, evidence, True
-
-    name = material_directory_name(path, root, business_registry, business_id, business_code)
+    directory = unit_directory(path, root)
+    name = material_directory_name(path, root)
     codes = [code for code, entity in entities.items() if norm_text(name) == norm_text(entity.name)]
     if len(codes) == 1:
         return codes[0], [f'正式单位目录全称:{name}'], False
@@ -77,49 +62,6 @@ def directory_material_entity(path, root, entities, business_registry=None, busi
     # 不沿上级目录查找母公司代码，不借用文件名称或简称推定身份。
     evidence = [] if name == '未识别单位（见文件路径）' else [f'报送名称:{name}']
     return None, evidence, False
-
-
-def ancestor_material_entity(path, root, entities, business_registry=None, business_id=None):
-    """模板业务未识别时按最近的正式单位目录识别主体。
-
-    Args:
-        path: 当前材料的绝对路径。
-        root: 用户选择的输入根目录。
-        entities: 以单位代码为键的正式主体名册。
-        business_registry: 可选的模板业务配置。
-        business_id: 当前材料已识别的稳定业务标识。
-    """
-
-    root = Path(root).resolve()
-    directory = Path(path).resolve().parent
-    candidates = [directory, directory.parent]
-    for index, directory in enumerate(candidates):
-        if directory != root and root not in directory.parents:
-            break
-        matches = [
-            code
-            for code, entity in entities.items()
-            if norm_text(directory.name) == norm_text(entity.name)
-        ]
-        if len(matches) == 1:
-            code = matches[0]
-            return code, [f"正式单位目录全称:{entities[code].name}"], False
-        if len(matches) > 1:
-            return None, [f"正式单位目录全称:{directory.name}"], True
-        if re.fullmatch(ENTITY_NAME_PATTERN, directory.name) or directory.name.endswith('公司'):
-            # 遇到未登记子单位即停止，不能继续沿父级继承正式主体代码。
-            return None, [], False
-        if index == 0:
-            from risk_audit.submission_scope import _matches_configured_business_directory
-
-            business_like = (
-                '业务' in directory.name
-                or _matches_configured_business_directory(directory.name, business_registry, business_id)
-            )
-            if not business_like:
-                # 只有明确的业务目录可以跨一层查找主体，普通子目录不得继承父主体。
-                return None, [], False
-    return None, [], False
 
 
 def identify_material_entity(path, root, entities, aliases, texts, business_registry=None, business_id=None,

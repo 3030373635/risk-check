@@ -11,6 +11,7 @@ from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 from risk_audit.models import FieldValue, FileRecord, ParsedSheet, Record
+from risk_audit.pipeline_versions import CONFIRMED_RULE_VERSIONS
 from risk_audit.readers.ooxml import load_compatible_workbook, prepare_oversized_workbook
 from risk_audit.readers.xls import convert_xls
 from risk_audit.readers.header_semantics import HEADER_REQUIREMENTS, header_row_matches, header_spec, unit_names, header_owner_names
@@ -533,7 +534,7 @@ def parse_files(files: list[FileRecord], aliases: dict, work_dir: Path, *, inclu
                     file.preservation['oversized_worksheet_cleanup'] = cleanup
                     logger.warning('%s使用临时净化副本：%s，工作表=%s', phase, file.relative_path,
                                    [item['sheet'] for item in cleanup])
-            if getattr(file, '_rules_version', '') in {'1.8.0', '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7', '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14', '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23'}:
+            if getattr(file, '_rules_version', '') in CONFIRMED_RULE_VERSIONS:
                 from risk_audit.readers.confirmed_v180 import parse_workbook_v180
                 file.sheets = parse_workbook_v180(file, path, aliases, include_hidden=include_hidden, input_overrides=input_overrides)
                 if file.material_type == 'unclassified' and file.sheets:

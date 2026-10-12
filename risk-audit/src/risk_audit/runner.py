@@ -40,18 +40,13 @@ from risk_audit.progress import (
     emit_progress,
     raise_if_cancelled,
 )
+from risk_audit.pipeline_versions import (
+    CONFIRMED_RULE_VERSIONS,
+    PREPROCESSING_RULE_VERSIONS,
+    SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS,
+)
 
 
-CONFIRMED_RULE_VERSIONS = frozenset({
-    '1.8.0', '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6',
-    '1.9.7', '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14',
-    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23',
-})
-PREPROCESSING_RULE_VERSIONS = frozenset({
-    '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7',
-    '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14', '1.9.15',
-    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23',
-})
 ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
 
 
@@ -118,7 +113,7 @@ def preprocess_business_file(
             raise
         except Exception as error:
             raise BusinessStageError('岗位排序预处理', file, error) from error
-    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23'}:
+    if version in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS:
         from risk_audit.system_type_preprocessing import preprocess_system_types
 
         try:
@@ -319,15 +314,56 @@ def _write_audit_progress_details(path: Path, details: dict[str, Any]) -> None:
     append_compact_json_line(path, details)
 
 
-def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple[str, str, str]]:
-    """确定独立业务单元；scope 为主体范围，files 为主体文件，返回业务 ID、展示编号及变体。"""
-    keys = {(business.get('business_id') or business['business_code'], business['business_code'],
-             business.get('variant_id', 'default'))
-            for business in scope['businesses'] if business.get('required', True)}
-    # 上传文件即使被手动标记为不要求报送，也须读取并保留；说明材料单独原样输出。
-    keys.update((file.business_id or file.business_code or '', file.business_code or '', file.variant_id)
-                for file in files if file.material_type != 'explanation')
+def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple[str, str, str, str]]:
+    """确定按目录隔离的审核业务单元。
+
+    Args:
+        scope: 当前主体的应报业务范围。
+        files: 当前主体的扫描文件。
+    """
+
+    # 目录身份与标准规则身份分开保存，两个目录映射到同一规则时仍须独立审核。
+    file_keys = {
+        (
+            file.relative_path.parent.as_posix(),
+            file.business_id or file.business_code or '',
+            file.business_code or '',
+            file.variant_id,
+        )
+        for file in files
+        if file.material_type != 'explanation'
+    }
+    keys = set(file_keys)
+    submitted_identities = {(key[1], key[3]) for key in file_keys}
+    for business in scope['businesses']:
+        if not business.get('required', True):
+            continue
+        business_id = business.get('business_id') or business['business_code']
+        variant_id = business.get('variant_id', 'default')
+        if (business_id, variant_id) not in submitted_identities:
+            # 空目录标识表示应报但未上传，仍需运行一次完整性规则。
+            keys.add(('', business_id, business['business_code'], variant_id))
     return sorted(keys)
+
+
+def _business_display_name(files: list[FileRecord], fallback: str, input_root_name: str) -> str:
+    """返回审核业务的显示名。
+
+    Args:
+        files: 当前审核单元的业务文件。
+        fallback: 无业务文件时的备用名称。
+        input_root_name: 用户选择的输入根目录名。
+    """
+
+    names = {
+        file.relative_path.parent.name or input_root_name
+        for file in files
+        if file.relative_path.parent.name or input_root_name
+    }
+    if names:
+        # 同一规则身份意外对应多个目录时，保留所有原名，不退回文件业务编号猜测。
+        return '、'.join(sorted(names))
+    return fallback
 
 
 def _load_entity_source(
@@ -575,7 +611,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         logger.info('主体审核开始 [%d/%d]：%s（%s），%d份文件',
                     index, len(entity_keys), entity_name, entity_key, len(group_files))
         unit_keys = _business_keys(scopes[entity_key], group_files)
-        audit_unit_keys = unit_keys or [(ENTITY_COMPLETENESS_BUSINESS_ID, "*", "default")]
+        audit_unit_keys = unit_keys or [('', ENTITY_COMPLETENESS_BUSINESS_ID, "*", "default")]
         explanation_files = [file for file in group_files if file.material_type == 'explanation']
         group_findings: list[Finding] = []
         group_statuses: list[CheckStatus] = []
@@ -587,21 +623,31 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                          'entity_registry_status': identity['entity_registry_status'],
                          'entity_registry_message': identity['entity_registry_message'],
                          'business_results': group_business_results, 'total_businesses': len(unit_keys)}
-        for unit_index, (business_id, business_code, variant_id) in enumerate(audit_unit_keys, 1):
+        for unit_index, (business_directory, business_id, business_code, variant_id) in enumerate(audit_unit_keys, 1):
             raise_if_cancelled(cancel_check)
             unit_started = perf_counter()
             unit_report_dir = entity_dir / 'businesses' / f'{unit_index:04d}'
             # 主体和业务编号已足以隔离临时文件，无需在工作区重复报告目录层级。
             unit_work_dir = work_root / f'e{index:04d}-b{unit_index:04d}'
-            unit_label = (
-                '主体完整性'
-                if business_id == ENTITY_COMPLETENESS_BUSINESS_ID
-                else business_code or '未识别'
+            unit_files = [
+                file
+                for file in group_files
+                if file.material_type != 'explanation'
+                and (
+                    file.relative_path.parent.as_posix() == business_directory
+                    if business_directory
+                    else (file.business_id or file.business_code or '', file.variant_id)
+                    == (business_id, variant_id)
+                )
+            ]
+            business_name = '主体完整性' if business_id == ENTITY_COMPLETENESS_BUSINESS_ID else _business_display_name(
+                unit_files,
+                business_code or '未识别',
+                input_resolved.name,
             )
+            unit_label = business_name
             if variant_id != 'default':
                 unit_label += f'（{variant_id}）'
-            unit_files = [file for file in group_files if file.material_type != 'explanation'
-                          and (file.business_id or file.business_code or '', file.variant_id) == (business_id, variant_id)]
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='audit',
                 completed_units=completed_audit_units,
@@ -726,6 +772,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                     'entity_key': entity_key,
                     'business_id': business_id,
                     'business_code': business_code,
+                    'business_name': business_name,
+                    'business_directory': business_directory,
                     'variant_id': variant_id,
                     'stage': unit_failure_stage,
                     'files': failed_files,
@@ -758,7 +806,9 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             )
             unit_result = {'entity_key': entity_key, 'entity_code': entity_result['entity_code'],
                            'entity_name': entity_name, 'business_id': business_id,
-                           'business_code': business_code, 'variant_id': variant_id,
+                           'business_code': business_code, 'business_name': business_name,
+                           'business_directory': business_directory,
+                           'variant_id': variant_id,
                            'entity_registry_status': identity['entity_registry_status'],
                            'entity_registry_message': identity['entity_registry_message'],
                            'input_files': len(unit_files), 'findings': len(unit_findings), 'warnings': len(unit_warnings),
@@ -878,6 +928,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             output_state.ownership,
             input_resolved.name,
             business_failures=business_failures,
+            root_subject_name=input_resolved.parent.name,
         )
         # HTML 与 Excel 使用同一批审核结果独立生成，方便浏览器快速定位问题。
         write_audit_statistics_html(
@@ -886,6 +937,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             output_state.ownership,
             input_resolved.name,
             business_failures=business_failures,
+            root_subject_name=input_resolved.parent.name,
         )
     warnings.extend({'type': 'hidden_sheets_notice', 'file': a['file'], 'sheets': a['sheets'],
                      'message': '存在隐藏工作表，请按需查看处理提示；未默认纳入审核。' if not include_hidden else '本次明确选择纳入隐藏表，请查看实际处理结果。',

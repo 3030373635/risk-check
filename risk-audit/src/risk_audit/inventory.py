@@ -160,6 +160,8 @@ def scan_package(
                             business, variant, material, parse_errors=errors, business_id=business_id)
         if (material != "explanation" and business_registry
                 and business_registry.get("schema_version") == "2.0" and business_id):
-            record.preservation["business_name"] = identity.business_name
+            # 展示名始终保留报送业务目录，标准名仅用于追溯规则映射。
+            record.preservation["business_name"] = rel.parent.name or base.name
+            record.preservation["registry_business_name"] = identity.business_name
         out.append(record)
     return out

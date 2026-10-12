@@ -264,28 +264,24 @@ def identify_business(
     input_root_name: str = "",
     workbook_evidence: list[str] | None = None,
 ) -> BusinessIdentity:
-    """综合目录、文件名和工作簿证据识别唯一业务。
+    """仅根据矩阵所在目录识别唯一业务。
 
     Args:
         relative_path: 材料文件在输入根目录下的相对路径。
         registry: schema_version 为 2.0 的模板业务配置。
         input_root_name: 输入根目录名称，仅在材料直接位于根目录时用于业务识别。
-        workbook_evidence: 工作表名和表内标题等工作簿证据。
+        workbook_evidence: 调用方已读取的工作簿证据；不参与业务归属判断。
     """
 
     # 单业务包可被直接选为输入目录，此时相对路径没有父目录，必须使用输入根目录名。
     business_directory = relative_path.parent.name or input_root_name
-    evidence_values = [business_directory, relative_path.stem, *(workbook_evidence or [])]
     business_matches: list[tuple[int, str, dict[str, Any]]] = []
-    for evidence in evidence_values:
-        normalized_evidence = normalize_business_text(evidence)
-        if not normalized_evidence:
-            continue
-        for business_item in registry.get("businesses", []):
-            for alias in business_item.get("aliases", []):
-                normalized_alias = normalize_business_text(alias)
-                if normalized_alias and normalized_alias in normalized_evidence:
-                    business_matches.append((len(normalized_alias), alias, business_item))
+    normalized_directory = normalize_business_text(business_directory)
+    for business_item in registry.get("businesses", []):
+        for alias in business_item.get("aliases", []):
+            normalized_alias = normalize_business_text(alias)
+            if normalized_alias and normalized_alias in normalized_directory:
+                business_matches.append((len(normalized_alias), alias, business_item))
 
     if business_matches:
         matched_businesses = {item[2]["business_id"] for item in business_matches}
@@ -302,17 +298,9 @@ def identify_business(
             )
         _, matched_alias, business = max(business_matches, key=lambda item: item[0])
     else:
-        # 文字证据均未命中时，仅在目录或文件名编号唯一时允许回退。
-        code_values = []
-        for value in (business_directory, relative_path.stem):
-            code_match = _BUSINESS_CODE_PREFIX.match(value)
-            if code_match:
-                code_values.append(code_match.group(1).zfill(2))
-        if len(set(code_values)) > 1:
-            raise BusinessIdentityError(
-                f"业务编号映射冲突：{relative_path}；编号：{'、'.join(sorted(set(code_values)))}"
-            )
-        business_code = code_values[0] if code_values else ""
+        # 别名未命中时，仅允许使用业务目录自身的唯一编号回退。
+        code_match = _BUSINESS_CODE_PREFIX.match(business_directory)
+        business_code = code_match.group(1).zfill(2) if code_match else ""
         code_matches = [
             item
             for item in registry.get("businesses", [])
@@ -333,10 +321,8 @@ def identify_business(
         matched_alias = ""
 
     variants = business.get("variants", [])
-    # 业务由父目录确定；电压等模板变体仍可由整条路径补充判断。
-    # 根目录参与业务识别时也必须参与变体识别，避免丢失电压范围等关键信息。
-    identity_path = Path(input_root_name) / relative_path if not relative_path.parent.name else relative_path
-    path_text = normalize_business_text(" ".join([str(identity_path), *(workbook_evidence or [])]))
+    # 电压等模板变体也只能由业务目录确定，文件名和表内文字不得覆盖。
+    path_text = normalized_directory
     variant_matches: list[tuple[int, str, dict[str, Any]]] = []
     for variant in variants:
         if variant.get("variant_id") == "default":

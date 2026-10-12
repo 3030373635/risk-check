@@ -7,10 +7,9 @@ from risk_audit.business_identity import (
     BusinessIdentityError,
     identify_business as identify_business_v2,
     unmatched_business_id,
-    workbook_business_evidence,
     workbook_material_evidence,
 )
-from risk_audit.entities import ancestor_material_entity, identify_material_entity
+from risk_audit.entities import identify_material_entity
 from risk_audit.inventory import classify_material, identify_business, is_auxiliary, true_format
 from risk_audit.models import FileRecord
 from risk_audit.util import sha256_file
@@ -77,7 +76,6 @@ def scan_package_v180(
         relative = path.relative_to(base)
         text = ''
         read_error = ''
-        workbook_evidence = None
         matched_from_workbook = False
         if suffix in {'.doc', '.docx', '.pdf'}:
             try:
@@ -111,19 +109,11 @@ def scan_package_v180(
         if material == 'explanation':
             business, variant = None, 'default'
         elif business_registry and business_registry.get('schema_version') == '2.0':
-            evidence_error = ''
-            try:
-                if workbook_evidence is None:
-                    workbook_evidence = workbook_business_evidence(path, file_format)
-            except Exception as error:
-                workbook_evidence = []
-                evidence_error = str(error)
             try:
                 business_identity = identify_business_v2(
                     relative,
                     business_registry,
                     base.name,
-                    workbook_evidence=workbook_evidence,
                 )
                 business_id = business_identity.business_id
                 business = business_identity.business_code
@@ -144,8 +134,6 @@ def scan_package_v180(
                     'reason': business_error,
                     'business_id': business_id,
                 }
-            if evidence_error:
-                template_match['evidence_error'] = evidence_error
         else:
             # 历史发布包仅用于复核旧运行，当前发布包必须提供 v2 模板业务目录。
             business, variant = identify_business(relative)
@@ -156,15 +144,6 @@ def scan_package_v180(
         code, evidence, conflict = identify_material_entity(
             path, base, entities, aliases, identity, business_registry, business_id, business,
         )
-        if code is None and not conflict and material != 'explanation':
-            # 文件名或表内标题完成业务匹配时，直接父目录可能不再是可识别的业务目录。
-            code, evidence, conflict = ancestor_material_entity(
-                path,
-                base,
-                entities,
-                business_registry,
-                business_id,
-            )
         errors = []
         if file_format == 'unknown':
             errors.append('文件签名不是受支持的 Excel、Word 或 PDF 格式')
@@ -184,6 +163,8 @@ def scan_package_v180(
         if (material != 'explanation' and business_registry
                 and business_registry.get('schema_version') == '2.0'
                 and template_match['status'] == 'matched'):
-            record.preservation['business_name'] = business_identity.business_name
+            # 展示名始终保留报送业务目录，标准名仅用于追溯规则映射。
+            record.preservation['business_name'] = relative.parent.name or base.name
+            record.preservation['registry_business_name'] = business_identity.business_name
         records.append(record)
     return records

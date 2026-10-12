@@ -13,8 +13,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from risk_audit.audit_statistics_html import render_audit_statistics_html
 from risk_audit.models import FileRecord
-from risk_audit.submission_scope import BUSINESS_DIRECTORY_KEYWORDS
-from risk_audit.util import natural_key, norm_text
+from risk_audit.util import natural_key
 from risk_audit.writer import _output_path
 
 
@@ -28,50 +27,25 @@ def _safe_excel_text(value: str) -> str:
     return f"'{value}" if value.startswith(('=', '+', '-', '@', '\t', '\r')) else value
 
 
-def _business_directory_index(directories: tuple[str, ...], business_code: str | None) -> int | None:
-    """识别业务目录位置；directories 为文件上级目录，business_code 为已识别业务编码。"""
-    if not business_code:
-        return None
-    expected_code = business_code.zfill(2)
-    strong_candidates = []
-    weak_candidates = []
-    unit_markers = ('公司', '本部', '中心', '研究院', '设计院', '供电所', '分部', '供电局', '电厂', '电站', '服务站', '项目部')
-    for index, directory in enumerate(directories):
-        normalized = norm_text(directory)
-        has_business_name = any(keyword in normalized for keyword in BUSINESS_DIRECTORY_KEYWORDS)
-        number = re.match(r'^\D*(\d{1,2})(?:\D|$)', directory)
-        number_matches = bool(number and number.group(1).zfill(2) == expected_code)
-        if not number_matches:
-            continue
-        # 同一编号可同时出现在业务和单位目录中，有明确业务名的目录优先级最高。
-        if has_business_name:
-            strong_candidates.append(index)
-        elif not any(marker in directory for marker in unit_markers):
-            weak_candidates.append(index)
-    if strong_candidates:
-        return strong_candidates[-1]
-    return weak_candidates[-1] if weak_candidates else None
+def _unit_and_business(
+    file: FileRecord,
+    package_name: str,
+    root_subject_name: str,
+) -> tuple[str, str] | None:
+    """按主体、业务、文件层级计算展示位置。
 
+    Args:
+        file: 当前业务文件。
+        package_name: 审核包根目录名。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+    """
 
-def _unit_and_business(file: FileRecord, package_name: str) -> tuple[str, str] | None:
-    """计算单位路径和业务目录；file 为业务文件，package_name 为审核包根目录名。"""
     directories = file.relative_path.parts[:-1]
-    configured_name = file.preservation.get('business_name', '')
-    configured_label = (
-        f'{file.business_code} {configured_name}'
-        if file.business_code and configured_name else ''
-    )
     if not directories:
-        # 重号业务必须使用配置名称展示，不能再次归并为同一个“业务01”。
-        business_name = configured_label or (f'业务{file.business_code}' if file.business_code else '根目录')
-        return package_name, business_name
-    business_index = _business_directory_index(directories, file.business_code)
-    if business_index is None:
-        # 无法通过编号或业务名识别时，使用约定的“直接父目录为业务”口径。
-        business_index = len(directories) - 1
-    business_name = configured_label or directories[business_index]
-    # 真实包同时存在“单位/业务”与“业务/单位”，单位路径须排除已识别的业务目录。
-    unit_directories = tuple(directory for index, directory in enumerate(directories) if index != business_index)
+        return root_subject_name or '未识别主题', package_name
+    # 文件直接上级是业务目录，业务目录上级才是主体路径。
+    business_name = directories[-1]
+    unit_directories = directories[:-1]
     unit_name = '/'.join(part for part in (package_name, *unit_directories) if part)
     return unit_name, business_name
 
@@ -84,9 +58,8 @@ def _business_group_key(file: FileRecord, business_name: str) -> tuple[str, str]
         business_name: 当前文件解析出的业务显示名称。
     """
 
-    identity = file.business_id or (
-        f'code:{file.business_code}' if file.business_code else f'name:{business_name}'
-    )
+    # 有业务目录时以目录为唯一分组身份，文件上的识别结果不得拆分它。
+    identity = f'directory:{file.relative_path.parent.as_posix()}'
     return identity, file.variant_id or 'default'
 
 
@@ -94,6 +67,7 @@ def _register_grouped_business(
     grouped: dict,
     file: FileRecord | None,
     package_name: str,
+    root_subject_name: str,
 ) -> tuple[str, dict] | None:
     """登记文件所属业务并返回主体及业务统计容器。
 
@@ -101,9 +75,10 @@ def _register_grouped_business(
         grouped: 按主体和稳定业务身份归集的统计容器。
         file: 当前业务文件；无法定位文件时为 None。
         package_name: 审核包名称。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
 
-    location = _unit_and_business(file, package_name) if file is not None else None
+    location = _unit_and_business(file, package_name, root_subject_name) if file is not None else None
     if location is None:
         return None
     unit_name, business_name = location
@@ -112,9 +87,6 @@ def _register_grouped_business(
         business_key,
         {'name': business_name, 'items': {}},
     )
-    if file.preservation.get('business_name'):
-        # 同组任一文件具有标准业务名时，统一覆盖目录回退名称。
-        business['name'] = business_name
     return unit_name, business
 
 
@@ -182,6 +154,7 @@ def _collect_statistics(
     ownership: dict[str, list[dict]],
     package_name: str,
     business_failures: list[dict] | None = None,
+    root_subject_name: str = '',
 ) -> dict:
     """归集审核统计。
 
@@ -190,6 +163,7 @@ def _collect_statistics(
         ownership: 实际写回审核意见的单元格归属。
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
     logger = logging.getLogger(__name__)
     grouped = defaultdict(dict)
@@ -199,13 +173,13 @@ def _collect_statistics(
         for file in files if file.material_type != 'explanation'
     }
     for file in files:
-        if file.material_type == 'explanation' or not file.business_code:
+        if file.material_type == 'explanation' or not (file.business_id or file.business_code):
             continue
-        # 先登记已识别业务，即使没有程序意见也须在统计表中明确展示。
-        _register_grouped_business(grouped, file, package_name)
+        # 先登记目录业务；未匹配标准规则的目录即使没有程序意见也须明确展示。
+        _register_grouped_business(grouped, file, package_name, root_subject_name)
     for output_path, states in ownership.items():
         file = file_by_output.get(output_path)
-        registration = _register_grouped_business(grouped, file, package_name)
+        registration = _register_grouped_business(grouped, file, package_name, root_subject_name)
         if registration is None:
             logger.warning('审核统计表未能定位意见所属业务目录：文件=%s', output_path)
             continue
@@ -234,7 +208,7 @@ def _collect_statistics(
             (file_by_relative_path[path] for path in failure_files if path in file_by_relative_path),
             None,
         )
-        registration = _register_grouped_business(grouped, failed_file, package_name)
+        registration = _register_grouped_business(grouped, failed_file, package_name, root_subject_name)
         if registration is None:
             logger.warning('审核统计表未能定位跳过业务：%s', failure)
             continue
@@ -287,6 +261,7 @@ def write_audit_statistics(
     ownership: dict[str, list[dict]],
     package_name: str,
     business_failures: list[dict] | None = None,
+    root_subject_name: str = '',
 ) -> None:
     """写入审核统计表。
 
@@ -296,8 +271,15 @@ def write_audit_statistics(
         ownership: 实际写回审核意见的单元格归属。
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
-    grouped = _collect_statistics(files, ownership, package_name, business_failures)
+    grouped = _collect_statistics(
+        files,
+        ownership,
+        package_name,
+        business_failures,
+        root_subject_name,
+    )
     source_data = _statistics_source_data(grouped)
     book = Workbook()
     sheet = book.active
@@ -355,6 +337,7 @@ def write_audit_statistics_html(
     ownership: dict[str, list[dict]],
     package_name: str,
     business_failures: list[dict] | None = None,
+    root_subject_name: str = '',
 ) -> None:
     """写入审核统计 HTML。
 
@@ -364,8 +347,15 @@ def write_audit_statistics_html(
         ownership: 实际写回审核意见的单元格归属。
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
-    grouped = _collect_statistics(files, ownership, package_name, business_failures)
+    grouped = _collect_statistics(
+        files,
+        ownership,
+        package_name,
+        business_failures,
+        root_subject_name,
+    )
     document = render_audit_statistics_html(_statistics_source_data(grouped))
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(

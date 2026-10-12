@@ -4,7 +4,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from risk_audit.models import Entity, FileRecord
-from risk_audit.runner import _business_keys
+from risk_audit.runner import _business_display_name, _business_keys
 from risk_audit.submission_scope import resolve_submission_scopes
 from risk_audit.util import read_json
 
@@ -43,9 +43,54 @@ def test_duplicate_business_codes_create_two_scope_entries_and_execution_units(t
         ("equity_management", "01", "default"),
     }
     assert set(_business_keys(scopes["A001"], files)) == {
-        ("sales_electricity", "01", "default"),
-        ("equity_management", "01", "default"),
+        ("测试主体有限公司/营销售电", "sales_electricity", "01", "default"),
+        ("测试主体有限公司/股权产权管理", "equity_management", "01", "default"),
     }
+
+
+def test_same_rule_identity_in_two_directories_creates_two_execution_units(tmp_path):
+    """同一标准规则身份出现在两个业务目录时，必须建立两个独立审核单元。"""
+    files = [
+        _file(tmp_path, "financial_management", "11.财务管理矩阵及“三清单”"),
+        _file(tmp_path, "financial_management", "财务管理补充报送"),
+    ]
+    scope = {
+        "businesses": [{
+            "business_id": "financial_management",
+            "business_code": "01",
+            "variant_id": "default",
+            "required": True,
+        }],
+    }
+
+    assert len(_business_keys(scope, files)) == 2
+
+
+def test_business_display_name_uses_business_directory(tmp_path):
+    """审核进度和业务结果必须显示目录原名，不得显示文件业务编号。"""
+    file = _file(tmp_path, "financial_management", "11.财务管理矩阵及“三清单”")
+
+    assert _business_display_name([file], "02", tmp_path.name) == "11.财务管理矩阵及“三清单”"
+
+
+def test_business_display_name_uses_selected_business_root(tmp_path):
+    """直接选择业务目录时，审核结果必须显示输入根目录名而非标准业务编号。"""
+    relative = Path('02风控矩阵-文件名不得参与显示.xlsx')
+    file = FileRecord(
+        tmp_path / relative,
+        relative,
+        'hash',
+        'xlsx',
+        'A001',
+        [],
+        False,
+        '02',
+        'default',
+        'matrix',
+        business_id='financial_management',
+    )
+
+    assert _business_display_name([file], '02', '11.财务管理矩阵及“三清单”') == '11.财务管理矩阵及“三清单”'
 
 
 def test_second_batch_business_directory_is_not_mistaken_for_entity_directory(tmp_path):
@@ -141,6 +186,10 @@ def test_full_audit_uses_the_matching_01_template_for_each_business(tmp_path):
     assert {(item["business_id"], item["business_code"]) for item in result["business_results"]} == {
         ("sales_electricity", "01"),
         ("equity_management", "01"),
+    }
+    assert {item["business_name"] for item in result["business_results"]} == {
+        "01 营销售电",
+        "01 股权（产权）管理",
     }
     reference_values = {}
     for source in sources:
