@@ -268,14 +268,11 @@ def _parse_region(resources_root: Path, raw_profile: object, position: int) -> R
         region_code,
         region_name,
     )
-    for path, label, directory in (
-        (entity_file, "会计主体清单", False),
-        (baseline_root, "模板基准", True),
-        (config_file, "审核配置", False),
-    ):
-        reason = _inspect_region_resource(path, label, directory=directory)
-        if reason:
-            reasons.append(reason)
+    # 主体清单决定审核范围和材料归属，缺失时不能创建任务。
+    entity_reason = _inspect_region_resource(entity_file, "会计主体清单")
+    if entity_reason:
+        reasons.append(entity_reason)
+    # 模板和运行配置均支持降级：无模板时执行其他规则，无配置时使用默认规则选择。
     return RegionProfile(
         region_code=region_code,
         region_name=region_name,

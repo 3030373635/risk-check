@@ -184,6 +184,14 @@ class ApplicationServices:
                 f"审核地区资源未就绪：{profile.region_name}",
                 {"unavailable_reasons": list(profile.unavailable_reasons)},
             )
+        # 地区目录在启动时缓存；入库前复核必需名册，防止运行期文件丢失后创建无法执行的任务。
+        if not profile.entity_file.is_file():
+            raise ApiProblem(
+                422,
+                "REGION_NOT_READY",
+                f"审核地区资源未就绪：{profile.region_name}",
+                {"unavailable_reasons": [f"会计主体清单文件缺失：{profile.entity_file}"]},
+            )
         return profile
 
     def _verify_pinned_rulepack(self, request: TaskRequest) -> None:
@@ -297,7 +305,8 @@ class ApplicationServices:
                 rulepack=str(region.rulepack),
                 entity_file=str(region.entity_file),
                 baseline_root=str(region.baseline_root),
-                config_file=str(region.config_file),
+                # 地区未配置禁用规则时传空，审核引擎使用全部规则的默认配置。
+                config_file=(str(region.config_file) if region.config_file.is_file() else None),
                 soffice_path=str(self.paths.soffice.resolve()),
                 created_at=timestamp,
             )

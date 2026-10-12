@@ -76,13 +76,36 @@ def resources_root(tmp_path: Path) -> Path:
     return root
 
 
-def test_load_region_catalog_keeps_missing_region_isolated(resources_root: Path) -> None:
-    """一个地区缺资源时只禁用该地区；resources_root 为地区资源根。"""
+def test_load_region_catalog_rejects_missing_entity_file(resources_root: Path) -> None:
+    """一个地区缺主体清单时只禁用该地区；resources_root 为地区资源根。"""
     catalog = load_region_catalog(resources_root)
 
     assert catalog.require("hunan").available is True
     assert catalog.require("chongqing").available is False
-    assert catalog.require("chongqing").unavailable_reasons
+    assert catalog.require("chongqing").unavailable_reasons == (
+        f"会计主体清单文件缺失：{resources_root / 'entities/chongqing/entities.xlsx'}",
+    )
+
+
+def test_load_region_catalog_allows_missing_templates_and_config(
+    resources_root: Path,
+) -> None:
+    """模板和审核配置缺失时仍允许地区审核。
+
+    Args:
+        resources_root: 已包含地区规则包的测试资源根目录。
+    """
+
+    entity_file = resources_root / "entities/chongqing/entities.xlsx"
+    entity_file.parent.mkdir(parents=True, exist_ok=True)
+    entity_file.write_bytes(b"xlsx")
+
+    profile = load_region_catalog(resources_root).require("chongqing")
+
+    assert profile.available is True
+    assert profile.unavailable_reasons == ()
+    assert not profile.baseline_root.exists()
+    assert not profile.config_file.exists()
 
 
 def test_load_region_catalog_exposes_only_public_fields(resources_root: Path) -> None:
