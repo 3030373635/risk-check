@@ -17,8 +17,8 @@
       "entity_file": "entities/chongqing/会计主体清单.xlsx",
       "region_code": "chongqing",
       "region_name": "重庆",
-      "rulepack_content_hash": "19d74215862ed53afbac5bbae9955dce8bb189ed0b37f939e18bdac53af04dde",
-      "rulepack_version": "1.9.22"
+      "rulepack_content_hash": "008111e8c3579d549164fb5e3669941ffab5774fbc5f5c7b7c7f582e590f0ee8",
+      "rulepack_version": "1.9.23"
     }
   ],
   "schema_version": "1.0"

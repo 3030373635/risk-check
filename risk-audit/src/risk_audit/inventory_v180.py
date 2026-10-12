@@ -8,6 +8,7 @@ from risk_audit.business_identity import (
     identify_business as identify_business_v2,
     unmatched_business_id,
     workbook_business_evidence,
+    workbook_material_evidence,
 )
 from risk_audit.entities import ancestor_material_entity, identify_material_entity
 from risk_audit.inventory import classify_material, identify_business, is_auxiliary, true_format
@@ -43,8 +44,24 @@ def explanation_text(path):
     return ''
 
 
-def scan_package_v180(root, entities, aliases, business_registry=None):
-    """扫描确认稿材料；root 为输入目录，entities/aliases 为主体配置，business_registry 为业务目录。"""
+def scan_package_v180(
+    root,
+    entities,
+    aliases,
+    business_registry=None,
+    naming_keywords=None,
+    use_workbook_evidence=False,
+):
+    """扫描确认稿材料。
+
+    Args:
+        root: 待扫描的输入目录。
+        entities: 会计主体配置。
+        aliases: 会计主体别名配置。
+        business_registry: 模板业务目录。
+        naming_keywords: 当前地区规则包的材料名称关键字。
+        use_workbook_evidence: 文件名未命中时，是否使用工作簿标题匹配。
+    """
     base = Path(root).resolve()
     if not base.is_dir():
         raise ValueError(f'待审核材料目录不存在：{base}')
@@ -60,6 +77,8 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
         relative = path.relative_to(base)
         text = ''
         read_error = ''
+        workbook_evidence = None
+        matched_from_workbook = False
         if suffix in {'.doc', '.docx', '.pdf'}:
             try:
                 text = explanation_text(path)
@@ -69,12 +88,23 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
                 continue
             material = 'explanation'
         else:
-            material = classify_material(path)
-            if not material:
-                continue
+            material = classify_material(path, naming_keywords=naming_keywords)
         with path.open('rb') as stream:
             signature = stream.read(8)
         file_format = 'pdf' if signature.startswith(b'%PDF-') and suffix == '.pdf' else true_format(path)
+        if not material and use_workbook_evidence and file_format in {'xlsx', 'xls'}:
+            try:
+                material_evidence = workbook_material_evidence(path, file_format)
+            except Exception:
+                material_evidence = []
+            material = classify_material(
+                path,
+                naming_keywords=naming_keywords,
+                workbook_evidence=material_evidence,
+            )
+            matched_from_workbook = material is not None
+        if not material:
+            continue
         business_id = None
         business_error = ''
         template_match = {'status': 'not_applicable', 'reason': ''}
@@ -83,7 +113,8 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
         elif business_registry and business_registry.get('schema_version') == '2.0':
             evidence_error = ''
             try:
-                workbook_evidence = workbook_business_evidence(path, file_format)
+                if workbook_evidence is None:
+                    workbook_evidence = workbook_business_evidence(path, file_format)
             except Exception as error:
                 workbook_evidence = []
                 evidence_error = str(error)
@@ -143,6 +174,12 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
             errors.append('主体证据冲突' if conflict else '无法确定会计主体')
         record = FileRecord(path, relative, sha256_file(path), file_format, code, evidence, conflict,
                             business, variant, material, parse_errors=errors, business_id=business_id)
+        if matched_from_workbook:
+            # 命名检查复用扫描阶段的标题证据，避免对已确认类型的重庆材料重复报错。
+            record.preservation['material_match'] = {
+                'source': 'workbook',
+                'material_type': material,
+            }
         record.preservation['template_match'] = template_match
         if (material != 'explanation' and business_registry
                 and business_registry.get('schema_version') == '2.0'

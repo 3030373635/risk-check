@@ -83,6 +83,66 @@ def workbook_business_evidence(path: Path, file_format: str) -> list[str]:
     return list(dict.fromkeys(evidence))
 
 
+def _is_table_header_row(texts: list[str]) -> bool:
+    """判断一行是否已进入正文字段表头。
+
+    Args:
+        texts: 当前行中的非空单元格文本。
+    """
+
+    # 标题可能是“不相容岗位清单”；只有多列表头才截止，避免丢掉单元格标题。
+    return len(texts) >= 2 and any(
+        marker in normalize_business_text(text)
+        for marker in _TABLE_HEADER_MARKERS
+        for text in texts
+    )
+
+
+def workbook_material_evidence(path: Path, file_format: str) -> list[str]:
+    """读取可用于材料类型判断的工作表名和正文前标题。
+
+    Args:
+        path: 待检查的 Excel 材料路径。
+        file_format: 根据文件签名识别的 xlsx 或 xls 格式。
+    """
+
+    evidence: list[str] = []
+    if file_format == "xlsx":
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            for worksheet in workbook.worksheets:
+                evidence.append(worksheet.title)
+                for row in worksheet.iter_rows(min_row=1, max_row=12, min_col=1, max_col=12, values_only=True):
+                    texts = [str(value) for value in row if value not in (None, "")]
+                    # 正文字段名不能作为整个工作簿的材料类型证据。
+                    if _is_table_header_row(texts):
+                        break
+                    evidence.extend(texts)
+        finally:
+            workbook.close()
+    elif file_format == "xls":
+        import xlrd
+
+        workbook = xlrd.open_workbook(path, on_demand=True)
+        try:
+            for worksheet in workbook.sheets():
+                evidence.append(worksheet.name)
+                for row in range(min(worksheet.nrows, 12)):
+                    texts = []
+                    for column in range(min(worksheet.ncols, 12)):
+                        value = worksheet.cell_value(row, column)
+                        if value not in (None, ""):
+                            texts.append(str(value))
+                    if _is_table_header_row(texts):
+                        break
+                    evidence.extend(texts)
+        finally:
+            workbook.release_resources()
+    return list(dict.fromkeys(evidence))
+
+
 def unmatched_business_id(relative_path: Path) -> str:
     """为未匹配材料生成稳定的业务分组标识。
 

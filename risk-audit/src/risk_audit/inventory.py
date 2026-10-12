@@ -37,17 +37,47 @@ def true_format(path: Path) -> str:
     return "unknown"
 
 
-def classify_material(path: Path) -> str | None:
+def classify_material(
+    path: Path,
+    naming_keywords: dict[str, list[str]] | None = None,
+    workbook_evidence: list[str] | None = None,
+) -> str | None:
     """根据文件名判断材料类型。
 
     Args:
         path: 待判断的材料文件路径。
+        naming_keywords: 当前地区规则包的材料名称关键字。
+        workbook_evidence: 工作表名和标题区文字，仅用于文件名未命中时的回退匹配。
     """
 
     name = path.name
     auxiliary = ("适用性匹配", "意见建议", "成果清单", "应用清单", "统计表")
     if any(x in name for x in auxiliary): return None
     if path.suffix.lower() in {".doc", ".docx"}: return "explanation" if "说明" in name else None
+    if naming_keywords:
+        # 三清单优先级高于矩阵，兼容“矩阵及三清单”类合并名称。
+        if any(
+            keyword in name
+            for keyword in naming_keywords.get("three_lists", []) if keyword
+        ):
+            return "three_lists"
+        if any(
+            keyword in name
+            for keyword in naming_keywords.get("matrix", []) if keyword
+        ):
+            return "matrix"
+        for evidence in workbook_evidence or []:
+            # 扫描器已排除正文字段行，此处与文件名共用地区模糊关键词。
+            if any(
+                keyword in evidence
+                for keyword in naming_keywords.get("three_lists", []) if keyword
+            ):
+                return "three_lists"
+            if any(
+                keyword in evidence
+                for keyword in naming_keywords.get("matrix", []) if keyword
+            ):
+                return "matrix"
     # 同时包含两类关键字时沿用三清单优先级，工作表解析仍会识别矩阵表。
     if "清单" in name: return "three_lists"
     if "矩阵" in name: return "matrix"

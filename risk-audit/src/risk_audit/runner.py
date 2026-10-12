@@ -45,14 +45,34 @@ from risk_audit.progress import (
 CONFIRMED_RULE_VERSIONS = frozenset({
     '1.8.0', '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6',
     '1.9.7', '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14',
-    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22',
+    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23',
 })
 PREPROCESSING_RULE_VERSIONS = frozenset({
     '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7',
     '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14', '1.9.15',
-    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22',
+    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23',
 })
 ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
+
+
+def material_naming_keywords(pack: dict[str, Any]) -> dict[str, list[str]] | None:
+    """返回重庆规则包中用于扫描的材料命名关键字。
+
+    Args:
+        pack: 已加载并校验的地区规则包。
+    """
+
+    # 湖南历史扫描只认“矩阵/清单”，其命名检查关键字不得反向扩大入口范围。
+    if pack.get("manifest", {}).get("region_code") != "chongqing":
+        return None
+    for rule in pack.get("rules", []):
+        for check in rule.get("checks", []):
+            params = check.get("params", {})
+            if check.get("operator") == "required_documents" and params.get("naming_mode"):
+                keywords = params.get("naming_keywords")
+                if isinstance(keywords, dict):
+                    return keywords
+    return None
 
 
 class BusinessStageError(RuntimeError):
@@ -98,7 +118,7 @@ def preprocess_business_file(
             raise
         except Exception as error:
             raise BusinessStageError('岗位排序预处理', file, error) from error
-    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22'}:
+    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22', '1.9.23'}:
         from risk_audit.system_type_preprocessing import preprocess_system_types
 
         try:
@@ -341,7 +361,14 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     emit_progress(progress_callback, AuditProgressEvent(stage='scan', message='正在扫描报送材料'))
     if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS:
         from risk_audit.inventory_v180 import scan_package_v180
-        files = scan_package_v180(input_resolved, entities, pack['entity_aliases'], pack['baseline_registry'])
+        files = scan_package_v180(
+            input_resolved,
+            entities,
+            pack['entity_aliases'],
+            pack['baseline_registry'],
+            naming_keywords=material_naming_keywords(pack),
+            use_workbook_evidence=pack['manifest'].get('region_code') == 'chongqing',
+        )
     else:
         files = scan_package(input_resolved, entities, pack["entity_aliases"], pack['baseline_registry'])
     logger.debug('扫描完成：文件=%d', len(files))

@@ -13,6 +13,7 @@ from risk_audit.business_identity import (
 from risk_audit.inventory import classify_material
 from risk_audit.inventory_v180 import scan_package_v180
 from risk_audit.models import Entity
+from risk_audit.runner import material_naming_keywords
 from risk_audit.util import read_json, sha256_file
 
 
@@ -400,6 +401,123 @@ def test_multiple_non_default_variants_are_rejected_even_when_alias_lengths_diff
 def test_classify_material_uses_filename_keywords(filename: str, expected: str | None):
     """表格材料类型必须只由文件名中的清单或矩阵关键字决定。"""
     assert classify_material(Path(filename)) == expected
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "系统规则.xlsx",
+        "岗位内控-交易与购电.xlsx",
+        "不相容-北碚公司.xlsx",
+    ],
+)
+def test_classify_material_uses_configured_chongqing_list_keywords(filename: str):
+    """重庆独立清单省略“清单”后缀时，应按地区配置识别为三清单。"""
+    naming_keywords = {
+        "matrix": ["风控矩阵", "矩阵", "取证"],
+        "three_lists": ["三清单", "系统规则", "岗位内控", "不相容"],
+    }
+
+    assert classify_material(Path(filename), naming_keywords=naming_keywords) == "three_lists"
+
+
+def test_default_material_keywords_do_not_change_hunan_matching() -> None:
+    """未传入地区配置时不得扩大原有湖南材料识别范围。"""
+    assert classify_material(Path("系统规则.xlsx")) is None
+
+
+def test_hunan_rulepack_does_not_enable_material_keyword_expansion() -> None:
+    """湖南 1.9.21 即使有命名关键字，也不得用于扩大材料扫描范围。"""
+    project_root = Path(__file__).resolve().parents[1]
+    hunan_pack = read_json(project_root / "rulepacks/releases/1.9.21/manifest.json")
+    pack = {
+        "manifest": hunan_pack,
+        "rules": [{
+            "checks": [{
+                "operator": "required_documents",
+                "params": {
+                    "naming_mode": True,
+                    "naming_keywords": {"matrix": ["矩阵", "取证"], "three_lists": ["三清单"]},
+                },
+            }],
+        }],
+    }
+
+    assert material_naming_keywords(pack) is None
+
+
+def test_classify_material_uses_chongqing_workbook_title_fallback() -> None:
+    """重庆文件名无材料关键字时，应使用工作簿标题匹配矩阵。"""
+    naming_keywords = {
+        "matrix": ["风控矩阵", "矩阵", "取证"],
+        "three_lists": ["三清单", "系统规则", "岗位内控", "不相容"],
+    }
+
+    assert classify_material(
+        Path("北碚-违章罚款收入管理.xlsx"),
+        naming_keywords=naming_keywords,
+        workbook_evidence=[
+            "违章罚款收入管理",
+            "风控矩阵-财务管理-违章罚款收入管理",
+            "7.会计不相容岗位管控",
+        ],
+    ) == "matrix"
+
+
+@pytest.mark.parametrize("worksheet_title", ["系统规则", "岗位内控-交易与购电", "不相容-交易与购电"])
+def test_chongqing_scanner_uses_fuzzy_workbook_titles(tmp_path: Path, worksheet_title: str) -> None:
+    """文件名未命中时，重庆应使用工作表短标题识别独立清单。
+
+    Args:
+        tmp_path: pytest 隔离目录。
+        worksheet_title: 重庆独立清单的模糊工作表名。
+    """
+
+    naming_keywords = {
+        "matrix": ["风控矩阵", "矩阵", "取证"],
+        "three_lists": ["三清单", "系统规则", "岗位内控", "不相容"],
+    }
+    workbook = Workbook()
+    workbook.active.title = worksheet_title
+    workbook.save(tmp_path / "附件.xlsx")
+
+    files = scan_package_v180(
+        tmp_path,
+        {},
+        {},
+        naming_keywords=naming_keywords,
+        use_workbook_evidence=True,
+    )
+
+    assert len(files) == 1
+    assert files[0].material_type == "three_lists"
+
+
+def test_matrix_incompatible_position_header_is_not_classified_as_three_lists(tmp_path: Path) -> None:
+    """矩阵表头中的“不相容岗位”不得被当成不相容岗位清单标题。
+
+    Args:
+        tmp_path: pytest 隔离目录。
+    """
+
+    naming_keywords = {
+        "matrix": ["风控矩阵", "矩阵", "取证"],
+        "three_lists": ["三清单", "系统规则", "岗位内控", "不相容"],
+    }
+    workbook = Workbook()
+    workbook.active.title = "交易与购电"
+    workbook.active.append(["控制措施编号", "控制措施", "不相容岗位"])
+    workbook.save(tmp_path / "附件.xlsx")
+
+    files = scan_package_v180(
+        tmp_path,
+        {},
+        {},
+        naming_keywords=naming_keywords,
+        use_workbook_evidence=True,
+    )
+
+    assert files == []
 
 
 def test_validate_business_registry_rejects_unstable_or_ambiguous_configuration(business_registry: dict):

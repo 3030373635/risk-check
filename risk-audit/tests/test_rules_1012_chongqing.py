@@ -26,6 +26,7 @@ from tools.publish_rules_1012_chongqing import (
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源" / SOURCE_NAME
 RELEASE = ROOT / "rulepacks/releases/1.9.22"
+SPLIT_LISTS_RELEASE = ROOT / "rulepacks/releases/1.9.23"
 
 
 def make_record(record_type: str, row: int, business_id: str = "financial_management", **values: str) -> Record:
@@ -495,13 +496,68 @@ def test_release_is_chongqing_specific_and_excludes_hunan_rule_17() -> None:
     assert "financial_management.key_measure_applicability" not in {rule["rule_id"] for rule in rules}
 
 
-def test_release_contains_no_hunan_specific_resources() -> None:
-    """重庆发布包不得包含湖南主体、地名或冻结样本引用。"""
+def test_release_accepts_combined_and_split_three_list_names() -> None:
+    """重庆命名规则应同时接受合并三清单和三个独立清单的模糊名称。"""
+    rules = [json.loads(path.read_text(encoding="utf-8")) for path in (SPLIT_LISTS_RELEASE / "rules").glob("*.json")]
+    completeness = next(rule for rule in rules if rule["rule_id"] == "documents.completeness")
+    naming_check = next(check for check in completeness["checks"] if check["check_id"] == "file_naming")
+
+    assert naming_check["params"]["naming_keywords"] == {
+        "matrix": ["风控矩阵", "矩阵", "取证"],
+        "three_lists": ["三清单", "系统规则", "岗位内控", "不相容"],
+    }
+
+
+def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
+    """工作簿标题已确认材料类型时，重庆不应再报文件名缺少关键字。"""
+    rules = [json.loads(path.read_text(encoding="utf-8")) for path in (SPLIT_LISTS_RELEASE / "rules").glob("*.json")]
+    completeness = next(rule for rule in rules if rule["rule_id"] == "documents.completeness")
+    naming_check = next(check for check in completeness["checks"] if check["check_id"] == "file_naming")
+    file = FileRecord(
+        Path("北碚-违章罚款收入管理.xlsx"),
+        Path("北碚-违章罚款收入管理.xlsx"),
+        "digest",
+        "xlsx",
+        "CQ001",
+        [],
+        False,
+        "17",
+        "default",
+        "matrix",
+        business_id="violation_fine_income_management",
+    )
+    file.preservation["material_match"] = {
+        "source": "workbook",
+        "material_type": "matrix",
+    }
+    context = CheckContext(
+        [],
+        [file],
+        [],
+        {"CQ001": Entity("CQ001", "测试单位")},
+        {},
+        {"entity_aliases": {}},
+        ["CQ001"],
+        [{"business_id": "violation_fine_income_management", "business_code": "17", "variant_id": "default", "required": True}],
+    )
+    capability = build_registry().get("required_documents", 4)
+
+    assert capability is not None
+    assert capability.runner(context, naming_check["params"]) == []
+
+
+@pytest.mark.parametrize("release", [RELEASE, SPLIT_LISTS_RELEASE])
+def test_release_contains_no_hunan_specific_resources(release: Path) -> None:
+    """重庆发布包不得包含湖南主体、地名或冻结样本引用。
+
+    Args:
+        release: 待检查的重庆历史或当前发布包。
+    """
 
     markers = ("国网湖南", "湖南省电力", "湘西", "星通公司")
     leaks = {
-        str(path.relative_to(RELEASE)): marker
-        for path in RELEASE.rglob("*.json")
+        str(path.relative_to(release)): marker
+        for path in release.rglob("*.json")
         for marker in markers
         if marker in path.read_text(encoding="utf-8")
     }
@@ -514,7 +570,7 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.22")):
+    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.23")):
         manifest = json.loads(
             (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
         )
@@ -529,6 +585,24 @@ def test_verify_only_is_deterministic_and_does_not_activate_release() -> None:
     before = active_path.read_bytes()
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools/publish_rules_1012_chongqing.py"), "--verify-only"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
+    assert active_path.read_bytes() == before
+
+
+def test_split_lists_release_is_deterministic_and_does_not_activate_release() -> None:
+    """分拆三清单规则包必须可重建，复验时不得改动全局激活指针。"""
+
+    active_path = ROOT / "rulepacks/active.json"
+    before = active_path.read_bytes()
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools/publish_chongqing_split_lists_1923.py"), "--verify-only"],
         cwd=ROOT,
         text=True,
         capture_output=True,

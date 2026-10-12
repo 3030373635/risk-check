@@ -233,8 +233,14 @@ def required_documents(ctx: CheckContext, p: dict[str, Any], *, include_standard
                 from risk_audit.readers.header_semantics import unit_names
                 names.extend(unit_names(f))
             unit_named = any(norm_text(x) in norm_text(f.source.name) for x in names if x)
+            material_match = f.preservation.get("material_match", {})
+            workbook_named = (
+                material_match.get("source") == "workbook"
+                and material_match.get("material_type") == f.material_type
+            )
             problems = []
-            if not any(keyword in f.source.name for keyword in keywords): problems.append(f"缺少“{'/ '.join(keywords)}”材料类别关键字")
+            if not workbook_named and not any(keyword in f.source.name for keyword in keywords):
+                problems.append(f"缺少“{'/ '.join(keywords)}”材料类别关键字")
             # 新口径允许从目录或表内证据唯一归属，因此可单独关闭主体命名提示。
             if p.get("require_entity_name", True) and not unit_named:
                 problems.append("缺少会计主体名称或确认简称")
