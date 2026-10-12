@@ -76,6 +76,48 @@ def _unit_and_business(file: FileRecord, package_name: str) -> tuple[str, str] |
     return unit_name, business_name
 
 
+def _business_group_key(file: FileRecord, business_name: str) -> tuple[str, str]:
+    """生成稳定业务分组键。
+
+    Args:
+        file: 当前业务文件。
+        business_name: 当前文件解析出的业务显示名称。
+    """
+
+    identity = file.business_id or (
+        f'code:{file.business_code}' if file.business_code else f'name:{business_name}'
+    )
+    return identity, file.variant_id or 'default'
+
+
+def _register_grouped_business(
+    grouped: dict,
+    file: FileRecord | None,
+    package_name: str,
+) -> tuple[str, dict] | None:
+    """登记文件所属业务并返回主体及业务统计容器。
+
+    Args:
+        grouped: 按主体和稳定业务身份归集的统计容器。
+        file: 当前业务文件；无法定位文件时为 None。
+        package_name: 审核包名称。
+    """
+
+    location = _unit_and_business(file, package_name) if file is not None else None
+    if location is None:
+        return None
+    unit_name, business_name = location
+    business_key = _business_group_key(file, business_name)
+    business = grouped[unit_name].setdefault(
+        business_key,
+        {'name': business_name, 'items': {}},
+    )
+    if file.preservation.get('business_name'):
+        # 同组任一文件具有标准业务名时，统一覆盖目录回退名称。
+        business['name'] = business_name
+    return unit_name, business
+
+
 def _rule_numbers(message: str) -> tuple[int, ...]:
     """提取并规范规则序号组合；message 为已写入审核意见单元格的一条意见。"""
     numbers = [int(value) for value in RULE_LABEL_PATTERN.findall(message)]
@@ -150,7 +192,7 @@ def _collect_statistics(
         business_failures: 已跳过业务的结构化失败信息。
     """
     logger = logging.getLogger(__name__)
-    grouped = defaultdict(lambda: defaultdict(dict))
+    grouped = defaultdict(dict)
     file_by_output = {
         str(_output_path(file)): file
         # 晚表头或非标准文件名可能在扫描时仍是 unclassified，实际写回记录仍应纳入。
@@ -159,16 +201,15 @@ def _collect_statistics(
     for file in files:
         if file.material_type == 'explanation' or not file.business_code:
             continue
-        unit_name, business_name = _unit_and_business(file, package_name)
         # 先登记已识别业务，即使没有程序意见也须在统计表中明确展示。
-        grouped[unit_name].setdefault(business_name, {})
+        _register_grouped_business(grouped, file, package_name)
     for output_path, states in ownership.items():
         file = file_by_output.get(output_path)
-        location = _unit_and_business(file, package_name) if file is not None else None
-        if location is None:
+        registration = _register_grouped_business(grouped, file, package_name)
+        if registration is None:
             logger.warning('审核统计表未能定位意见所属业务目录：文件=%s', output_path)
             continue
-        unit_name, business_name = location
+        _, business = registration
         for state in states:
             for message in _program_opinions(state.get('program_text', '')):
                 group = _opinion_group(message)
@@ -179,7 +220,7 @@ def _collect_statistics(
                 normalized_message = _normalized_message(message, group)
                 # 规则编号相同但整改要求不同的意见必须分别统计，不能仅按规则编号合并。
                 statistics_key = (group[0], group[1], normalized_message)
-                item = grouped[unit_name][business_name].setdefault(
+                item = business['items'].setdefault(
                     statistics_key,
                     {'message': normalized_message, 'occurrences': set()},
                 )
@@ -193,13 +234,13 @@ def _collect_statistics(
             (file_by_relative_path[path] for path in failure_files if path in file_by_relative_path),
             None,
         )
-        location = _unit_and_business(failed_file, package_name) if failed_file is not None else None
-        if location is None:
+        registration = _register_grouped_business(grouped, failed_file, package_name)
+        if registration is None:
             logger.warning('审核统计表未能定位跳过业务：%s', failure)
             continue
-        unit_name, business_name = location
+        _, business = registration
         # 序号保证同一业务出现多条失败记录时不会互相覆盖。
-        grouped[unit_name][business_name][('failure', index)] = {'failure': failure}
+        business['items'][('failure', index)] = {'failure': failure}
     return grouped
 
 
@@ -228,10 +269,13 @@ def _statistics_source_data(grouped: dict) -> dict[str, list[dict[str, object]]]
     for unit_name in sorted(grouped, key=natural_key):
         businesses = [
             {
-                'name': business_name,
-                'records': _business_records(grouped[unit_name][business_name]),
+                'name': business['name'],
+                'records': _business_records(business['items']),
             }
-            for business_name in sorted(grouped[unit_name], key=natural_key)
+            for business in sorted(
+                grouped[unit_name].values(),
+                key=lambda item: natural_key(item['name']),
+            )
         ]
         units.append({'path': unit_name, 'businesses': businesses})
     return {'units': units}
@@ -261,14 +305,13 @@ def write_audit_statistics(
     sheet.append(['单位', '备注'])
 
     for unit in source_data['units']:
-        business_sections = [
-            f'{business["name"]}：\n' + '\n'.join(business['records'])
-            for business in unit['businesses']
-        ]
-        sheet.append([
-            _safe_excel_text(unit['path']),
-            _safe_excel_text('\n\n'.join(business_sections)),
-        ])
+        for business in unit['businesses']:
+            # 每个业务独占一行，避免主体全部内容超过 Excel 单元格字符上限。
+            business_section = f'{business["name"]}：\n' + '\n'.join(business['records'])
+            sheet.append([
+                _safe_excel_text(unit['path']),
+                _safe_excel_text(business_section),
+            ])
 
     header_fill = PatternFill('solid', fgColor='305496')
     header_font = Font(bold=True, color='FFFFFF')

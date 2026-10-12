@@ -55,7 +55,8 @@ def test_statistics_groups_same_rule_combination_by_opinion_text(tmp_path):
         ('包名/a/b/c',
          'd：\n【第3条】【第5条】字段对应待核实。 1条。\n'
          '【第3条】【第5条】待核实：未能读取必需字段。 1条。\n'
-         '【第10条】岗位职责请按照国网标准句式编制。 2条。\n\n'
+         '【第10条】岗位职责请按照国网标准句式编制。 2条。'),
+        ('包名/a/b/c',
          'e：\n【第7条】请核实与矩阵对应的系统规则是否应该做出修改。 1条。'),
     ]
 
@@ -88,6 +89,94 @@ def test_html_statistics_uses_same_grouped_content_as_excel(tmp_path: Path) -> N
     assert '<script>unsafe()</script>' not in target.read_text(encoding='utf-8')
 
 
+def test_statistics_merges_same_business_identity_with_different_display_names(tmp_path: Path) -> None:
+    """同一稳定业务身份不得因配置名称和目录名称不同而拆成两个统计分组。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    matrix = _file(
+        tmp_path,
+        '8.数字化与研发矩阵及“三清单”/08风控矩阵-数字化与研发投入.xlsx',
+        'matrix',
+        '08',
+    )
+    matrix.business_id = 'digitalization_rd_investment'
+    matrix.preservation['business_name'] = '数字化与研发投入'
+    duties = _file(
+        tmp_path,
+        '8.数字化与研发矩阵及“三清单”/岗位内控责任清单.xlsx',
+        'three_lists',
+        '08',
+    )
+    duties.business_id = 'digitalization_rd_investment'
+    ownership = {
+        str(matrix.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': '【第3条】请核实矩阵字段。',
+        }],
+        str(duties.relative_path): [{
+            'sheet': '岗位职责清单',
+            'cell': 'I2',
+            'program_text': '【第5条】请补充人员姓名。',
+        }],
+    }
+    target = tmp_path / '审核统计表.html'
+
+    write_audit_statistics_html(target, [matrix, duties], ownership, '新建文件')
+
+    document = html.fromstring(target.read_text(encoding='utf-8'))
+    source = document.get_element_by_id('audit-source-data').text
+    assert json.loads(source) == {
+        'units': [{
+            'path': '新建文件',
+            'businesses': [{
+                'name': '08 数字化与研发投入',
+                'records': [
+                    '【第3条】请核实矩阵字段。 1条。',
+                    '【第5条】请补充人员姓名。 1条。',
+                ],
+            }],
+        }],
+    }
+
+
+def test_statistics_writes_each_business_on_separate_row_without_truncation(tmp_path: Path) -> None:
+    """每个业务必须独占一行，避免主体汇总超过 Excel 单元格字符上限。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    first = _file(tmp_path, '某公司/01营销售电/风控矩阵.xlsx', 'matrix', '01')
+    second = _file(tmp_path, '某公司/02交易与购电/风控矩阵.xlsx', 'matrix', '02')
+    first_message = f'【第1条】第一项问题：{"甲" * 18000}'
+    second_message = f'【第2条】第二项问题：{"乙" * 18000}'
+    ownership = {
+        str(first.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': first_message,
+        }],
+        str(second.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': second_message,
+        }],
+    }
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(target, [first, second], ownership, '报送包')
+
+    rows = list(load_workbook(target)['审核统计表'].values)
+    assert len(rows) == 3
+    assert rows[1][0] == rows[2][0] == '报送包/某公司'
+    assert rows[1][1] == f'01营销售电：\n{first_message} 1条。'
+    assert rows[2][1] == f'02交易与购电：\n{second_message} 1条。'
+
+
 def test_statistics_writes_none_for_recognized_business_without_opinions(tmp_path):
     """tmp_path 为隔离目录；已识别但无程序意见的业务仍须输出“无”。"""
     sales = _file(tmp_path, '1.某供电公司/01营销售电/风控矩阵.xlsx', 'matrix', '01')
@@ -104,8 +193,8 @@ def test_statistics_writes_none_for_recognized_business_without_opinions(tmp_pat
     assert list(load_workbook(target)['审核统计表'].values) == [
         ('单位', '备注'),
         ('包名/1.某供电公司',
-         '01营销售电：\n【第10条】请修改岗位职责。 1条。\n\n'
-         '02交易与购电：\n无'),
+         '01营销售电：\n【第10条】请修改岗位职责。 1条。'),
+        ('包名/1.某供电公司', '02交易与购电：\n无'),
     ]
 
 
@@ -121,9 +210,9 @@ def test_statistics_keeps_root_files_with_duplicate_display_codes_separate(tmp_p
 
     write_audit_statistics(target, [sales, equity], {}, '测试主体有限公司')
 
-    text = load_workbook(target)['审核统计表']['B2'].value
-    assert '01 营销售电：\n无' in text
-    assert '01 股权（产权）管理：\n无' in text
+    sheet = load_workbook(target)['审核统计表']
+    business_sections = {sheet['B2'].value, sheet['B3'].value}
+    assert business_sections == {'01 营销售电：\n无', '01 股权（产权）管理：\n无'}
 
 
 def test_statistics_formats_header_and_protects_excel_text(tmp_path):
@@ -166,7 +255,8 @@ def test_statistics_recognizes_business_before_unit_directory(tmp_path):
     assert list(load_workbook(target)['审核统计表'].values) == [
         ('单位', '备注'),
         ('包名/1.国网某供电分公司',
-         '1.营销售电-ok：\n【第10条】请修改岗位职责。 1条。\n\n'
+         '1.营销售电-ok：\n【第10条】请修改岗位职责。 1条。'),
+        ('包名/1.国网某供电分公司',
          '2.交易与购电-ok：\n【第7条】请核实系统规则。 1条。'),
     ]
 
