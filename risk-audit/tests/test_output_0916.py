@@ -601,6 +601,57 @@ def test_matrix_reference_and_existing_column_precede_single_rightmost_opinion(t
         assert drawing.xpath('//x:ClientData/x:Column/text()', namespaces={'x': 'urn:schemas-microsoft-com:office:excel'}) == ['6']
 
 
+def test_unmatched_template_omits_reference_responsibility_column(tmp_path):
+    """未匹配模板时只增加岗位编号和审核意见，不增加省公司责任主体列。"""
+
+    path = tmp_path / '未匹配业务矩阵.xlsx'
+    book = Workbook(); matrix = book.active; matrix.title = '风控矩阵'
+    matrix.append(['控制措施编号', '控制措施', '责任主体', '是否适用及原因', '审核意见'])
+    matrix.append(['未知业务-1.控制点-控制措施01', '核对资料', '财务部', '适用', None])
+    duty = book.create_sheet('岗位内控责任清单')
+    duty.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色'])
+    duty.append(['未知业务-1.控制点-控制措施01', '财务部', '专责', '张三', '核对资料', '经办'])
+    book.save(path)
+    file, _ = file_record(path)
+    file.preservation['template_match'] = {
+        'status': 'unmatched',
+        'reason': '未找到业务模板映射',
+    }
+
+    module().enrich_matrices(file, path, {}, [], [file])
+
+    output = load_workbook(path).active
+    headers = [output.cell(1, column).value for column in range(1, output.max_column + 1)]
+    assert '省公司版本责任主体（核对后删除）' not in headers
+    assert headers[-2:] == ['岗位清单已有的控制措施编号', '审核意见']
+    assert output.cell(2, output.max_column - 1).value == '未知业务-1.控制点-控制措施01'
+
+
+def test_unmatched_template_clears_previous_reference_column(tmp_path):
+    """重跑变为未匹配时应清除旧省公司责任主体辅助列及数据。"""
+
+    path = tmp_path / '未匹配修正版矩阵.xlsx'
+    book = Workbook(); matrix = book.active; matrix.title = '风控矩阵'
+    matrix.append([
+        '控制措施编号', '控制措施', '责任主体', '是否适用及原因',
+        '省公司版本责任主体（核对后删除）', '岗位清单已有的控制措施编号', '审核意见',
+    ])
+    matrix.append(['未知业务-1.控制点-控制措施01', '核对资料', '财务部', '适用', '旧省公司责任主体', None, None])
+    book.save(path)
+    file, _ = file_record(path)
+    file.preservation['template_match'] = {
+        'status': 'unmatched',
+        'reason': '未找到业务模板映射',
+    }
+
+    module().enrich_matrices(file, path, {}, [], [file])
+
+    output = load_workbook(path).active
+    assert output['E1'].value is None
+    assert output['E2'].value is None
+    assert output['F1'].value == '岗位清单已有的控制措施编号'
+
+
 def test_existing_matrix_output_columns_are_cleared_before_rebuild(tmp_path):
     """tmp_path 为隔离目录；修正版保留三列时，旧数据全部清空并仅写入本轮结果。"""
     path = tmp_path / '09信通公司修正版矩阵.xlsx'

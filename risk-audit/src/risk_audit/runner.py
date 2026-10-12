@@ -45,12 +45,12 @@ from risk_audit.progress import (
 CONFIRMED_RULE_VERSIONS = frozenset({
     '1.8.0', '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6',
     '1.9.7', '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14',
-    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20',
+    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21',
 })
 PREPROCESSING_RULE_VERSIONS = frozenset({
     '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7',
     '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14', '1.9.15',
-    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20',
+    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21',
 })
 
 
@@ -97,7 +97,7 @@ def preprocess_business_file(
             raise
         except Exception as error:
             raise BusinessStageError('岗位排序预处理', file, error) from error
-    if version in {'1.9.18', '1.9.19', '1.9.20'}:
+    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21'}:
         from risk_audit.system_type_preprocessing import preprocess_system_types
 
         try:
@@ -106,6 +106,32 @@ def preprocess_business_file(
             raise
         except Exception as error:
             raise BusinessStageError('系统类型预处理', file, error) from error
+
+
+def mark_unavailable_templates(
+    files: list[FileRecord],
+    baselines: dict[tuple[str, str], dict[str, Any]],
+) -> None:
+    """把不可读的冻结模板转换为文件级模板匹配提示。
+
+    Args:
+        files: 已完成业务身份匹配的本次报送文件。
+        baselines: 按业务 ID 和变体索引的冻结模板加载结果。
+    """
+
+    for file in files:
+        template_match = file.preservation.get('template_match', {})
+        if template_match.get('status') != 'matched':
+            continue
+        baseline = baselines.get((file.business_id or file.business_code or '', file.variant_id))
+        if baseline is None or baseline.get('available', True):
+            continue
+        # 保留原有业务身份，但关闭依赖模板的字段比较和责任主体辅助列。
+        file.preservation['template_match'] = {
+            **template_match,
+            'status': 'template_unreadable',
+            'reason': baseline.get('error', '对应模板无法读取'),
+        }
 
 
 def audit(
@@ -419,6 +445,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         work_root,
         include_hidden=include_hidden,
     )
+    mark_unavailable_templates(files, baselines)
     logger.debug('公共基准统一加载完成：基准=%d，审核主体=%d，后续主体共用已加载数据', len(baselines), len(scopes))
     limitations: list[dict[str, Any]] = []
     findings: list[Finding] = []

@@ -79,6 +79,49 @@ def directory_material_entity(path, root, entities, business_registry=None, busi
     return None, evidence, False
 
 
+def ancestor_material_entity(path, root, entities, business_registry=None, business_id=None):
+    """模板业务未识别时按最近的正式单位目录识别主体。
+
+    Args:
+        path: 当前材料的绝对路径。
+        root: 用户选择的输入根目录。
+        entities: 以单位代码为键的正式主体名册。
+        business_registry: 可选的模板业务配置。
+        business_id: 当前材料已识别的稳定业务标识。
+    """
+
+    root = Path(root).resolve()
+    directory = Path(path).resolve().parent
+    candidates = [directory, directory.parent]
+    for index, directory in enumerate(candidates):
+        if directory != root and root not in directory.parents:
+            break
+        matches = [
+            code
+            for code, entity in entities.items()
+            if norm_text(directory.name) == norm_text(entity.name)
+        ]
+        if len(matches) == 1:
+            code = matches[0]
+            return code, [f"正式单位目录全称:{entities[code].name}"], False
+        if len(matches) > 1:
+            return None, [f"正式单位目录全称:{directory.name}"], True
+        if re.fullmatch(ENTITY_NAME_PATTERN, directory.name) or directory.name.endswith('公司'):
+            # 遇到未登记子单位即停止，不能继续沿父级继承正式主体代码。
+            return None, [], False
+        if index == 0:
+            from risk_audit.submission_scope import _matches_configured_business_directory
+
+            business_like = (
+                '业务' in directory.name
+                or _matches_configured_business_directory(directory.name, business_registry, business_id)
+            )
+            if not business_like:
+                # 只有明确的业务目录可以跨一层查找主体，普通子目录不得继承父主体。
+                return None, [], False
+    return None, [], False
+
+
 def identify_material_entity(path, root, entities, aliases, texts, business_registry=None, business_id=None,
                              business_code=None):
     """仅按单位目录识别材料主体，文件名和说明正文不参与归属判断。

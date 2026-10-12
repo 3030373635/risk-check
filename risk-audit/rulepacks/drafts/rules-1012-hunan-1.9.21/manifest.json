@@ -1,0 +1,9 @@
+{
+  "audit_as_of": "2026-10-12",
+  "engine_compatibility": ">=1.9.21,<2.0.0",
+  "schema_version": "1.0",
+  "source_document_sha256": "25f4ca0eea5b470d08f62c1d851c6f1e4aaf361e754b54e0667446b9b6771828",
+  "status": "draft",
+  "title": "1012 湖南公司版模板匹配及财务管理专项规则包",
+  "version": "1.9.21"
+}

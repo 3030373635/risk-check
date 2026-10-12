@@ -675,4 +675,10 @@ def build_registry() -> CapabilityRegistry:
     ))
     reg('responsibility_department_alignment', ['matrix'], ['keyword_mappings'], [], [],
         ['issue_type', 'measure_id', 'missing_keywords', 'duty_departments'], ['row'], responsibility_department_alignment_v1)
+    from risk_audit.checks.rules_1012 import financial_management_applicability, template_match_notice
+    reg('template_match_notice', ['package'], [], [], [],
+        ['issue_type', 'template_status', 'file_path', 'sheet'], ['material'], template_match_notice)
+    reg('financial_management_applicability', ['matrix'], ['business_id', 'measure_ids'], [], [],
+        ['issue_type', 'measure_id', 'duty_measure_present', 'applicability_text',
+         'applicability_state', 'applicability_decision'], ['row'], financial_management_applicability)
     return r

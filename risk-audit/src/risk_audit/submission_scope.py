@@ -86,8 +86,8 @@ def resolve_submission_scopes(root, files, entities, aliases, batch, *, include_
         # 说明材料不增加业务；待解析 Excel 仍保留，以便通过真实表头识别矩阵或三清单。
         if file.material_type == 'explanation':
             continue
-        if file.business_code:
-            uploaded[code].add((file.business_id or file.business_code, file.business_code, file.variant_id))
+        if file.business_id or file.business_code:
+            uploaded[code].add((file.business_id or file.business_code, file.business_code or '', file.variant_id))
     for code in uploaded:
         if code not in entities:
             report['alerts'].append({'type': 'scope_entity_unconfirmed', 'unit_label': code,

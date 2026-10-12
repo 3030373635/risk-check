@@ -43,32 +43,72 @@ def _baseline_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _unavailable_baseline(item: dict[str, Any], reason: str) -> dict[str, Any]:
+    """构造不可用模板占位数据。
+
+    Args:
+        item: 带业务身份和模板路径的基准配置。
+        reason: 模板不存在、哈希变化或解析失败的具体原因。
+    """
+
+    return {
+        "available": False,
+        "error": reason,
+        "path": item["path"],
+        "sha256": item.get("sha256", ""),
+        "business_id": item["business_id"],
+        "business_code": item["business_code"],
+        "business_name": item["business_name"],
+        "fields": [],
+        "business_header_paths": [],
+        "measure_order": [],
+        "responsibilities": [],
+        "measures": [],
+    }
+
+
 def load_baselines(project_root: Path, registry: dict[str, Any], aliases: dict, work_dir: Path, *, include_hidden: bool = False) -> dict[tuple[str, str], dict[str, Any]]:
     """加载指定基准；project_root 为基准根目录，registry 为冻结定位，aliases 为字段别名，work_dir 为转换目录，include_hidden 控制隐藏表。"""
     files = []
-    expected_hashes = {}; requested_sheets = {}
+    requested_sheets = {}
+    entries_by_key = {}
+    out = {}
     for item in _baseline_entries(registry):
-        path = (project_root / item["path"]).resolve()
-        if not path.exists(): raise FileNotFoundError(f"冻结基准不存在: {path}")
-        digest = sha256_file(path)
-        if item.get("sha256") and item["sha256"] != digest: raise ValueError(f"冻结基准哈希变化: {path}")
         key = (item["business_id"], item.get("variant_id", "default"))
-        expected_hashes[key] = digest
+        entries_by_key[key] = item
+        path = (project_root / item["path"]).resolve()
+        if not path.exists():
+            out[key] = _unavailable_baseline(item, f"冻结基准不存在: {path}")
+            continue
+        try:
+            digest = sha256_file(path)
+            if item.get("sha256") and item["sha256"] != digest:
+                out[key] = _unavailable_baseline(item, f"冻结基准哈希变化: {path}")
+                continue
+            file_format = "xls" if path.read_bytes()[:8] == bytes.fromhex("D0CF11E0A1B11AE1") else "xlsx"
+        except OSError as error:
+            out[key] = _unavailable_baseline(item, f"冻结基准无法读取: {path}: {error}")
+            continue
         requested_sheets[key] = item.get("sheet")
-        fmt = "xls" if path.read_bytes()[:8] == bytes.fromhex("D0CF11E0A1B11AE1") else "xlsx"
-        file = FileRecord(path, Path(item["path"]), digest, fmt, "BASELINE", ["frozen-registry"],
+        file = FileRecord(path, Path(item["path"]), digest, file_format, "BASELINE", ["frozen-registry"],
                           False, item["business_code"], item.get("variant_id", "default"), "matrix",
                           business_id=item["business_id"])
         file.preservation["business_name"] = item["business_name"]
         files.append(file)
-    parse_files(files, aliases, work_dir / "baselines", include_hidden=include_hidden)
-    out = {}
+    if files:
+        parse_files(files, aliases, work_dir / "baselines", include_hidden=include_hidden)
     for file in files:
-        if file.parse_errors: raise ValueError(f"基准解析失败 {file.source}: {file.parse_errors}")
         key = (file.business_id or "", file.variant_id)
+        item = entries_by_key[key]
+        if file.parse_errors:
+            out[key] = _unavailable_baseline(item, f"基准解析失败 {file.source}: {file.parse_errors}")
+            continue
         requested = requested_sheets[key]
         selected_sheets = [s for s in file.sheets if s.sheet_type == "matrix" and (not requested or s.title == requested)]
-        if requested and not selected_sheets: raise ValueError(f"冻结基准指定工作表未纳入解析（不存在、隐藏或未识别为业务表）: {file.source}#{requested}")
+        if requested and not selected_sheets:
+            reason = f"冻结基准指定工作表未纳入解析（不存在、隐藏或未识别为业务表）: {file.source}#{requested}"
+            out[key] = _unavailable_baseline(item, reason)
+            continue
         all_records = [r for s in selected_sheets for r in s.records]
         records = [r for r in all_records if r.record_type == "matrix"]
         header_paths = [
@@ -77,6 +117,7 @@ def load_baselines(project_root: Path, registry: dict[str, Any], aliases: dict, 
             for path in _normalized_header_paths(sheet.business_header_paths)
         ]
         out[key] = {
+            "available": True,
             "path": str(file.relative_path), "sha256": file.sha256,
             "business_id": file.business_id or "", "business_code": file.business_code or "",
             "business_name": file.preservation.get("business_name", ""),

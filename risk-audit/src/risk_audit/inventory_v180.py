@@ -3,8 +3,13 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from risk_audit.business_identity import BusinessIdentityError, identify_business as identify_business_v2
-from risk_audit.entities import identify_material_entity
+from risk_audit.business_identity import (
+    BusinessIdentityError,
+    identify_business as identify_business_v2,
+    unmatched_business_id,
+    workbook_business_evidence,
+)
+from risk_audit.entities import ancestor_material_entity, identify_material_entity
 from risk_audit.inventory import classify_material, identify_business, is_auxiliary, true_format
 from risk_audit.models import FileRecord
 from risk_audit.util import sha256_file
@@ -67,19 +72,49 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
             material = classify_material(path)
             if not material:
                 continue
+        with path.open('rb') as stream:
+            signature = stream.read(8)
+        file_format = 'pdf' if signature.startswith(b'%PDF-') and suffix == '.pdf' else true_format(path)
         business_id = None
         business_error = ''
+        template_match = {'status': 'not_applicable', 'reason': ''}
         if material == 'explanation':
             business, variant = None, 'default'
         elif business_registry and business_registry.get('schema_version') == '2.0':
+            evidence_error = ''
             try:
-                # 直接选择单个业务包时，根目录名称是业务识别的唯一目录证据。
-                business_identity = identify_business_v2(relative, business_registry, base.name)
+                workbook_evidence = workbook_business_evidence(path, file_format)
+            except Exception as error:
+                workbook_evidence = []
+                evidence_error = str(error)
+            try:
+                business_identity = identify_business_v2(
+                    relative,
+                    business_registry,
+                    base.name,
+                    workbook_evidence=workbook_evidence,
+                )
                 business_id = business_identity.business_id
                 business = business_identity.business_code
                 variant = business_identity.variant_id
+                template_match = {
+                    'status': 'matched',
+                    'reason': '',
+                    'business_id': business_id,
+                    'variant_id': variant,
+                    'matched_alias': business_identity.matched_alias,
+                }
             except BusinessIdentityError as error:
-                business, variant, business_error = None, 'default', str(error)
+                business_error = str(error)
+                business_id = unmatched_business_id(relative)
+                business, variant = None, 'default'
+                template_match = {
+                    'status': 'ambiguous' if '冲突' in business_error else 'unmatched',
+                    'reason': business_error,
+                    'business_id': business_id,
+                }
+            if evidence_error:
+                template_match['evidence_error'] = evidence_error
         else:
             # 历史发布包仅用于复核旧运行，当前发布包必须提供 v2 模板业务目录。
             business, variant = identify_business(relative)
@@ -90,22 +125,28 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
         code, evidence, conflict = identify_material_entity(
             path, base, entities, aliases, identity, business_registry, business_id, business,
         )
-        with path.open('rb') as stream:
-            signature = stream.read(8)
-        file_format = 'pdf' if signature.startswith(b'%PDF-') and suffix == '.pdf' else true_format(path)
+        if code is None and not conflict and material != 'explanation':
+            # 文件名或表内标题完成业务匹配时，直接父目录可能不再是可识别的业务目录。
+            code, evidence, conflict = ancestor_material_entity(
+                path,
+                base,
+                entities,
+                business_registry,
+                business_id,
+            )
         errors = []
         if file_format == 'unknown':
             errors.append('文件签名不是受支持的 Excel、Word 或 PDF 格式')
         if read_error:
             errors.append(read_error)
-        if material != 'explanation' and business is None:
-            errors.append(business_error or '文件路径中的业务编号不唯一或无法识别')
         if code is None:
             errors.append('主体证据冲突' if conflict else '无法确定会计主体')
         record = FileRecord(path, relative, sha256_file(path), file_format, code, evidence, conflict,
                             business, variant, material, parse_errors=errors, business_id=business_id)
+        record.preservation['template_match'] = template_match
         if (material != 'explanation' and business_registry
-                and business_registry.get('schema_version') == '2.0' and business_id):
+                and business_registry.get('schema_version') == '2.0'
+                and template_match['status'] == 'matched'):
             record.preservation['business_name'] = business_identity.business_name
         records.append(record)
     return records

@@ -1,6 +1,7 @@
 """模板业务配置校验与报送路径业务身份识别。"""
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -12,6 +13,13 @@ _SEPARATORS = re.compile(r"[\s()（）\[\]【】{}｛｝<>《》·•・,，、:
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _BUSINESS_CODE_PREFIX = re.compile(r"^(\d{1,2})(?:\D|$)")
+_TABLE_HEADER_MARKERS = (
+    "控制措施编号",
+    "岗位职责编号",
+    "岗位职责",
+    "不相容岗位",
+    "系统名称",
+)
 
 
 class BusinessIdentityError(ValueError):
@@ -28,6 +36,63 @@ class BusinessIdentity:
     variant_id: str
     matched_alias: str
     matched_variant_alias: str = ""
+
+
+def workbook_business_evidence(path: Path, file_format: str) -> list[str]:
+    """读取工作表名和表头区文字。
+
+    Args:
+        path: 待检查的 Excel 材料路径。
+        file_format: 根据文件签名识别的 xlsx 或 xls 格式。
+    """
+
+    evidence: list[str] = []
+    if file_format == "xlsx":
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            for worksheet in workbook.worksheets:
+                evidence.append(worksheet.title)
+                # 只采集业务表头之前的标题区，防止正文提及其他业务造成伪冲突。
+                for row in worksheet.iter_rows(min_row=1, max_row=12, min_col=1, max_col=12, values_only=True):
+                    texts = [str(value) for value in row if value not in (None, "")]
+                    evidence.extend(texts)
+                    if any(marker in normalize_business_text(text) for marker in _TABLE_HEADER_MARKERS for text in texts):
+                        break
+        finally:
+            workbook.close()
+    elif file_format == "xls":
+        import xlrd
+
+        workbook = xlrd.open_workbook(path, on_demand=True)
+        try:
+            for worksheet in workbook.sheets():
+                evidence.append(worksheet.name)
+                for row in range(min(worksheet.nrows, 12)):
+                    texts = []
+                    for column in range(min(worksheet.ncols, 12)):
+                        value = worksheet.cell_value(row, column)
+                        if value not in (None, ""):
+                            texts.append(str(value))
+                    evidence.extend(texts)
+                    if any(marker in normalize_business_text(text) for marker in _TABLE_HEADER_MARKERS for text in texts):
+                        break
+        finally:
+            workbook.release_resources()
+    return list(dict.fromkeys(evidence))
+
+
+def unmatched_business_id(relative_path: Path) -> str:
+    """为未匹配材料生成稳定的业务分组标识。
+
+    Args:
+        relative_path: 材料在报送根目录下的相对路径。
+    """
+
+    group_text = normalize_business_text(str(relative_path.parent)) or relative_path.parent.as_posix()
+    digest = hashlib.sha256(group_text.encode("utf-8")).hexdigest()[:16]
+    return f"unmatched_{digest}"
 
 
 def normalize_business_text(value: str) -> str:
@@ -137,35 +202,57 @@ def identify_business(
     relative_path: Path,
     registry: dict[str, Any],
     input_root_name: str = "",
+    workbook_evidence: list[str] | None = None,
 ) -> BusinessIdentity:
-    """使用文件直接父目录识别唯一业务。
+    """综合目录、文件名和工作簿证据识别唯一业务。
 
     Args:
         relative_path: 材料文件在输入根目录下的相对路径。
         registry: schema_version 为 2.0 的模板业务配置。
         input_root_name: 输入根目录名称，仅在材料直接位于根目录时用于业务识别。
+        workbook_evidence: 工作表名和表内标题等工作簿证据。
     """
 
     # 单业务包可被直接选为输入目录，此时相对路径没有父目录，必须使用输入根目录名。
     business_directory = relative_path.parent.name or input_root_name
-    directory_text = normalize_business_text(business_directory)
+    evidence_values = [business_directory, relative_path.stem, *(workbook_evidence or [])]
     business_matches: list[tuple[int, str, dict[str, Any]]] = []
-    for business in registry.get("businesses", []):
-        for alias in business.get("aliases", []):
-            normalized_alias = normalize_business_text(alias)
-            if normalized_alias and normalized_alias in directory_text:
-                business_matches.append((len(normalized_alias), alias, business))
+    for evidence in evidence_values:
+        normalized_evidence = normalize_business_text(evidence)
+        if not normalized_evidence:
+            continue
+        for business_item in registry.get("businesses", []):
+            for alias in business_item.get("aliases", []):
+                normalized_alias = normalize_business_text(alias)
+                if normalized_alias and normalized_alias in normalized_evidence:
+                    business_matches.append((len(normalized_alias), alias, business_item))
 
     if business_matches:
-        _, matched_alias, business = _select_longest_match(
-            business_matches,
-            relative_path,
-            "业务模板映射冲突",
-        )
+        matched_businesses = {item[2]["business_id"] for item in business_matches}
+        if len(matched_businesses) != 1:
+            candidates = "、".join(
+                sorted({
+                    f"{item[2]['business_name']}（命中“{item[1]}”）"
+                    for item in business_matches
+                })
+            )
+            raise BusinessIdentityError(
+                f"业务模板映射冲突：{relative_path}；候选：{candidates}；"
+                "请检查 baseline_registry.json 的 aliases 配置"
+            )
+        _, matched_alias, business = max(business_matches, key=lambda item: item[0])
     else:
-        # 目录简称未配置为别名时，仅在编号唯一时允许回退。
-        code_match = _BUSINESS_CODE_PREFIX.match(business_directory)
-        business_code = code_match.group(1).zfill(2) if code_match else ""
+        # 文字证据均未命中时，仅在目录或文件名编号唯一时允许回退。
+        code_values = []
+        for value in (business_directory, relative_path.stem):
+            code_match = _BUSINESS_CODE_PREFIX.match(value)
+            if code_match:
+                code_values.append(code_match.group(1).zfill(2))
+        if len(set(code_values)) > 1:
+            raise BusinessIdentityError(
+                f"业务编号映射冲突：{relative_path}；编号：{'、'.join(sorted(set(code_values)))}"
+            )
+        business_code = code_values[0] if code_values else ""
         code_matches = [
             item
             for item in registry.get("businesses", [])
@@ -189,7 +276,7 @@ def identify_business(
     # 业务由父目录确定；电压等模板变体仍可由整条路径补充判断。
     # 根目录参与业务识别时也必须参与变体识别，避免丢失电压范围等关键信息。
     identity_path = Path(input_root_name) / relative_path if not relative_path.parent.name else relative_path
-    path_text = normalize_business_text(str(identity_path))
+    path_text = normalize_business_text(" ".join([str(identity_path), *(workbook_evidence or [])]))
     variant_matches: list[tuple[int, str, dict[str, Any]]] = []
     for variant in variants:
         if variant.get("variant_id") == "default":

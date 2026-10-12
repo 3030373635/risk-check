@@ -11,6 +11,8 @@ from risk_audit.business_identity import (
     validate_business_registry,
 )
 from risk_audit.inventory import classify_material
+from risk_audit.inventory_v180 import scan_package_v180
+from risk_audit.models import Entity
 from risk_audit.util import read_json, sha256_file
 
 
@@ -149,14 +151,15 @@ def test_identify_business_uses_selected_root_for_direct_package_variant(busines
     )
 
 
-def test_identify_business_ignores_business_name_in_filename(business_registry: dict):
-    """文件名中的其他业务名不得覆盖直接父目录确定的业务。"""
-    result = identify_business(
-        Path("01 营销售电/股权产权管理矩阵.xlsx"),
-        business_registry,
-    )
-
-    assert result.business_id == "sales_electricity"
+def test_identify_business_rejects_conflicting_directory_and_filename(
+    business_registry: dict,
+):
+    """目录与文件名指向不同业务时不得猜测模板。"""
+    with pytest.raises(BusinessIdentityError, match="业务模板映射冲突"):
+        identify_business(
+            Path("01 营销售电/股权产权管理矩阵.xlsx"),
+            business_registry,
+        )
 
 
 def test_identify_business_rejects_duplicate_directory_code(business_registry: dict):
@@ -165,10 +168,170 @@ def test_identify_business_rejects_duplicate_directory_code(business_registry: d
         identify_business(Path("01业务/清单.xlsx"), business_registry)
 
 
-def test_identify_business_rejects_filename_only_match(business_registry: dict):
-    """父目录无法识别时，不得使用文件名中的业务名兜底。"""
-    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
-        identify_business(Path("未知目录/营销售电矩阵.xlsx"), business_registry)
+def test_identify_business_uses_filename_when_directory_is_unknown(
+    business_registry: dict,
+):
+    """父目录无法识别时，应使用文件名中的唯一业务名。"""
+    result = identify_business(Path("未知目录/营销售电矩阵.xlsx"), business_registry)
+
+    assert result.business_id == "sales_electricity"
+
+
+def test_identify_business_uses_workbook_title_evidence(
+    business_registry: dict,
+):
+    """路径不含业务名时，应使用工作表名和表内标题识别模板。"""
+    result = identify_business(
+        Path("未知目录/报送资料.xlsx"),
+        business_registry,
+        workbook_evidence=["股权（产权）管理矩阵", "岗位清单"],
+    )
+
+    assert result.business_id == "equity_management"
+
+
+def test_workbook_business_evidence_excludes_body_rows(tmp_path, business_registry: dict) -> None:
+    """表内业务正文提到其他业务时不得造成模板映射冲突。"""
+
+    from risk_audit.business_identity import workbook_business_evidence
+
+    path = tmp_path / "股权产权管理矩阵.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "股权产权管理"
+    sheet.append(["控制措施编号", "控制措施", "责任主体"])
+    sheet.append(["股权管理-1-控制措施01", "执行合同管理制度", "财务部"])
+    workbook.save(path)
+
+    evidence = workbook_business_evidence(path, "xlsx")
+    result = identify_business(path.relative_to(tmp_path), business_registry, workbook_evidence=evidence)
+
+    assert result.business_id == "equity_management"
+    assert all("合同管理制度" not in item for item in evidence)
+
+
+def test_workbook_business_evidence_keeps_title_with_header_keyword(tmp_path) -> None:
+    """包含“岗位职责”的业务标题仍应进入模板匹配证据。"""
+
+    from risk_audit.business_identity import workbook_business_evidence
+
+    path = tmp_path / "报送清单.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "岗位清单"
+    sheet.append(["财务管理岗位职责清单"])
+    sheet.append(["控制措施编号", "岗位职责"])
+    workbook.save(path)
+
+    evidence = workbook_business_evidence(path, "xlsx")
+
+    assert "财务管理岗位职责清单" in evidence
+
+
+def test_unknown_nested_child_does_not_inherit_registered_grandparent(
+    tmp_path,
+    business_registry: dict,
+) -> None:
+    """未知业务下的未登记子单位不得继承上级正式主体代码。"""
+
+    from risk_audit.inventory_v180 import scan_package_v180
+    from risk_audit.models import Entity
+
+    path = tmp_path / "已登记父公司有限公司" / "未登记子单位" / "未知业务" / "风控矩阵.xlsx"
+    path.parent.mkdir(parents=True)
+    workbook = Workbook()
+    workbook.active.append(["控制措施编号", "控制措施", "责任主体"])
+    workbook.save(path)
+
+    files = scan_package_v180(
+        tmp_path,
+        {"P001": Entity("P001", "已登记父公司有限公司")},
+        {},
+        business_registry,
+    )
+
+    assert len(files) == 1
+    assert files[0].entity_code is None
+
+
+def test_direct_unregistered_child_does_not_inherit_registered_parent(
+    tmp_path,
+    business_registry: dict,
+) -> None:
+    """材料直接位于未登记子单位目录时不得继承上级正式主体代码。"""
+
+    from risk_audit.inventory_v180 import scan_package_v180
+    from risk_audit.models import Entity
+
+    path = tmp_path / "已登记父公司有限公司" / "未登记子单位" / "财务管理矩阵.xlsx"
+    path.parent.mkdir(parents=True)
+    workbook = Workbook()
+    workbook.active.title = "财务管理"
+    workbook.active.append(["控制措施编号", "控制措施", "责任主体"])
+    workbook.save(path)
+
+    files = scan_package_v180(
+        tmp_path,
+        {"P001": Entity("P001", "已登记父公司有限公司")},
+        {},
+        business_registry,
+    )
+
+    assert len(files) == 1
+    assert files[0].entity_code is None
+
+
+def test_scan_package_uses_sheet_name_and_table_title_for_template_match(
+    tmp_path: Path,
+    business_registry: dict,
+):
+    """目录和文件名均无业务名时，扫描应使用工作簿证据。"""
+    entity_name = "测试供电分公司"
+    directory = tmp_path / entity_name / "未知业务"
+    directory.mkdir(parents=True)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "股权（产权）管理矩阵"
+    worksheet["A1"] = "股权（产权）管理"
+    workbook.save(directory / "风控矩阵.xlsx")
+
+    files = scan_package_v180(
+        tmp_path,
+        {"E001": Entity("E001", entity_name)},
+        {},
+        business_registry,
+    )
+
+    assert files[0].business_id == "equity_management"
+    assert files[0].business_code == "01"
+    assert files[0].preservation["template_match"]["status"] == "matched"
+    assert files[0].parse_errors == []
+
+
+def test_scan_package_keeps_unmatched_workbook_auditable(
+    tmp_path: Path,
+    business_registry: dict,
+):
+    """没有任何业务证据时，文件应保留审核资格而不记为解析失败。"""
+    entity_name = "测试供电分公司"
+    directory = tmp_path / entity_name / "未知业务"
+    directory.mkdir(parents=True)
+    workbook = Workbook()
+    workbook.active.title = "矩阵"
+    workbook.active["A1"] = "风控矩阵"
+    workbook.save(directory / "风控矩阵.xlsx")
+
+    files = scan_package_v180(
+        tmp_path,
+        {"E001": Entity("E001", entity_name)},
+        {},
+        business_registry,
+    )
+
+    assert files[0].business_id.startswith("unmatched_")
+    assert files[0].business_code is None
+    assert files[0].preservation["template_match"]["status"] == "unmatched"
+    assert files[0].parse_errors == []
 
 
 @pytest.mark.parametrize(
@@ -208,7 +371,7 @@ def test_equal_length_business_alias_conflict_is_rejected(business_registry: dic
 
 def test_missing_business_and_variant_are_rejected(business_registry: dict):
     """未知业务或电网基建缺少电压信息时必须停止映射。"""
-    with pytest.raises(BusinessIdentityError, match="未找到业务模板映射"):
+    with pytest.raises(BusinessIdentityError, match="业务编号映射冲突"):
         identify_business(Path("未知业务/01风控矩阵.xlsx"), business_registry)
     with pytest.raises(BusinessIdentityError, match="模板变体无法确定"):
         identify_business(Path("03 电网基建/03风控矩阵.xlsx"), business_registry)
@@ -446,3 +609,37 @@ def test_load_baselines_isolates_duplicate_display_codes(tmp_path):
     assert baselines[("equity_management", "default")]["business_code"] == "01"
     assert baselines[("sales_electricity", "default")]["responsibilities"][0]["measure_id"] == "M1"
     assert baselines[("equity_management", "default")]["responsibilities"][0]["measure_id"] == "M1"
+
+
+def test_unreadable_baseline_degrades_to_unavailable_entry(tmp_path) -> None:
+    """冻结模板不存在时应记录不可用状态，并允许其他规则继续审核。"""
+
+    from risk_audit.baselines import load_baselines
+
+    registry = {
+        "schema_version": "2.0",
+        "businesses": [{
+            "business_id": "financial_management",
+            "business_code": "02",
+            "business_name": "财务管理",
+            "aliases": ["财务管理"],
+            "variants": [{
+                "variant_id": "default",
+                "aliases": [],
+                "template": {
+                    "path": "不存在的模板.xlsx",
+                    "sha256": "a" * 64,
+                },
+            }],
+        }],
+    }
+    aliases = read_json(
+        Path(__file__).resolve().parents[1]
+        / "rulepacks/releases/1.9.18/field_aliases.json"
+    )
+
+    baselines = load_baselines(tmp_path, registry, aliases, tmp_path / "work")
+
+    baseline = baselines[("financial_management", "default")]
+    assert baseline["available"] is False
+    assert "冻结基准不存在" in baseline["error"]

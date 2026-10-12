@@ -21,8 +21,8 @@ class Applicability:
 def interpret(text,lexicon=None):
     t=norm_text(text).strip('。;')
     if not t:return Applicability('empty')
-    positive=re.match(r'^(?:适用|是)(?=$|[,:;。])',t)
-    negative=re.match(r'^(?:不适用|否)(?=$|[,:;。]|因|本|县|无|暂|不)',t)
+    positive=re.match(r'^(?:适用|是)(?=$|[,:;。()（）])',t)
+    negative=re.match(r'^(?:不适用|否)(?=$|[,:;。()（）]|因|本|县|无|暂|不)',t)
     # An explicit contradictory assertion anywhere in the same answer is not resolved by its first word.
     if (positive and re.search(r'不适用',t)) or (negative and re.search(r'(?:但|仍|也|同时|实际)(?:为|是)?适用',t)):
         return Applicability('conflict',basis='同一回答存在相反适用性信息')
