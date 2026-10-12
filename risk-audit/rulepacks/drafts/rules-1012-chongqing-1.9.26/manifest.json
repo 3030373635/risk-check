@@ -1,0 +1,11 @@
+{
+  "audit_as_of": "2026-10-12",
+  "engine_compatibility": ">=1.9.26,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "b8ee508f563bcc279e013da3fcbbe4c4ed593fccc50069d5c3b8e6c96cc7c8ed",
+  "status": "draft",
+  "title": "重庆责任主体一致性与控制措施完整性规则包",
+  "version": "1.9.26"
+}

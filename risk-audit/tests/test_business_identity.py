@@ -738,6 +738,11 @@ def test_load_baselines_isolates_duplicate_display_codes(tmp_path):
     assert baselines[("equity_management", "default")]["business_code"] == "01"
     assert baselines[("sales_electricity", "default")]["responsibilities"][0]["measure_id"] == "M1"
     assert baselines[("equity_management", "default")]["responsibilities"][0]["measure_id"] == "M1"
+    assert baselines[("sales_electricity", "default")]["matrix_rows"] == [{
+        "measure_id": "M1",
+        "key_control_point": "",
+        "responsibility": "省公司-营销部-营销专责",
+    }]
 
 
 def test_unreadable_baseline_degrades_to_unavailable_entry(tmp_path) -> None:

@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "responsibility_alignment",
+      "location_policy": "row",
+      "message": {
+        "review": "【第19条】{opinion}",
+        "violation": "【第19条】{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_responsibility_alignment",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R19",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.responsibility_alignment",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1012-重庆.docx 有效正文",
+  "title": "责任主体与岗位内控责任清单一致性审核"
+}

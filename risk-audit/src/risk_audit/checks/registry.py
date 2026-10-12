@@ -688,10 +688,12 @@ def build_registry() -> CapabilityRegistry:
         ['issue_type', 'measure_id', 'duty_measure_present', 'applicability_text',
          'applicability_state', 'applicability_decision'], ['row'], financial_management_applicability)
     from risk_audit.checks.rules_1012_chongqing import (
+        control_measure_completeness,
         power_supply_branch_key_points,
+        responsibility_alignment,
         system_control_consistency,
     )
-    # 重庆两条专项规则需要跨表或跨业务核对，因此以报送包为执行边界。
+    # 重庆专项规则需要跨表或跨业务核对，因此以报送包为执行边界。
     reg(
         'system_control_consistency',
         ['package'],
@@ -715,5 +717,31 @@ def build_registry() -> CapabilityRegistry:
         ['issue_type', 'opinion', 'business_id', 'missing_key_points', 'key_point', 'entity_code'],
         ['row', 'material'],
         power_supply_branch_key_points,
+    )
+    reg(
+        'chongqing_responsibility_alignment',
+        ['package'],
+        [],
+        [],
+        [],
+        [
+            'issue_type', 'opinion', 'responsibility', 'matrix_department',
+            'duty_departments', 'matrix_position', 'duty_positions',
+        ],
+        ['row'],
+        responsibility_alignment,
+    )
+    reg(
+        'chongqing_control_measure_completeness',
+        ['package'],
+        [],
+        [],
+        [],
+        [
+            'issue_type', 'opinion', 'business_id', 'key_point',
+            'expected_count', 'actual_count',
+        ],
+        ['row'],
+        control_measure_completeness,
     )
     return r

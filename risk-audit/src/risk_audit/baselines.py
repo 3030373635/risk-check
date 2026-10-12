@@ -62,6 +62,7 @@ def _unavailable_baseline(item: dict[str, Any], reason: str) -> dict[str, Any]:
         "fields": [],
         "business_header_paths": [],
         "measure_order": [],
+        "matrix_rows": [],
         "responsibilities": [],
         "measures": [],
     }
@@ -124,6 +125,12 @@ def load_baselines(project_root: Path, registry: dict[str, Any], aliases: dict, 
             "fields": sorted({f for r in records for f in r.fields}),
             "business_header_paths": header_paths,
             "measure_order": [r.value("measure_id") for r in records if r.value("measure_id")],
+            # 规则 20 需要同时按关键控制点、控制措施编号和责任主体筛选冻结模板行。
+            "matrix_rows": [{
+                "measure_id": r.value("measure_id"),
+                "key_control_point": r.value("key_control_point"),
+                "responsibility": r.value("responsibility"),
+            } for r in records if r.value("measure_id")],
             # 保存来源单元格定位，输出核对列时直接复制原责任主体修订文字及样式。
             "responsibilities": [{"measure_id": r.value('measure_id') or str(r.fields['measure_id'].raw or ''),
                                   "source_path": str(getattr(file, '_converted_path', file.source)),

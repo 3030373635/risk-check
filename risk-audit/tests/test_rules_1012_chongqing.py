@@ -13,12 +13,14 @@ import pytest
 from docx import Document
 
 from risk_audit.checks.registry import CheckContext, build_registry
+from risk_audit.business_identity import identify_business
 from risk_audit.configuration.loader import load_pack
 from risk_audit.engine import run_engine
 from risk_audit.models import Entity, FieldValue, FileRecord, ParsedSheet, Record
 from risk_audit.runner import CONFIRMED_RULE_VERSIONS, PREPROCESSING_RULE_VERSIONS
 from risk_audit.pipeline_versions import SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 from risk_audit.system_type_preprocessing import classify_system_owner
+from risk_audit.util import sha256_file
 from tools.publish_rules_1012_chongqing import (
     BASE_VERSION,
     BUSINESS_MAPPING,
@@ -32,7 +34,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源" / SOURCE_NAME
 RELEASE = ROOT / "rulepacks/releases/1.9.22"
 SPLIT_LISTS_RELEASE = ROOT / "rulepacks/releases/1.9.23"
-CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.25"
+CURRENT_RELEASE = ROOT / "rulepacks/releases/1.9.26"
+UPDATED_SOURCE = ROOT / "规则来源/风控矩阵1012-重庆.docx"
+UPDATED_RELEASE = ROOT / "rulepacks/releases/1.9.26"
 
 
 def make_record(record_type: str, row: int, business_id: str = "financial_management", **values: str) -> Record:
@@ -66,6 +70,7 @@ def make_context(
     entity_name: str = "国网重庆市电力公司某供电分公司",
     files: list[FileRecord] | None = None,
     business_id: str = "financial_management",
+    baselines: dict[tuple[str, str], dict] | None = None,
 ) -> CheckContext:
     """构造包含重庆主体与全部记录的审核上下文。
 
@@ -74,6 +79,7 @@ def make_context(
         entity_name: 当前主体名称。
         files: 可选的原始材料文件。
         business_id: 当前审核单元的业务标识。
+        baselines: 按业务和变体索引的重庆冻结模板数据。
     """
 
     return CheckContext(
@@ -81,11 +87,314 @@ def make_context(
         files or [],
         records,
         {"CQ001": Entity("CQ001", entity_name)},
-        {},
+        baselines or {},
         {},
         ["CQ001"],
         [{"business_id": business_id, "business_code": "02", "variant_id": "default"}],
     )
+
+
+def test_responsibility_alignment_reports_format_and_cross_list_mismatches() -> None:
+    """责任主体缺公司、使用各级单位或与岗位清单不一致时应分别提示。"""
+
+    capability = build_registry().get("chongqing_responsibility_alignment", 1)
+    assert capability is not None
+    generic = make_record(
+        "matrix",
+        3,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        responsibility="各级单位-财务资产部-总账报表管理",
+    )
+    missing_company = make_record(
+        "matrix",
+        4,
+        measure_id="财务管理-2.业务完整性管控-控制措施01",
+        responsibility="财务资产部-预算管理",
+    )
+    mismatched = make_record(
+        "matrix",
+        5,
+        measure_id="财务管理-3.资金管理-控制措施01",
+        responsibility="重庆供电公司-财务资产部-资金管理",
+    )
+    duty = make_record(
+        "position_duty",
+        8,
+        measure_id="财务管理-3.资金管理-控制措施01",
+        department="综合管理部",
+        position="综合管理",
+    )
+
+    issues = capability.runner(
+        make_context([generic, missing_company, mismatched, duty]),
+        {},
+    )
+
+    assert {issue["evidence"]["issue_type"] for issue in issues} == {
+        "responsibility_generic_company",
+        "responsibility_company_missing",
+        "responsibility_department_mismatch",
+        "responsibility_position_mismatch",
+    }
+    assert {issue["evidence"]["opinion"] for issue in issues} == {
+        "请将责任主体修改为“公司名称-部门名称-岗位名称”的形式",
+        "需在矩阵责任主体中补充公司名称",
+        "请核实岗位责任清单中的部门名称与矩阵责任主体中的部门名称是否一致",
+        "请核实岗位责任清单中的岗位名称与矩阵责任主体中的岗位名称是否一致",
+    }
+
+
+def test_responsibility_alignment_accepts_exact_department_and_position() -> None:
+    """同一措施的公司、部门和岗位结构完整且清单名称一致时应通过。"""
+
+    capability = build_registry().get("chongqing_responsibility_alignment", 1)
+    assert capability is not None
+    matrix = make_record(
+        "matrix",
+        3,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        responsibility="重庆供电公司-财务资产部-总账报表管理",
+    )
+    duty = make_record(
+        "position_duty",
+        8,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        department="财务资产部",
+        position="总账报表管理",
+    )
+
+    assert capability.runner(make_context([matrix, duty]), {}) == []
+
+
+def test_responsibility_alignment_ignores_separators_inside_parentheses() -> None:
+    """括号内组织说明的连字符不得覆盖顶层公司、部门和岗位。"""
+
+    capability = build_registry().get("chongqing_responsibility_alignment", 1)
+    assert capability is not None
+    position = "业务人员（营销服务中心-95598业务管理部-业务人员）"
+    matrix = make_record(
+        "matrix",
+        3,
+        measure_id="营销售电-1.客户服务-控制措施01",
+        responsibility=f"市公司-营销部-{position}",
+    )
+    duty = make_record(
+        "position_duty",
+        8,
+        measure_id="营销售电-1.客户服务-控制措施01",
+        department="营销部",
+        position=position,
+    )
+
+    assert capability.runner(make_context([matrix, duty]), {}) == []
+
+
+def test_responsibility_alignment_keeps_item_separators_inside_parentheses() -> None:
+    """括号内岗位说明的顿号不得被解析为另一个责任主体。"""
+
+    capability = build_registry().get("chongqing_responsibility_alignment", 1)
+    assert capability is not None
+    position = "膳食管理人员（验收人员、库管人员）"
+    matrix = make_record(
+        "matrix",
+        3,
+        measure_id="物业后勤业务-1.膳食管理-控制措施01",
+        responsibility=f"各级单位-膳食部门-{position}",
+    )
+    duty = make_record(
+        "position_duty",
+        8,
+        measure_id="物业后勤业务-1.膳食管理-控制措施01",
+        department="膳食部门",
+        position=position,
+    )
+
+    issues = capability.runner(make_context([matrix, duty]), {})
+
+    assert [issue["evidence"]["issue_type"] for issue in issues] == [
+        "responsibility_generic_company",
+    ]
+
+
+def test_control_measure_completeness_reports_shortage_by_key_point() -> None:
+    """报送关键控制点的去重措施数少于重庆模板最低数时应提示。"""
+
+    capability = build_registry().get("chongqing_control_measure_completeness", 1)
+    assert capability is not None
+    first = make_record(
+        "matrix",
+        3,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        key_control_point="1.会计主体完整性管控",
+    )
+    duplicate = make_record(
+        "matrix",
+        4,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        key_control_point="1.会计主体完整性管控",
+    )
+    baselines = {
+        ("financial_management", "default"): {
+            "available": True,
+            "matrix_rows": [
+                {
+                    "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "各级单位-财务资产部-总账报表管理",
+                },
+                {
+                    "measure_id": "财务管理-1.会计主体完整性管控-控制措施02",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "各级单位-财务资产部-资产管理",
+                },
+                {
+                    "measure_id": "财务管理-1.会计主体完整性管控-控制措施03",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "市公司-财务资产部-主任",
+                },
+            ],
+        },
+    }
+
+    issues = capability.runner(
+        make_context([first, duplicate], baselines=baselines),
+        {},
+    )
+
+    assert len(issues) == 1
+    assert issues[0]["record"] is first
+    assert issues[0]["evidence"] == {
+        "issue_type": "control_measure_incomplete",
+        "opinion": "请核实该关键控制点下控制措施是否完整",
+        "business_id": "financial_management",
+        "key_point": [1],
+        "expected_count": 2,
+        "actual_count": 1,
+    }
+
+
+def test_control_measure_completeness_accepts_expected_measure_count() -> None:
+    """报送措施数达到模板中各级单位最低数量时应通过。"""
+
+    capability = build_registry().get("chongqing_control_measure_completeness", 1)
+    assert capability is not None
+    rows = [
+        make_record(
+            "matrix",
+            row_number,
+            measure_id=f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+            key_control_point="1.会计主体完整性管控",
+        )
+        for row_number, index in ((3, 1), (4, 2))
+    ]
+    baselines = {
+        ("financial_management", "default"): {
+            "available": True,
+            "matrix_rows": [
+                {
+                    "measure_id": f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "各级单位-财务资产部-总账报表管理",
+                }
+                for index in (1, 2)
+            ],
+        },
+    }
+
+    assert capability.runner(make_context(rows, baselines=baselines), {}) == []
+
+
+def test_control_measure_completeness_counts_each_entity_independently() -> None:
+    """多个主体同时审核时，一个主体的完整措施不得掩盖另一个主体的缺项。"""
+
+    capability = build_registry().get("chongqing_control_measure_completeness", 1)
+    assert capability is not None
+    rows = [
+        make_record(
+            "matrix",
+            row_number,
+            measure_id=f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+            key_control_point="1.会计主体完整性管控",
+        )
+        for row_number, index in ((3, 1), (4, 2))
+    ]
+    incomplete = make_record(
+        "matrix",
+        5,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        key_control_point="1.会计主体完整性管控",
+    )
+    incomplete.entity_code = "CQ002"
+    baselines = {
+        ("financial_management", "default"): {
+            "available": True,
+            "matrix_rows": [
+                {
+                    "measure_id": f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "各级单位-财务资产部-总账报表管理",
+                }
+                for index in (1, 2)
+            ],
+        },
+    }
+    context = make_context([*rows, incomplete], baselines=baselines)
+    context.scope_entity_codes = ["CQ001", "CQ002"]
+
+    issues = capability.runner(context, {})
+
+    assert len(issues) == 1
+    assert issues[0]["record"] is incomplete
+    assert issues[0]["evidence"]["actual_count"] == 1
+
+
+def test_control_measure_completeness_isolates_business_and_variant() -> None:
+    """其他业务或变体的控制措施不得补足当前业务变体的措施数量。"""
+
+    capability = build_registry().get("chongqing_control_measure_completeness", 1)
+    assert capability is not None
+    current = make_record(
+        "matrix",
+        3,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施01",
+        key_control_point="1.会计主体完整性管控",
+    )
+    other_business = make_record(
+        "matrix",
+        4,
+        business_id="contract_management",
+        measure_id="财务管理-1.会计主体完整性管控-控制措施02",
+        key_control_point="1.会计主体完整性管控",
+    )
+    other_variant = make_record(
+        "matrix",
+        5,
+        measure_id="财务管理-1.会计主体完整性管控-控制措施02",
+        key_control_point="1.会计主体完整性管控",
+    )
+    other_variant.variant_id = "special"
+    baselines = {
+        ("financial_management", "default"): {
+            "available": True,
+            "matrix_rows": [
+                {
+                    "measure_id": f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+                    "key_control_point": "1.会计主体完整性管控",
+                    "responsibility": "各级单位-财务资产部-总账报表管理",
+                }
+                for index in (1, 2)
+            ],
+        },
+    }
+
+    issues = capability.runner(
+        make_context([current, other_business, other_variant], baselines=baselines),
+        {},
+    )
+
+    assert len(issues) == 1
+    assert issues[0]["record"] is current
+    assert issues[0]["evidence"]["actual_count"] == 1
 
 
 def test_system_control_consistency_reports_missing_and_mismatched_rows() -> None:
@@ -541,11 +850,50 @@ def test_current_release_covers_actual_chongqing_business_directories() -> None:
     assert "检修运维成本项目管理" in aliases["maintenance_cost_project_management"]
 
 
+def test_updated_release_freezes_new_rules_and_all_chongqing_templates() -> None:
+    """1.9.26 必须冻结新来源、新增两条规则并登记全部重庆模板。"""
+
+    pack = load_pack(UPDATED_RELEASE)
+    rule_ids = {rule["rule_id"] for rule in pack["rules"]}
+    templates = {
+        variant["template"]["path"]: variant["template"]["sha256"]
+        for business in pack["baseline_registry"]["businesses"]
+        for variant in business["variants"]
+    }
+    template_root = ROOT / "baselines/chongqing/templates"
+    actual_templates = {
+        str(path.relative_to(template_root))
+        for path in template_root.rglob("*")
+        if path.suffix.lower() in {".xls", ".xlsx"}
+    }
+
+    assert pack["manifest"]["version"] == "1.9.26"
+    assert pack["manifest"]["source_document_sha256"] == sha256_file(UPDATED_SOURCE)
+    assert rule_ids.issuperset({
+        "chongqing.responsibility_alignment",
+        "chongqing.control_measure_completeness",
+    })
+    assert set(templates) == actual_templates
+    assert len(templates) == 29
+    assert all(sha256_file(template_root / path) == digest for path, digest in templates.items())
+
+
+def test_updated_release_identifies_every_chongqing_business_directory_uniquely() -> None:
+    """29 个重庆业务目录必须分别匹配唯一稳定业务标识。"""
+
+    pack = load_pack(UPDATED_RELEASE)
+    for business in pack["baseline_registry"]["businesses"]:
+        template_path = business["variants"][0]["template"]["path"]
+        identity = identify_business(Path(template_path), pack["baseline_registry"])
+
+        assert identity.business_id == business["business_id"]
+
+
 def test_current_release_uses_confirmed_scan_and_preprocessing_pipeline() -> None:
     """当前重庆发布包必须进入新版扫描和基准预处理流程。"""
-    assert "1.9.25" in CONFIRMED_RULE_VERSIONS
-    assert "1.9.25" in PREPROCESSING_RULE_VERSIONS
-    assert "1.9.25" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+    assert "1.9.26" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.26" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.26" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 
 
 def test_workbook_title_fallback_satisfies_chongqing_material_naming() -> None:
@@ -610,7 +958,7 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.25")):
+    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.26")):
         manifest = json.loads(
             (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
         )
@@ -628,6 +976,22 @@ def test_repository_region_index_pins_both_release_hashes() -> None:
         "chongqing.power_supply_branch_key_points",
         17,
         {"measure_id": "29.1"},
+    ),
+    (
+        "chongqing.responsibility_alignment",
+        19,
+        {
+            "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
+            "responsibility": "各级单位-财务资产部-总账报表管理",
+        },
+    ),
+    (
+        "chongqing.control_measure_completeness",
+        20,
+        {
+            "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
+            "key_control_point": "1.会计主体完整性管控",
+        },
     ),
 ])
 def test_current_chongqing_special_opinion_includes_rule_number(
@@ -681,12 +1045,28 @@ def test_current_chongqing_special_opinion_includes_rule_number(
         business_id="financial_management",
     )
 
+    baselines = {}
+    if rule_id == "chongqing.control_measure_completeness":
+        baselines = {
+            ("financial_management", "default"): {
+                "available": True,
+                "matrix_rows": [
+                    {
+                        "measure_id": f"财务管理-1.会计主体完整性管控-控制措施0{index}",
+                        "key_control_point": "1.会计主体完整性管控",
+                        "responsibility": "各级单位-财务资产部-总账报表管理",
+                    }
+                    for index in (1, 2)
+                ],
+            },
+        }
+
     findings, _ = run_engine(
         pack,
         build_registry(),
         [file],
         {"CQ001": Entity("CQ001", "国网重庆市电力公司某供电分公司")},
-        {},
+        baselines,
         run_id="chongqing-rule-17-number-test",
     )
 
@@ -702,6 +1082,28 @@ def test_verify_only_is_deterministic_and_does_not_activate_release() -> None:
     before = active_path.read_bytes()
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools/publish_rules_1012_chongqing.py"), "--verify-only"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
+    assert active_path.read_bytes() == before
+
+
+def test_updated_release_is_deterministic_and_does_not_activate_release() -> None:
+    """重庆 1.9.26 必须可重复构建，复验时不得改动全局激活指针。"""
+
+    active_path = ROOT / "rulepacks/active.json"
+    before = active_path.read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/publish_rules_1012_chongqing_1926.py"),
+            "--verify-only",
+        ],
         cwd=ROOT,
         text=True,
         capture_output=True,
