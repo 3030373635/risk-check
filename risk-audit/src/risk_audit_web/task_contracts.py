@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, TypeVar
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 TASK_STATUSES = frozenset({
     "running",
     "cancelling",
@@ -56,6 +56,10 @@ class TaskRequest:
     schema_version: str
     task_id: str
     display_name: str
+    region_code: str
+    region_name: str
+    rulepack_version: str
+    rulepack_content_hash: str
     input_root: str
     output_root: str
     rulepack: str
@@ -130,6 +134,10 @@ class TaskRecord:
     schema_version: str
     task_id: str
     display_name: str
+    region_code: str
+    region_name: str
+    rulepack_version: str
+    rulepack_content_hash: str
     input_root: str
     output_root: str
     created_at: str

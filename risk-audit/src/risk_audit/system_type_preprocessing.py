@@ -24,7 +24,7 @@ SYSTEM_TYPE_SECOND = "二级部署系统"
 SYSTEM_TYPE_THIRD = "三级部署系统"
 SYSTEM_TYPE_VALUES = {SYSTEM_TYPE_FIRST, SYSTEM_TYPE_SECOND, SYSTEM_TYPE_THIRD}
 
-_HUNAN_PROVINCE_NAMES = {
+_PROVINCE_NAMES = {
     "湖南",
     "省公司",
     "湖南电力",
@@ -34,16 +34,31 @@ _HUNAN_PROVINCE_NAMES = {
     "湖南电力公司",
     "湖南省公司",
     "湖南省级单位",
+    "重庆",
+    "重庆市",
+    "重庆电力",
+    "国网重庆市电力有限公司",
+    "国网重庆市电力公司",
+    "重庆市电力公司",
+    "重庆电力公司",
+    "重庆市公司",
+    "重庆市级单位",
 }
 _SUBORDINATE_MARKERS = ("市公司", "县公司", "供电公司", "供电分公司", "分公司", "子公司")
 _HEADQUARTERS_NAMES = ("总部", "国网总部", "国家电网总部", "国家电网有限公司总部")
 _HEADQUARTERS_NEGATIONS = ("非总部", "不属于总部", "不是总部")
-_HUNAN_PROVINCE_MARKERS = (
+_PROVINCE_MARKERS = (
     "国网湖南省电力有限公司",
     "湖南省电力公司",
     "湖南电力公司",
     "湖南省公司",
     "湖南电力",
+    "国网重庆市电力有限公司",
+    "国网重庆市电力公司",
+    "重庆市电力公司",
+    "重庆电力公司",
+    "重庆市公司",
+    "重庆电力",
 )
 _FORMULA_COLUMN_RE = re.compile(r"(?<![A-Za-z0-9_.])(\$?)([A-Z]{1,3})(?=(?:\$?\d+|:|$))")
 
@@ -58,10 +73,13 @@ def classify_system_owner(owner: str) -> str | None:
     value = norm_text(owner)
     if not value:
         return None
+    # 先判定精确的省级名称，“重庆市公司”本身就是省级别名。
+    if value in _PROVINCE_NAMES:
+        return SYSTEM_TYPE_SECOND
     # 所属市县或分子公司不能仅因全称包含“湖南”而误判为省级单位。
     if any(marker in value for marker in _SUBORDINATE_MARKERS):
         return None
-    if value in _HUNAN_PROVINCE_NAMES or any(marker in value for marker in _HUNAN_PROVINCE_MARKERS):
+    if any(marker in value for marker in _PROVINCE_MARKERS):
         return SYSTEM_TYPE_SECOND
     if not any(marker in value for marker in _HEADQUARTERS_NEGATIONS) and any(
         marker in value for marker in _HEADQUARTERS_NAMES

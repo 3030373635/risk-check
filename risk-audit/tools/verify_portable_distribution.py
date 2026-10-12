@@ -17,7 +17,8 @@ if __package__ in (None, ""):
     auditor_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(auditor_root / "src"))
 
-from risk_audit_web.diagnostics import verify_active_rulepack, verify_release_manifest
+from risk_audit_web.diagnostics import verify_release_manifest
+from risk_audit_web.region_profiles import RegionProfileError, load_region_catalog
 
 
 PLATFORM_LAYOUTS = {
@@ -120,6 +121,34 @@ def _verify_web_runtime(runtime_root: Path) -> list[str]:
             continue
         if EXTERNAL_WEB_REFERENCE.search(content):
             errors.append(f"Web 文件包含外部资源引用：{path.relative_to(runtime_root)}")
+    return errors
+
+
+def _verify_region_resources(runtime_root: Path) -> list[str]:
+    """验证地区索引、全部固定规则包及至少一个可用地区。
+
+    Args:
+        runtime_root: 便携发布的 runtime 目录。
+    """
+
+    resources_root = runtime_root / "resources"
+    try:
+        catalog = load_region_catalog(resources_root)
+    except RegionProfileError as error:
+        return [f"地区资源索引无效：{error}"]
+    errors: list[str] = []
+    if not catalog.profiles:
+        errors.append("地区资源索引不得为空")
+    if not any(profile.available for profile in catalog.profiles.values()):
+        errors.append("便携发布中没有可用地区")
+    for profile in catalog.profiles.values():
+        # 业务资源缺失可以只禁用单个地区，但每个索引规则包都必须完整入包。
+        rulepack_errors = [
+            reason
+            for reason in profile.unavailable_reasons
+            if reason.startswith("规则包")
+        ]
+        errors.extend(f"地区 {profile.region_code}：{reason}" for reason in rulepack_errors)
     return errors
 
 
@@ -329,9 +358,7 @@ def verify_distribution(distribution_root: Path, platform_id: str) -> list[str]:
     errors.extend(_verify_launcher(distribution_root, platform_id))
     report = verify_release_manifest(distribution_root)
     errors.extend(item.message for item in report.items if not item.ok)
-    rulepack_item = verify_active_rulepack(runtime_root / "resources/rulepacks")
-    if not rulepack_item.ok:
-        errors.append(rulepack_item.message)
+    errors.extend(_verify_region_resources(runtime_root))
     errors.extend(_verify_web_runtime(runtime_root))
     errors.extend(_verify_licenses(runtime_root))
     errors.extend(_verify_api_output_contract(distribution_root))

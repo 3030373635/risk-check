@@ -17,8 +17,14 @@ import zipfile
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from risk_audit_web.region_profiles import (
+    RegionProfileError,
+    load_region_catalog,
+    verify_rulepack_release,
+)
 
-RELEASE_NAME = "风控矩阵审核器-v2.1.3"
+
+RELEASE_NAME = "风控矩阵审核器-v2.2.0"
 PLATFORM_LAUNCHERS = {
     "windows-x64": "启动审核器.bat",
     "macos-arm64": "启动审核器.command",
@@ -68,22 +74,69 @@ def _copy_tree(source: Path, destination: Path, *, ignored_names: set[str] | Non
     shutil.copytree(source, destination, symlinks=True, ignore=ignore)
 
 
-def _active_rulepack_version(rulepacks_root: Path) -> str:
-    """读取活动规则版本；rulepacks_root 为规则根目录。"""
+def _load_region_index(index_path: Path) -> dict[str, object]:
+    """读取待发布的地区索引根对象。
+
+    Args:
+        index_path: 仓库中的地区索引路径。
+    """
+
     try:
-        payload = json.loads((rulepacks_root / "active.json").read_text(encoding="utf-8"))
-        version = payload["version"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
-        raise BuildError(f"活动规则配置无法读取：{error}") from error
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise BuildError(f"地区资源索引无法读取：{index_path}；{error}") from error
     if (
-        not isinstance(version, str)
-        or not version.strip()
-        or version in {".", ".."}
-        or "/" in version
-        or "\\" in version
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != "1.0"
+        or not isinstance(payload.get("regions"), list)
+        or not payload["regions"]
     ):
-        raise BuildError(f"活动规则版本无效：{version!r}")
-    return version
+        raise BuildError(f"地区资源索引格式无效：{index_path}")
+    return payload
+
+
+def _existing_region_source(
+    project_root: Path,
+    auditor_root: Path,
+    relative_path: str,
+    region_code: str,
+) -> Path | None:
+    """定位地区索引引用的现有仓库资源。
+
+    Args:
+        project_root: 仓库根目录。
+        auditor_root: risk-audit 产品目录。
+        relative_path: 相对 runtime/resources 的 POSIX 路径。
+        region_code: 稳定地区代码。
+    """
+
+    relative = Path(*relative_path.split("/"))
+    candidates = [auditor_root / relative, project_root / relative]
+    if region_code == "hunan":
+        if relative_path.startswith("entities/hunan/"):
+            candidates.append(project_root / "reference-data" / relative.name)
+        elif relative_path == "baselines/hunan/templates":
+            candidates.append(project_root / "templates")
+        elif relative_path == "configs/hunan/audit-config.json":
+            candidates.append(project_root / "audit-config.json")
+    return next((path for path in candidates if path.exists()), None)
+
+
+def _copy_optional_region_resource(source: Path | None, destination: Path) -> None:
+    """复制已提供的地区业务资源，缺失时保持该地区未就绪。
+
+    Args:
+        source: 已定位的文件或目录，未提供时为空。
+        destination: 便携发布中的目标路径。
+    """
+
+    if source is None:
+        return
+    if source.is_dir():
+        _copy_tree(source, destination)
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 
 
 def _copy_project_sources(auditor_root: Path, distribution_root: Path) -> None:
@@ -100,38 +153,60 @@ def _copy_project_sources(auditor_root: Path, distribution_root: Path) -> None:
 
 
 def _copy_runtime_resources(project_root: Path, auditor_root: Path, distribution_root: Path) -> None:
-    """复制规则、配置、基准和主体清单；参数为项目与发布路径。"""
-    source_rulepacks = auditor_root / "rulepacks"
-    version = _active_rulepack_version(source_rulepacks)
-    target_rulepacks = distribution_root / "runtime/resources/rulepacks"
-    target_rulepacks.mkdir(parents=True)
-    shutil.copy2(source_rulepacks / "active.json", target_rulepacks / "active.json")
-    _copy_tree(
-        source_rulepacks / "releases" / version,
-        target_rulepacks / "releases" / version,
-    )
-    config_file = project_root / "audit-config.json"
-    if not config_file.is_file():
-        raise BuildError(f"审核配置缺失：{config_file}")
-    shutil.copy2(config_file, target_rulepacks / "audit-config.json")
+    """按地区索引复制规则包及已提供的隔离业务资源。
 
-    source_templates = project_root / "templates"
-    entity_name = "会计主体清单20260907.xlsx"
-    # 模板与会计主体基础数据分别从独立目录发布。
-    entity_file = project_root / "reference-data" / entity_name
-    if not entity_file.is_file():
-        raise BuildError(f"会计主体清单缺失：{entity_file}")
-    baseline_target = distribution_root / "runtime/resources/baselines/templates"
-    baseline_target.mkdir(parents=True)
-    for path in sorted(source_templates.rglob("*"), key=lambda item: item.as_posix()):
-        if not path.is_file() or path.name == ".DS_Store":
-            continue
-        target = baseline_target / path.relative_to(source_templates)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
-    entity_target = distribution_root / "runtime/resources/entities" / entity_name
-    entity_target.parent.mkdir(parents=True)
-    shutil.copy2(entity_file, entity_target)
+    Args:
+        project_root: 仓库根目录。
+        auditor_root: risk-audit 产品目录。
+        distribution_root: 便携发布根目录。
+    """
+
+    source_rulepacks = auditor_root / "rulepacks"
+    source_index = auditor_root / "regions/index.json"
+    index = _load_region_index(source_index)
+    resources_root = distribution_root / "runtime/resources"
+    target_index = resources_root / "regions/index.json"
+    target_index.parent.mkdir(parents=True)
+    shutil.copy2(source_index, target_index)
+
+    try:
+        # 复制任何索引资源前先执行严格字段和路径边界校验。
+        source_catalog = load_region_catalog(resources_root)
+    except RegionProfileError as error:
+        raise BuildError(f"发布地区资源索引无效：{error}") from error
+
+    copied_versions: set[str] = set()
+    for profile in source_catalog.profiles.values():
+        source_release = source_rulepacks / "releases" / profile.rulepack_version
+        reasons = verify_rulepack_release(
+            source_release,
+            profile.rulepack_version,
+            profile.rulepack_content_hash,
+            profile.region_code,
+            profile.region_name,
+        )
+        if reasons:
+            raise BuildError(f"地区 {profile.region_code} 规则包不可发布：{'|'.join(reasons)}")
+        if profile.rulepack_version not in copied_versions:
+            _copy_tree(source_release, profile.rulepack)
+            copied_versions.add(profile.rulepack_version)
+
+        for destination in (profile.entity_file, profile.baseline_root, profile.config_file):
+            relative_path = destination.relative_to(resources_root).as_posix()
+            source = _existing_region_source(
+                project_root,
+                auditor_root,
+                relative_path,
+                profile.region_code,
+            )
+            _copy_optional_region_resource(source, destination)
+
+    try:
+        catalog = load_region_catalog(resources_root)
+    except RegionProfileError as error:
+        raise BuildError(f"发布地区资源索引无效：{error}") from error
+    if not any(profile.available for profile in catalog.profiles.values()):
+        raise BuildError("发布包中没有可用地区")
 
 
 def _locked_libreoffice_version(inputs: BuildInputs) -> str:
@@ -291,7 +366,7 @@ def build_release_manifest(distribution_root: Path) -> dict[str, object]:
             "size": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
         })
-    return {"schema_version": "1.0", "app_version": "2.1.3", "resources": resources}
+    return {"schema_version": "1.0", "app_version": "2.2.0", "resources": resources}
 
 
 def _remove_runtime_caches(python_root: Path) -> None:

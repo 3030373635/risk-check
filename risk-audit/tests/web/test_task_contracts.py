@@ -10,9 +10,13 @@ import pytest
 def request_payload(tmp_path: Path) -> dict:
     """构造完整请求字典；tmp_path 为绝对路径根。"""
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "task_id": "20260924-103015-a1b2",
-        "display_name": "第一批资料",
+        "display_name": "重庆 第一批资料",
+        "region_code": "chongqing",
+        "region_name": "重庆",
+        "rulepack_version": "1.9.22",
+        "rulepack_content_hash": "a" * 64,
         "input_root": str(tmp_path / "input"),
         "output_root": str(tmp_path / "output"),
         "rulepack": str(tmp_path / "runtime/resources/rulepacks/releases/1.9.19"),
@@ -45,6 +49,24 @@ def test_task_request_reports_missing_required_field(tmp_path: Path) -> None:
         TaskRequest.from_dict(payload)
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    ["region_code", "region_name", "rulepack_version", "rulepack_content_hash"],
+)
+def test_task_request_requires_pinned_region_fields(
+    tmp_path: Path,
+    field_name: str,
+) -> None:
+    """地区固定字段缺一不可；参数为测试根和待删除字段名。"""
+    from risk_audit_web.task_contracts import ContractError, TaskRequest
+
+    payload = request_payload(tmp_path)
+    payload.pop(field_name)
+
+    with pytest.raises(ContractError, match=field_name):
+        TaskRequest.from_dict(payload)
+
+
 def test_task_request_rejects_relative_paths(tmp_path: Path) -> None:
     """Worker 请求使用相对路径会依赖 cwd，必须在解析时拒绝。"""
     from risk_audit_web.task_contracts import ContractError, TaskRequest
@@ -61,7 +83,7 @@ def test_task_state_accepts_only_documented_statuses() -> None:
     from risk_audit_web.task_contracts import ContractError, TaskState
 
     payload = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "task_id": "task-1",
         "status": "queued",
         "stage": "startup",
@@ -88,7 +110,7 @@ def test_task_state_round_trip_keeps_progress_context() -> None:
     from risk_audit_web.task_contracts import TaskState
 
     state = TaskState(
-        schema_version="1.0",
+        schema_version="2.0",
         task_id="task-1",
         status="running",
         stage="audit",
@@ -114,12 +136,19 @@ def test_task_record_has_no_file_state_path(tmp_path: Path) -> None:
     from risk_audit_web.task_contracts import TaskRecord
 
     record = TaskRecord(
-        schema_version="1.0",
+        schema_version="2.0",
         task_id="task-1",
-        display_name="资料",
+        display_name="重庆 资料",
+        region_code="chongqing",
+        region_name="重庆",
+        rulepack_version="1.9.22",
+        rulepack_content_hash="a" * 64,
         input_root=str((tmp_path / "input").resolve()),
         output_root=str((tmp_path / "output").resolve()),
         created_at="2026-09-30T10:00:00+08:00",
     )
 
     assert "state_path" not in record.to_dict()
+    assert record.region_code == "chongqing"
+    assert record.region_name == "重庆"
+    assert record.rulepack_version == "1.9.22"

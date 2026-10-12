@@ -1,6 +1,8 @@
 "use strict";
 
 let systemStatus = null;
+// 缓存地区元数据，用于核对创建任务响应是否串区。
+let regionProfiles = new Map();
 // 保留运行任务数量供安全退出流程使用，不再依赖侧边栏 DOM。
 let runningTaskCount = 0;
 
@@ -44,7 +46,7 @@ async function loadSystemStatus() {
     document.getElementById("service-status-dot").classList.add("online");
     document.getElementById("service-status-text").textContent = "本机服务运行正常";
     document.getElementById("app-version").textContent = systemStatus.app_version || "不可用";
-    document.getElementById("rule-version").textContent = systemStatus.rule_version || "不可用";
+    document.getElementById("available-region-count").textContent = String(systemStatus.available_region_count ?? 0);
     runningTaskCount = Number(systemStatus.running_count || 0);
     const list = document.getElementById("diagnostic-list");
     list.replaceChildren(...(systemStatus.diagnostics || []).map(diagnosticItem));
@@ -60,7 +62,57 @@ async function loadSystemStatus() {
 /** 根据表单与运行资源刷新创建按钮；无参数。 */
 function updateCreateButton() {
   const hasInput = Boolean(document.getElementById("input-directory").value);
-  document.getElementById("create-task-button").disabled = !(hasInput && systemStatus?.can_create_task);
+  const hasRegion = Boolean(document.getElementById("region-code").value);
+  document.getElementById("create-task-button").disabled = !(hasInput && hasRegion && systemStatus?.can_create_task);
+}
+
+/** 渲染地区选择项；regions 为后端公开地区数组。 */
+function renderRegionOptions(regions) {
+  const select = document.getElementById("region-code");
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "请选择审核地区";
+  const options = [placeholder];
+  const unavailable = [];
+  regionProfiles = new Map(regions.map((region) => [region.region_code, region]));
+  for (const region of regions) {
+    const option = document.createElement("option");
+    option.value = region.region_code;
+    option.textContent = region.available ? region.region_name : `${region.region_name}（资源未就绪）`;
+    option.disabled = !region.available;
+    options.push(option);
+    if (!region.available) {
+      unavailable.push(`${region.region_name}：${region.unavailable_reasons.join("；")}`);
+    }
+  }
+  select.replaceChildren(...options);
+  document.getElementById("region-availability").textContent = unavailable.length
+    ? unavailable.join("；")
+    : "请选择本次任务适用的地区规则。";
+  updateCreateButton();
+}
+
+/** 读取地区集合并更新选择控件；无参数。 */
+async function loadRegions() {
+  try {
+    const payload = await apiRequest("/api/v1/regions");
+    renderRegionOptions(payload.regions || []);
+  } catch (error) {
+    document.getElementById("region-availability").textContent = "地区规则读取失败";
+    if (error.message !== "SESSION_EXPIRED") showToast(error.message);
+    updateCreateButton();
+  }
+}
+
+/** 根据已选地区和输入目录刷新输出路径；无参数。 */
+async function refreshOutputPreview() {
+  const inputRoot = document.getElementById("input-directory").value;
+  const regionCode = document.getElementById("region-code").value;
+  if (!inputRoot || !regionCode) return;
+  const preview = await apiRequest("/api/v1/output-path-previews", {
+    method: "POST", body: JSON.stringify({ input_root: inputRoot, region_code: regionCode }),
+  });
+  document.getElementById("output-path-preview").value = preview.output_root;
 }
 
 /** 打开本机目录选择器并预览输出路径；无参数。 */
@@ -71,10 +123,7 @@ async function selectInputDirectory() {
     const selection = await apiRequest("/api/v1/input-directory-selections", { method: "POST", body: "{}" });
     if (!selection.selected) return;
     document.getElementById("input-directory").value = selection.path;
-    const preview = await apiRequest("/api/v1/output-path-previews", {
-      method: "POST", body: JSON.stringify({ input_root: selection.path }),
-    });
-    document.getElementById("output-path-preview").value = preview.output_root;
+    await refreshOutputPreview();
   } catch (error) {
     if (error.message !== "SESSION_EXPIRED") showToast(error.message);
   } finally {
@@ -89,12 +138,22 @@ async function createTask(event) {
   const button = document.getElementById("create-task-button");
   button.disabled = true;
   try {
+    const selectedRegionCode = document.getElementById("region-code").value;
+    const selectedRegion = regionProfiles.get(selectedRegionCode);
+    if (!selectedRegion?.available) throw new Error("所选地区资源不可用，请刷新后重试");
     const task = await apiRequest("/api/v1/tasks", {
       method: "POST",
       body: JSON.stringify({
         input_root: document.getElementById("input-directory").value,
+        region_code: selectedRegionCode,
       }),
     });
+    if (
+      task.region_code !== selectedRegionCode
+      || task.rulepack_version !== selectedRegion.rulepack_version
+    ) {
+      throw new Error("任务响应的地区或规则版本与本次选择不一致");
+    }
     document.getElementById("output-path-preview").value = task.output_root;
     showToast("任务已创建，审核正在后台运行");
     showTaskDetail(task.task_id);
@@ -236,6 +295,10 @@ function bindEvents() {
   document.getElementById("menu-button").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("open"));
   document.getElementById("refresh-tasks-button").addEventListener("click", loadTasks);
   document.getElementById("input-directory-button").addEventListener("click", selectInputDirectory);
+  document.getElementById("region-code").addEventListener("change", () => {
+    updateCreateButton();
+    void refreshOutputPreview().catch((error) => showToast(error.message));
+  });
   document.getElementById("create-task-form").addEventListener("submit", createTask);
   document.getElementById("cancel-task-button").addEventListener("click", showCancelTaskModal);
   document.getElementById("confirm-cancel-task-button").addEventListener("click", requestTaskCancellation);
@@ -256,6 +319,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initializeSessionToken();
   bindEvents();
   await loadSystemStatus();
+  await loadRegions();
   startTasksPolling();
 });
 

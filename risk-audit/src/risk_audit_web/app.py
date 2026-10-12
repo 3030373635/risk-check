@@ -133,6 +133,7 @@ def run_primary_instance(
     portable: bool,
 ) -> int:
     """运行主实例；参数为便携路径、Worker Python、实例锁和发布模式。"""
+    from risk_audit_web.api.regions import router as regions_router
     from risk_audit_web.api.system import router as system_router
     from risk_audit_web.api.tasks import router as tasks_router
     from risk_audit_web.directory_picker import DirectoryPicker
@@ -208,7 +209,7 @@ def run_primary_instance(
             SecuritySettings(session.token, session.port),
             controller,
             resolve_static_root(paths, portable=portable),
-            routers=(system_router, tasks_router),
+            routers=(system_router, regions_router, tasks_router),
         )
         app.state.services = services
         Thread(target=_open_browser_when_ready, args=(session,), daemon=True).start()

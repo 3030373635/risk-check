@@ -19,7 +19,7 @@ def create_task(tmp_path: Path, task_id: str = "task-1", status: str = "running"
     record = repository.create_task(
         request,
         state,
-        TaskEvent("1.0", task_id, "created", request.created_at, {}),
+        TaskEvent("2.0", task_id, "created", request.created_at, {}),
     )
     return repository, record
 

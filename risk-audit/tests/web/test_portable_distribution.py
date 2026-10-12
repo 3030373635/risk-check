@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
+import shutil
 import sys
 from types import SimpleNamespace
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def write_file(path: Path, content: bytes) -> Path:
@@ -130,23 +134,43 @@ def test_binary_architectures_reads_windows_dll(tmp_path: Path) -> None:
 
 
 def _write_rulepack(root: Path) -> None:
-    """创建有效规则包；root 为发布根。"""
-    rulepacks = root / "runtime/resources/rulepacks"
-    rule = write_file(rulepacks / "releases/2.0.0/rules/R01.json", b'{"id":"R01"}\n')
-    rule_hash = hashlib.sha256(rule.read_bytes()).hexdigest()
-    content_hash = hashlib.sha256(json.dumps(
-        {"rules/R01.json": rule_hash},
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()).hexdigest()
-    write_file(rulepacks / "active.json", json.dumps({
-        "version": "2.0.0", "content_hash": content_hash,
-    }).encode())
-    write_file(rulepacks / "releases/2.0.0/manifest.json", json.dumps({
-        "version": "2.0.0", "status": "released", "content_hash": content_hash,
-    }).encode())
-    write_file(rulepacks / "audit-config.json", b"{}")
+    """创建湖南、重庆两个有效规则包及地区索引。
+
+    Args:
+        root: 测试便携发布根目录。
+    """
+
+    hashes: dict[str, str] = {}
+    for version in ("1.9.21", "1.9.22"):
+        release = root / f"runtime/resources/rulepacks/releases/{version}"
+        shutil.copytree(ROOT / f"rulepacks/releases/{version}", release)
+        manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+        hashes[version] = str(manifest["content_hash"])
+    write_file(root / "runtime/resources/regions/index.json", json.dumps({
+        "schema_version": "1.0",
+        "regions": [
+            {
+                "region_code": "hunan",
+                "region_name": "湖南",
+                "rulepack_version": "1.9.21",
+                "rulepack_content_hash": hashes["1.9.21"],
+                "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
+                "baseline_root": "baselines/hunan/templates",
+                "config_file": "configs/hunan/audit-config.json",
+                "enabled": True,
+            },
+            {
+                "region_code": "chongqing",
+                "region_name": "重庆",
+                "rulepack_version": "1.9.22",
+                "rulepack_content_hash": hashes["1.9.22"],
+                "entity_file": "entities/chongqing/会计主体清单.xlsx",
+                "baseline_root": "baselines/chongqing/templates",
+                "config_file": "configs/chongqing/audit-config.json",
+                "enabled": True,
+            },
+        ],
+    }, ensure_ascii=False).encode())
 
 
 def _write_web_runtime(root: Path) -> None:
@@ -232,8 +256,9 @@ def make_valid_distribution(tmp_path: Path, platform_id: str) -> Path:
     write_file(root / "使用说明.md", b"guide")
     (root / "data").mkdir(parents=True)
     (root / "outputs").mkdir()
-    write_file(root / "runtime/resources/baselines/templates/基准.xlsx", b"baseline")
-    write_file(root / "runtime/resources/entities/会计主体清单20260907.xlsx", b"entity")
+    write_file(root / "runtime/resources/baselines/hunan/templates/基准.xlsx", b"baseline")
+    write_file(root / "runtime/resources/entities/hunan/会计主体清单20260907.xlsx", b"entity")
+    write_file(root / "runtime/resources/configs/hunan/audit-config.json", b"{}")
     _write_rulepack(root)
     _write_web_runtime(root)
     write_file(root / "runtime/licenses/Python.txt", b"license")

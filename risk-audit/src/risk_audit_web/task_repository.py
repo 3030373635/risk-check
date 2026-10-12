@@ -21,7 +21,7 @@ from risk_audit_web.task_contracts import (
 )
 
 
-DATABASE_VERSION = 1
+DATABASE_VERSION = 2
 BUSY_TIMEOUT_MILLISECONDS = 10_000
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "cancelled", "interrupted"})
 ACTIVE_STATUSES = TASK_STATUSES - TERMINAL_STATUSES
@@ -143,7 +143,7 @@ class TaskRepository:
 
     @staticmethod
     def _create_schema(connection: sqlite3.Connection) -> None:
-        """创建第一版表和索引；connection 为已打开的数据库连接。"""
+        """创建当前版表和索引；connection 为已打开的数据库连接。"""
         statuses = ", ".join(f"'{status}'" for status in sorted(TASK_STATUSES))
         # 请求、状态和取消标志同处一行，可通过字段级 UPDATE 避免并发覆盖。
         connection.executescript(
@@ -153,6 +153,10 @@ class TaskRepository:
                 task_id TEXT PRIMARY KEY,
                 schema_version TEXT NOT NULL,
                 display_name TEXT NOT NULL,
+                region_code TEXT NOT NULL,
+                region_name TEXT NOT NULL,
+                rulepack_version TEXT NOT NULL,
+                rulepack_content_hash TEXT NOT NULL,
                 input_root TEXT NOT NULL,
                 output_root TEXT NOT NULL UNIQUE,
                 rulepack TEXT NOT NULL,
@@ -201,6 +205,7 @@ class TaskRepository:
         required_columns = {
             "tasks": {
                 "task_id", "schema_version", "display_name", "input_root", "output_root",
+                "region_code", "region_name", "rulepack_version", "rulepack_content_hash",
                 "rulepack", "entity_file", "baseline_root", "config_file", "soffice_path",
                 "created_at", "status", "stage", "completed_units", "total_units",
                 "progress_percent", "current_entity", "current_business", "current_file",
@@ -249,8 +254,10 @@ class TaskRepository:
         details_json = json.dumps(event.details, ensure_ascii=False, sort_keys=True)
         values = (
             request.task_id, request.schema_version, request.display_name, request.input_root,
-            request.output_root, request.rulepack, request.entity_file, request.baseline_root,
-            request.config_file, request.soffice_path, request.created_at, state.status,
+            request.region_code, request.region_name, request.rulepack_version,
+            request.rulepack_content_hash, request.output_root, request.rulepack,
+            request.entity_file, request.baseline_root, request.config_file,
+            request.soffice_path, request.created_at, state.status,
             state.stage, state.completed_units, state.total_units, state.progress_percent,
             state.current_entity, state.current_business, state.current_file, state.worker_pid,
             state.started_at, state.heartbeat_at, state.message, state.error_code, summary_json,
@@ -261,12 +268,13 @@ class TaskRepository:
                 connection.execute(
                     """
                     INSERT INTO tasks (
-                        task_id, schema_version, display_name, input_root, output_root, rulepack,
-                        entity_file, baseline_root, config_file, soffice_path, created_at, status,
-                        stage, completed_units, total_units, progress_percent, current_entity,
+                        task_id, schema_version, display_name, input_root, region_code, region_name,
+                        rulepack_version, rulepack_content_hash, output_root, rulepack, entity_file,
+                        baseline_root, config_file, soffice_path, created_at, status, stage,
+                        completed_units, total_units, progress_percent, current_entity,
                         current_business, current_file, worker_pid, started_at, heartbeat_at,
                         message, error_code, result_summary_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
@@ -517,6 +525,10 @@ class TaskRepository:
             schema_version=request.schema_version,
             task_id=request.task_id,
             display_name=request.display_name,
+            region_code=request.region_code,
+            region_name=request.region_name,
+            rulepack_version=request.rulepack_version,
+            rulepack_content_hash=request.rulepack_content_hash,
             input_root=request.input_root,
             output_root=request.output_root,
             created_at=request.created_at,
@@ -534,6 +546,10 @@ class TaskRepository:
             schema_version=row["schema_version"],
             task_id=row["task_id"],
             display_name=row["display_name"],
+            region_code=row["region_code"],
+            region_name=row["region_name"],
+            rulepack_version=row["rulepack_version"],
+            rulepack_content_hash=row["rulepack_content_hash"],
             input_root=row["input_root"],
             output_root=row["output_root"],
             rulepack=row["rulepack"],

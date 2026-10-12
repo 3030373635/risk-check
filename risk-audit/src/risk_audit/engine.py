@@ -51,6 +51,16 @@ def run_engine(pack: dict[str, Any], registry: CapabilityRegistry, files: list[F
                          for file in files if file.entity_code not in entities and 'entity_identity' in file.preservation})
     resources = {"carrier_aliases": pack.get("carrier_aliases", {}), "roles_and_positions": pack.get("roles_and_positions", {}), "entity_aliases": pack.get("entity_aliases", {}), "field_aliases": pack.get("field_aliases", {}), "terminology": pack.get("terminology", {})}
     resources.update({key:pack.get(key,{}) for key in ('semantic_lexicon','semantic_config','_semantic_runtime','parser_policy','responsibility_applicability')})
+    resources.update({
+        key: pack[key]
+        for key in (
+            '_entity_business_ids',
+            '_entity_business_files',
+            '_current_business_id',
+            '_entity_completeness_pass',
+        )
+        if key in pack
+    })
     if '_submitted_entity_codes' in pack:
         # 只传递主体报送元数据，不引入其他业务的文件内容或明细记录。
         resources['submitted_entity_codes'] = pack['_submitted_entity_codes']

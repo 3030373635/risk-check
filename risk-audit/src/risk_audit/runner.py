@@ -45,13 +45,14 @@ from risk_audit.progress import (
 CONFIRMED_RULE_VERSIONS = frozenset({
     '1.8.0', '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6',
     '1.9.7', '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14',
-    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21',
+    '1.9.15', '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22',
 })
 PREPROCESSING_RULE_VERSIONS = frozenset({
     '1.9.0', '1.9.1', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7',
     '1.9.8', '1.9.9', '1.9.10', '1.9.11', '1.9.12', '1.9.13', '1.9.14', '1.9.15',
-    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21',
+    '1.9.16', '1.9.17', '1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22',
 })
+ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
 
 
 class BusinessStageError(RuntimeError):
@@ -97,7 +98,7 @@ def preprocess_business_file(
             raise
         except Exception as error:
             raise BusinessStageError('岗位排序预处理', file, error) from error
-    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21'}:
+    if version in {'1.9.18', '1.9.19', '1.9.20', '1.9.21', '1.9.22'}:
         from risk_audit.system_type_preprocessing import preprocess_system_types
 
         try:
@@ -391,12 +392,12 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                                         'sha256': sha256_file(Path(scope_file))})
     # 扫描及范围识别结束后才有真实工作单元总数，之前不得伪造百分比。
     total_units = sum(
-        len(_business_keys(
+        max(1, len(_business_keys(
             scopes[entity_key],
             [file for file in files if ((file.entity_code or '') if scope_file else submission_group(
                 file, input_resolved, pack['baseline_registry'],
             )) == entity_key],
-        ))
+        )))
         for entity_key in scopes
     )
     emit_progress(progress_callback, AuditProgressEvent(
@@ -457,6 +458,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     output_state = OutputState(ownership=dict(previous_ownership), previous_ownership=previous_ownership)
     entity_results: list[dict[str, Any]] = []
     business_results: list[dict[str, Any]] = []
+    completed_audit_units = 0
     # 主体顺序在扫描阶段固定，主体内部的每个业务独立完成解析、审核和输出。
     for index, entity_key in enumerate(entity_keys, 1):
         entity_started = perf_counter()
@@ -471,6 +473,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         logger.info('主体审核开始 [%d/%d]：%s（%s），%d份文件',
                     index, len(entity_keys), entity_name, entity_key, len(group_files))
         unit_keys = _business_keys(scopes[entity_key], group_files)
+        audit_unit_keys = unit_keys or [(ENTITY_COMPLETENESS_BUSINESS_ID, "*", "default")]
         explanation_files = [file for file in group_files if file.material_type == 'explanation']
         group_findings: list[Finding] = []
         group_statuses: list[CheckStatus] = []
@@ -482,27 +485,31 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                          'entity_registry_status': identity['entity_registry_status'],
                          'entity_registry_message': identity['entity_registry_message'],
                          'business_results': group_business_results, 'total_businesses': len(unit_keys)}
-        for unit_index, (business_id, business_code, variant_id) in enumerate(unit_keys, 1):
+        for unit_index, (business_id, business_code, variant_id) in enumerate(audit_unit_keys, 1):
             raise_if_cancelled(cancel_check)
             unit_started = perf_counter()
             unit_report_dir = entity_dir / 'businesses' / f'{unit_index:04d}'
             # 主体和业务编号已足以隔离临时文件，无需在工作区重复报告目录层级。
             unit_work_dir = work_root / f'e{index:04d}-b{unit_index:04d}'
-            unit_label = business_code or '未识别'
+            unit_label = (
+                '主体完整性'
+                if business_id == ENTITY_COMPLETENESS_BUSINESS_ID
+                else business_code or '未识别'
+            )
             if variant_id != 'default':
                 unit_label += f'（{variant_id}）'
             unit_files = [file for file in group_files if file.material_type != 'explanation'
                           and (file.business_id or file.business_code or '', file.variant_id) == (business_id, variant_id)]
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='audit',
-                completed_units=len(business_results),
+                completed_units=completed_audit_units,
                 total_units=total_units,
                 current_entity=entity_name,
                 current_business=unit_label,
                 current_file=str(unit_files[0].relative_path) if unit_files else None,
                 message='正在执行审核规则',
             ))
-            logger.info('业务%s [%d/%d]：解析%d份文件', unit_label, unit_index, len(unit_keys), len(unit_files))
+            logger.info('业务%s [%d/%d]：解析%d份文件', unit_label, unit_index, len(audit_unit_keys), len(unit_files))
             unit_findings: list[Finding] = []
             unit_statuses: list[CheckStatus] = []
             unit_limitations: list[dict[str, Any]] = []
@@ -542,10 +549,33 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 # 主体是否已报送材料由扫描名单确定；缺报某个业务不能被当作整个主体未报送。
                 local['_submitted_entity_codes'] = [entity_key] if any(
                     file.material_type != 'explanation' for file in group_files) else []
+                # 保留主体级已报业务集，供重庆完整性规则识别整项缺报。
+                local['_entity_business_ids'] = [
+                    business.get('business_id') or business['business_code']
+                    for business in scopes[entity_key]['businesses']
+                ]
+                local['_entity_business_files'] = {
+                    submitted_business_id: [
+                        str(file.relative_path)
+                        for file in group_files
+                        if (file.business_id or file.business_code or '') == submitted_business_id
+                    ]
+                    for submitted_business_id in local['_entity_business_ids']
+                }
+                local['_current_business_id'] = business_id
+                local['_entity_completeness_pass'] = unit_index == 1
                 local['submission_scope'] = {**deepcopy(scopes[entity_key]), 'businesses': [
                     business for business in scopes[entity_key]['businesses']
                     if (business.get('business_id') or business['business_code'], business.get('variant_id', 'default'))
                     == (business_id, variant_id)]}
+                if business_id == ENTITY_COMPLETENESS_BUSINESS_ID:
+                    # 零业务主体仍需执行一次包级完整性规则。
+                    local['submission_scope']['businesses'] = [{
+                        'business_id': ENTITY_COMPLETENESS_BUSINESS_ID,
+                        'business_code': '*',
+                        'variant_id': 'default',
+                        'required': True,
+                    }]
                 # 清单外主体也执行资料完整性检查，分组标识不表示正式会计主体代码。
                 local['submission_scope']['entity_codes'] = [entity_key]
                 # 规则上下文只包含当前业务的矩阵和三清单；主体说明仅用于说明存在性检查。
@@ -649,8 +679,9 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 unit_limitations,
                 unit_warnings,
             )
-            group_business_results.append(unit_result)
-            business_results.append(unit_result)
+            if business_id != ENTITY_COMPLETENESS_BUSINESS_ID:
+                group_business_results.append(unit_result)
+                business_results.append(unit_result)
             group_findings.extend(unit_findings); findings.extend(unit_findings)
             group_statuses.extend(unit_statuses); statuses.extend(unit_statuses)
             group_limitations.extend(unit_limitations); limitations.extend(unit_limitations)
@@ -665,9 +696,10 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                        '业务%s%s：意见=%d，耗时=%.2f秒', unit_label,
                        '输出完成' if write and unit_completed else '试跑完成' if not write else '处理结束（存在未完成项）',
                        len(unit_findings), perf_counter() - unit_started)
+            completed_audit_units += 1
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='audit',
-                completed_units=len(business_results),
+                completed_units=completed_audit_units,
                 total_units=total_units,
                 current_entity=entity_name,
                 current_business=unit_label,
@@ -696,7 +728,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     logger.info('生成汇总报告')
     emit_progress(progress_callback, AuditProgressEvent(
         stage='output',
-        completed_units=len(business_results),
+        completed_units=completed_audit_units,
         total_units=total_units,
         message='正在生成汇总结果',
     ))

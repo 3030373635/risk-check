@@ -16,7 +16,6 @@ from risk_audit_web.api_models import OutputPathPreviewRequest, TaskCreateReques
 from risk_audit_web.diagnostics import (
     DiagnosticItem,
     DiagnosticReport,
-    load_active_rulepack,
     run_startup_diagnostics,
 )
 from risk_audit_web.directory_picker import (
@@ -25,6 +24,13 @@ from risk_audit_web.directory_picker import (
     DirectoryPickerError,
 )
 from risk_audit_web.server import ServerController
+from risk_audit_web.region_profiles import (
+    RegionCatalog,
+    RegionProfile,
+    RegionProfileError,
+    load_region_catalog,
+    verify_rulepack_release,
+)
 from risk_audit_web.task_contracts import (
     SCHEMA_VERSION,
     TaskEvent,
@@ -33,6 +39,7 @@ from risk_audit_web.task_contracts import (
 )
 from risk_audit_web.task_manager import ManagedTask, TaskManager
 from risk_audit_web.task_paths import (
+    MAX_OUTPUT_DIRECTORY_STEM_LENGTH,
     PathValidationError,
     PortablePaths,
     sanitize_directory_name,
@@ -111,12 +118,18 @@ class ApplicationServices:
     _creation_lock: Lock = field(default_factory=Lock, init=False, repr=False)
     _shutting_down: bool = field(default=False, init=False, repr=False)
     _startup_report: DiagnosticReport = field(init=False, repr=False)
+    _region_catalog: RegionCatalog = field(init=False, repr=False)
     _database_error: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """在服务启动时缓存一次必要资源诊断；无参数。"""
         # 状态轮询只复用诊断结果，不重复读取规则包或检查资源路径。
         resource_report = run_startup_diagnostics(self.paths)
+        try:
+            self._region_catalog = load_region_catalog(self.paths.resources_root)
+        except RegionProfileError:
+            # 详细错误已进入启动诊断；保留空目录让状态接口仍可工作。
+            self._region_catalog = RegionCatalog({})
         database_items: list[DiagnosticItem] = []
         try:
             self.repository.initialize()
@@ -135,20 +148,60 @@ class ApplicationServices:
         report = self._startup_report
         with self._creation_lock:
             accepting_tasks = not self._shutting_down
-        try:
-            active = json.loads((self.paths.rulepacks / "active.json").read_text(encoding="utf-8"))
-            rule_version = active.get("version") if isinstance(active, dict) else None
-        except (OSError, json.JSONDecodeError):
-            rule_version = None
+        available_region_count = sum(
+            profile.available for profile in self._region_catalog.profiles.values()
+        )
         return {
             "service_status": "degraded" if self._database_error else "ok",
             "can_create_task": report.can_start and accepting_tasks,
-            # 审核器版本与规则包版本独立，页面需要分别展示。
             "app_version": APP_VERSION,
-            "rule_version": rule_version,
+            "available_region_count": available_region_count,
             "running_count": self.manager.snapshot().running_count,
             "diagnostics": diagnostic_response(report),
         }
+
+    def list_regions(self) -> dict[str, object]:
+        """返回配置顺序中的公开地区集合；无参数。"""
+        return {
+            "regions": [
+                profile.to_public_dict()
+                for profile in self._region_catalog.profiles.values()
+            ]
+        }
+
+    def _resolve_region(self, region_code: str) -> RegionProfile:
+        """解析可创建任务的地区；region_code 为稳定地区代码，返回固定资源。"""
+        try:
+            profile = self._region_catalog.require(region_code)
+        except RegionProfileError as error:
+            raise ApiProblem(422, "UNKNOWN_REGION", f"未知审核地区：{region_code}") from error
+        if not profile.enabled:
+            raise ApiProblem(422, "REGION_DISABLED", f"审核地区已禁用：{profile.region_name}")
+        if profile.unavailable_reasons:
+            raise ApiProblem(
+                422,
+                "REGION_NOT_READY",
+                f"审核地区资源未就绪：{profile.region_name}",
+                {"unavailable_reasons": list(profile.unavailable_reasons)},
+            )
+        return profile
+
+    def _verify_pinned_rulepack(self, request: TaskRequest) -> None:
+        """复核任务固定规则包；request 为完整任务请求，无返回值。"""
+        reasons = verify_rulepack_release(
+            Path(request.rulepack),
+            request.rulepack_version,
+            request.rulepack_content_hash,
+            request.region_code,
+            request.region_name,
+        )
+        if reasons:
+            raise ApiProblem(
+                422,
+                "REGION_NOT_READY",
+                f"地区规则包在任务创建前发生变化：{request.region_name}",
+                {"unavailable_reasons": reasons},
+            )
 
     def select_input_directory(self) -> dict[str, Any]:
         """执行一次系统目录选择；无参数。"""
@@ -164,17 +217,30 @@ class ApplicationServices:
         }
 
     def preview_output_path(self, request: OutputPathPreviewRequest) -> dict[str, str]:
-        """生成只读输出预览；request 为已验证输入目录。"""
+        """生成只读输出预览；request 含输入目录和地区代码。"""
         input_root = Path(request.input_root).resolve(strict=False)
-        output_root = self._next_output_path(input_root, datetime.now().astimezone())
+        region = self._resolve_region(request.region_code)
+        output_root = self._next_output_path(
+            input_root,
+            datetime.now().astimezone(),
+            region.region_name,
+        )
         self._validate_paths(input_root, output_root)
         return {"output_root": str(output_root.resolve(strict=False))}
 
-    def _next_output_path(self, input_root: Path, created_at: datetime) -> Path:
-        """选择未被文件系统或数据库占用的输出路径；参数为输入目录和创建时间。"""
-        directory_name = sanitize_directory_name(input_root.name)
+    def _next_output_path(
+        self,
+        input_root: Path,
+        created_at: datetime,
+        region_name: str | None = None,
+    ) -> Path:
+        """选择未占用输出路径；参数为输入目录、创建时间和可选地区名称。"""
+        prefix = f"{region_name} " if region_name else ""
+        directory_name = sanitize_directory_name(input_root.name)[
+            :MAX_OUTPUT_DIRECTORY_STEM_LENGTH - len(prefix)
+        ]
         timestamp = created_at.strftime("%Y%m%d-%H%M%S")
-        base_name = f"{directory_name}-{timestamp}"
+        base_name = f"{prefix}{directory_name}-{timestamp}"
         candidate = self.paths.outputs_root / base_name
         suffix = 2
         while candidate.exists() or self.repository.output_root_exists(candidate):
@@ -184,6 +250,10 @@ class ApplicationServices:
 
     def _validate_paths(self, input_root: Path, output_root: Path) -> None:
         """验证任务路径并转换错误；参数为输入和输出目录。"""
+        managed_root = self.paths.outputs_root.resolve(strict=False)
+        resolved_output = output_root.resolve(strict=False)
+        if resolved_output == managed_root or managed_root not in resolved_output.parents:
+            raise ApiProblem(422, "INVALID_PATH", "输出目录必须位于审核器托管输出根目录")
         try:
             validate_task_paths(input_root, output_root)
         except PathValidationError as error:
@@ -207,28 +277,32 @@ class ApplicationServices:
             timestamp = creation_time.isoformat(timespec="seconds")
             task_id = f"{creation_time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
             input_root = Path(request.input_root).resolve(strict=False)
-            output_root = self._next_output_path(input_root, creation_time)
+            region = self._resolve_region(request.region_code)
+            output_root = self._next_output_path(input_root, creation_time, region.region_name)
             self._validate_paths(input_root, output_root)
-            try:
-                rulepack = load_active_rulepack(self.paths.rulepacks).resolve()
-            except (OSError, ValueError) as error:
-                raise ApiProblem(422, "ENVIRONMENT_NOT_READY", str(error)) from error
 
             task_request = TaskRequest(
                 schema_version=SCHEMA_VERSION,
                 task_id=task_id,
                 display_name=(
-                    f"{input_root.name or '审核任务'}-{creation_time.strftime('%Y%m%d-%H%M%S')}"
+                    f"{region.region_name} {input_root.name or '审核任务'}-"
+                    f"{creation_time.strftime('%Y%m%d-%H%M%S')}"
                 ),
+                region_code=region.region_code,
+                region_name=region.region_name,
+                rulepack_version=region.rulepack_version,
+                rulepack_content_hash=region.rulepack_content_hash,
                 input_root=str(input_root),
                 output_root=str(output_root.resolve(strict=False)),
-                rulepack=str(rulepack),
-                entity_file=str(self.paths.entity_file.resolve()),
-                baseline_root=str(self.paths.baseline_root.resolve()),
-                config_file=str(self.paths.config_file.resolve()),
+                rulepack=str(region.rulepack),
+                entity_file=str(region.entity_file),
+                baseline_root=str(region.baseline_root),
+                config_file=str(region.config_file),
                 soffice_path=str(self.paths.soffice.resolve()),
                 created_at=timestamp,
             )
+            # 入库前重新读取发布包摘要，防止启动诊断后规则文件被替换。
+            self._verify_pinned_rulepack(task_request)
             task_state = TaskState(
                 schema_version=SCHEMA_VERSION,
                 task_id=task_id,

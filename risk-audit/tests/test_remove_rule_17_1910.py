@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_active_rulepack_removes_rule_17() -> None:
     """当前程序与激活规则包必须继承1.9.10的第17条删除结果。"""
-    assert __version__ == "1.9.20"
+    assert __version__ == "2.2.0"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
     assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases" / active["version"])

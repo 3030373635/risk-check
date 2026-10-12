@@ -14,12 +14,30 @@ from typing import Any
 
 from risk_audit.progress import AuditCancelled, AuditProgressEvent
 from risk_audit.readers.xls import configure_conversion_runtime
-from risk_audit_web.task_contracts import SCHEMA_VERSION, TaskEvent
+from risk_audit_web.region_profiles import verify_rulepack_release
+from risk_audit_web.task_contracts import SCHEMA_VERSION, TaskEvent, TaskRequest
 from risk_audit_web.task_repository import TaskRepository
 
 
 AuditFunction = Callable[..., dict[str, Any]]
 TASK_RUNTIME_DIRECTORY_NAME = "risk-audit"
+
+
+class RulepackChangedError(RuntimeError):
+    """表示任务固定的不可变规则包已被替换或损坏。"""
+
+
+def _verify_pinned_rulepack(request: TaskRequest) -> None:
+    """复核任务规则包；request 为数据库中的固定请求，无返回值。"""
+    reasons = verify_rulepack_release(
+        Path(request.rulepack),
+        request.rulepack_version,
+        request.rulepack_content_hash,
+        request.region_code,
+        request.region_name,
+    )
+    if reasons:
+        raise RulepackChangedError(f"固定规则包已变化：{'；'.join(reasons)}")
 
 
 def _now() -> str:
@@ -190,8 +208,15 @@ def run_worker(
         })
         repository.append_event(TaskEvent(SCHEMA_VERSION, task_id, "started", _now(), {}))
         with log_path.open("a", encoding="utf-8") as worker_log:
-            worker_log.write(f"{_now()} Worker 启动，PID={os.getpid()}\n")
+            worker_log.write(
+                f"{_now()} Worker 启动，PID={os.getpid()}，"
+                f"地区={request.region_code}/{request.region_name}，"
+                f"规则版本={request.rulepack_version}，"
+                f"内容哈希={request.rulepack_content_hash}\n"
+            )
             worker_log.flush()
+        # 审核前复核磁盘内容，禁止固定任务静默切换到被替换的规则文件。
+        _verify_pinned_rulepack(request)
         configure_conversion_runtime(Path(request.soffice_path), profile_dir)
         previous_environment = {name: os.environ.get(name) for name in ("TMP", "TEMP", "TMPDIR")}
         for name in previous_environment:
@@ -260,6 +285,7 @@ def run_worker(
         ))
     except Exception as error:
         exit_code = 1
+        error_code = "RULEPACK_CHANGED" if isinstance(error, RulepackChangedError) else "AUDIT_FAILED"
         try:
             with log_path.open("a", encoding="utf-8") as worker_log:
                 traceback.print_exc(file=worker_log)
@@ -272,14 +298,14 @@ def run_worker(
                 "stage": "failed",
                 "message": str(error),
                 "worker_pid": None,
-                "error_code": "AUDIT_FAILED",
+                "error_code": error_code,
             })
             repository.append_event(TaskEvent(
                 SCHEMA_VERSION,
                 task_id,
                 "failed",
                 _now(),
-                {"error_code": "AUDIT_FAILED", "message": str(error)},
+                {"error_code": error_code, "message": str(error)},
             ))
         except Exception:
             # 数据库本身不可写时不能伪造成功；原始退出码仍明确失败。

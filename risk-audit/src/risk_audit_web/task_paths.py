@@ -60,22 +60,17 @@ class PortablePaths:
     @property
     def rulepacks(self) -> Path:
         """返回发布规则包根目录；无参数。"""
-        return self.runtime_root / "resources/rulepacks"
+        return self.resources_root / "rulepacks"
 
     @property
-    def baseline_root(self) -> Path:
-        """返回冻结基准根目录；无参数。"""
-        return self.runtime_root / "resources/baselines"
+    def resources_root(self) -> Path:
+        """返回统一运行资源根目录；无参数。"""
+        return self.runtime_root / "resources"
 
     @property
-    def entity_file(self) -> Path:
-        """返回会计主体名册路径；无参数。"""
-        return self.runtime_root / "resources/entities/会计主体清单20260907.xlsx"
-
-    @property
-    def config_file(self) -> Path:
-        """返回Web 审核运行配置路径；无参数。"""
-        return self.rulepacks / "audit-config.json"
+    def region_index(self) -> Path:
+        """返回地区资源索引路径；无参数。"""
+        return self.resources_root / "regions/index.json"
 
     @property
     def task_database(self) -> Path:

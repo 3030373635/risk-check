@@ -1,22 +1,24 @@
 # 风控矩阵审核器
 
-风控矩阵审核器 2.0 是完全离线的本机 Web 应用。发布包通过 Windows BAT 或 macOS `.command` 在终端前台运行包内 Python，只监听 `127.0.0.1` 随机端口，然后用默认浏览器打开页面。审核材料不会上传，前端也不访问 CDN 或外部 API。
+风控矩阵审核器 2.2.0 是完全离线的本机 Web 应用。发布包通过 Windows BAT 或 macOS `.command` 在终端前台运行包内 Python，只监听 `127.0.0.1` 随机端口，然后用默认浏览器打开页面。审核材料不会上传，前端也不访问 CDN 或外部 API。
 
 ## 用户启动方式
 
-- Windows 10/11 x64：完整解压 `风控矩阵审核器-v2.1.3-Windows-x64.zip`，双击 `启动审核器.bat`。
-- Apple Silicon macOS：完整解压 `风控矩阵审核器-v2.1.3-macOS-arm64.zip`，双击 `启动审核器.command`。
+- Windows 10/11 x64：完整解压 `风控矩阵审核器-v2.2.0-Windows-x64.zip`，双击 `启动审核器.bat`。
+- Apple Silicon macOS：完整解压 `风控矩阵审核器-v2.2.0-macOS-arm64.zip`，双击 `启动审核器.command`。
 
 运行期间需保持终端窗口打开。关闭浏览器不会退出程序；再次双击同一启动脚本会重新打开已有页面。正常退出请使用页面的“退出审核器”按钮；关闭终端会强制结束服务和当前审核进程。
 
-用户只选择输入目录。输出位置固定为发布根下的 `outputs`，页面只显示后端生成的输出预览。
+创建任务时必须选择输入目录和审核地区。每个任务会固定地区、规则版本和内容哈希，湖南与重庆任务可并发运行且不会串用资源。输出位置固定为发布根下的 `outputs`。
+
+当前已交付湖南业务资源和重庆 1.9.22 规则包。重庆主体清单和模板尚未提供，因此重庆选项会显示“资源未就绪”且不能创建任务。后续按地区目录补齐资源后，无需更换审核器代码。
 
 ## 发布目录
 
 - `app`：`risk_audit` 和 `risk_audit_web` 产品源码。
 - `runtime/python`：平台对应的便携 Python 和锁定运行依赖。
 - `runtime/web`：本地 HTML、CSS、JavaScript、Bootstrap 和图标字体。
-- `runtime/resources`：规则包、审核配置、基准和会计主体清单。
+- `runtime/resources`：地区索引、多地区规则包以及隔离的审核配置、基准和会计主体清单。
 - `runtime/libreoffice`：平台对应的 LibreOffice 转换运行时。
 - `runtime/licenses`：Python、第三方依赖、Bootstrap 和 LibreOffice 许可证。
 - `runtime/manifest.json`：不可变载荷的文件大小和 SHA-256。
@@ -53,4 +55,4 @@ Windows x64 发布由 `.github/workflows/build-windows-web.yml` 手动触发，A
 
 ## 命令行核心
 
-`risk-audit` 命令仍供开发、规则维护和自动化测试使用。普通审核人员只需使用 Web 页面。默认活动规则版本记录在 `rulepacks/active.json`，已发布规则不得原地修改。
+`risk-audit` 命令仍供开发、规则维护和自动化测试使用。普通审核人员只需使用 Web 页面。Web 任务从 `regions/index.json` 选择地区固定规则包，不依赖全局 `active.json`。已发布规则不得原地修改。

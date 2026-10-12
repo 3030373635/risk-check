@@ -63,6 +63,8 @@ function renderTasks(tasks) {
     const row = document.createElement("tr");
     const nameCell = document.createElement("td");
     nameCell.appendChild(taskNameCell(task));
+    const regionCell = document.createElement("td");
+    regionCell.textContent = task.region_name || "—";
     const statusCell = document.createElement("td");
     statusCell.appendChild(statusBadge(task.status));
     const createdCell = document.createElement("td");
@@ -79,7 +81,7 @@ function renderTasks(tasks) {
     button.textContent = "查看详情";
     button.addEventListener("click", () => showTaskDetail(task.task_id));
     actionCell.appendChild(button);
-    row.append(nameCell, statusCell, createdCell, stageCell, progress, actionCell);
+    row.append(nameCell, regionCell, statusCell, createdCell, stageCell, progress, actionCell);
     body.appendChild(row);
   }
 }
@@ -127,6 +129,8 @@ function renderTaskDetail(task) {
   setText("detail-entity", task.current_entity);
   setText("detail-business", task.current_business);
   setText("detail-file", task.current_file);
+  setText("detail-region", task.region_name);
+  setText("detail-rule-version", task.rulepack_version);
   setText("detail-input-root", task.input_root);
   setText("detail-output-root", task.output_root);
   setText("detail-created-at", formatDate(task.created_at));

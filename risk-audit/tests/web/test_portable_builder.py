@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
 from pathlib import Path
 import plistlib
@@ -11,6 +12,9 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def write_file(path: Path, content: bytes = b"x") -> Path:
@@ -33,6 +37,20 @@ def pe_bytes(machine: int = 0x8664) -> bytes:
     return bytes(content)
 
 
+def write_rulepack_release(auditor_root: Path, version: str) -> str:
+    """复制真实规则发布包并返回内容哈希。
+
+    Args:
+        auditor_root: 测试 risk-audit 目录。
+        version: 规则包版本。
+    """
+
+    release = auditor_root / f"rulepacks/releases/{version}"
+    shutil.copytree(ROOT / f"rulepacks/releases/{version}", release)
+    manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+    return str(manifest["content_hash"])
+
+
 def make_build_inputs(tmp_path: Path):
     """创建最小 Windows 组装输入；tmp_path 为测试根目录。"""
     from tools.portable_release import BuildInputs
@@ -47,9 +65,36 @@ def make_build_inputs(tmp_path: Path):
     write_file(auditor_root / "src/risk_audit_web/static/js/app.js", b"window.app = {};")
     write_file(auditor_root / "packaging/启动审核器.bat", b"@echo off\r\n")
     write_file(auditor_root / "packaging/启动审核器.command", b"#!/bin/zsh\n")
-    write_file(auditor_root / "rulepacks/active.json", b'{"version":"2.0.0"}')
-    write_file(auditor_root / "rulepacks/releases/2.0.0/manifest.json", b"{}")
-    write_file(auditor_root / "rulepacks/releases/2.0.0/rules/R01.json", b"{}")
+    hunan_hash = write_rulepack_release(auditor_root, "1.9.21")
+    chongqing_hash = write_rulepack_release(auditor_root, "1.9.22")
+    write_file(
+        auditor_root / "regions/index.json",
+        json.dumps({
+            "schema_version": "1.0",
+            "regions": [
+                {
+                    "region_code": "hunan",
+                    "region_name": "湖南",
+                    "rulepack_version": "1.9.21",
+                    "rulepack_content_hash": hunan_hash,
+                    "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
+                    "baseline_root": "baselines/hunan/templates",
+                    "config_file": "configs/hunan/audit-config.json",
+                    "enabled": True,
+                },
+                {
+                    "region_code": "chongqing",
+                    "region_name": "重庆",
+                    "rulepack_version": "1.9.22",
+                    "rulepack_content_hash": chongqing_hash,
+                    "entity_file": "entities/chongqing/会计主体清单.xlsx",
+                    "baseline_root": "baselines/chongqing/templates",
+                    "config_file": "configs/chongqing/audit-config.json",
+                    "enabled": True,
+                },
+            ],
+        }, ensure_ascii=False).encode(),
+    )
     write_file(repository_root / "audit-config.json", b"{}")
     write_file(repository_root / "templates/基准.xlsx")
     write_file(repository_root / "reference-data/会计主体清单20260907.xlsx")
@@ -110,6 +155,12 @@ def test_assemble_distribution_uses_script_layout_and_single_web_copy(tmp_path: 
     assert (result / "runtime/libreoffice/program/concrt140.dll").is_file()
     assert list((result / "data").iterdir()) == []
     assert list((result / "outputs").iterdir()) == []
+    assert (result / "runtime/resources/regions/index.json").is_file()
+    assert (result / "runtime/resources/rulepacks/releases/1.9.21/manifest.json").is_file()
+    assert (result / "runtime/resources/rulepacks/releases/1.9.22/manifest.json").is_file()
+    assert (result / "runtime/resources/entities/hunan/会计主体清单20260907.xlsx").is_file()
+    assert (result / "runtime/resources/baselines/hunan/templates/基准.xlsx").is_file()
+    assert not (result / "runtime/resources/entities/chongqing").exists()
 
     payload = json.loads((result / "runtime/manifest.json").read_text(encoding="utf-8"))
     paths = {item["path"] for item in payload["resources"]}
@@ -131,6 +182,27 @@ def test_windows_assembly_rejects_missing_vc_runtime_dll(tmp_path: Path) -> None
     (inputs.vc_runtime_root / "msvcp140.dll").unlink()
 
     with pytest.raises(portable_release.BuildError, match="msvcp140.dll.*缺失"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
+
+
+def test_assembly_rejects_region_resource_path_escape_before_copy(tmp_path: Path) -> None:
+    """地区资源路径越界必须在复制任何资源前终止构建。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    index_path = inputs.project_root / "risk-audit/regions/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["regions"][0]["entity_file"] = "../outside.xlsx"
+    index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(portable_release.BuildError, match="越过资源根目录"):
         portable_release.assemble_distribution(inputs)
 
     assert not inputs.output_root.exists()

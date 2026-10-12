@@ -20,13 +20,15 @@ def test_create_task_uses_fixed_outputs_and_rejects_client_output(client, input_
     response = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     )
 
     assert response.status_code == 201
     payload = response.json()
     assert Path(payload["output_root"]).parent.name == "outputs"
-    assert re.fullmatch(rf"{re.escape(input_root.name)}-\d{{8}}-\d{{6}}", payload["display_name"])
+    assert re.fullmatch(rf"湖南 {re.escape(input_root.name)}-\d{{8}}-\d{{6}}", payload["display_name"])
+    assert payload["region_code"] == "hunan"
+    assert payload["rulepack_version"] == "1.9.21"
     assert Path(payload["output_root"]).name == payload["display_name"]
     assert payload["status"] == "running"
 
@@ -35,6 +37,7 @@ def test_create_task_uses_fixed_outputs_and_rejects_client_output(client, input_
         headers=authorized_post_headers(client),
         json={
             "input_root": str(input_root),
+            "region_code": "hunan",
             "output_root": str(input_root.parent / "elsewhere"),
         },
     )
@@ -44,10 +47,26 @@ def test_create_task_uses_fixed_outputs_and_rejects_client_output(client, input_
     legacy_name = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"display_name": "客户填写的名称", "input_root": str(input_root)},
+        json={
+            "display_name": "客户填写的名称",
+            "input_root": str(input_root),
+            "region_code": "hunan",
+        },
     )
     assert legacy_name.status_code == 400
     assert legacy_name.json()["error_code"] == "INVALID_REQUEST"
+
+
+def test_create_task_requires_region_code(client, input_root: Path) -> None:
+    """创建任务必须显式选择地区；参数为客户端和输入目录。"""
+    response = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INVALID_REQUEST"
 
 
 def test_list_detail_cancel_and_open_output(client, web_services, input_root: Path) -> None:
@@ -55,7 +74,7 @@ def test_list_detail_cancel_and_open_output(client, web_services, input_root: Pa
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     task_id = created["task_id"]
 
@@ -84,7 +103,7 @@ def test_output_opening_never_accepts_client_path(client, input_root: Path) -> N
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     response = client.post(
         f"/api/v1/tasks/{created['task_id']}/output-openings",
@@ -105,7 +124,7 @@ def test_report_opening_selects_excel_or_html_from_task_results(
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     task = web_services.get_task(created["task_id"])
     excel_report = Path(task.record.output_root) / "审核统计表.xlsx"
@@ -158,7 +177,7 @@ def test_read_incomplete_items_returns_every_visible_reason(
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     task = web_services.get_task(created["task_id"])
     report_path = Path(task.record.output_root) / ".task/report/_risk_audit/未完成项.json"
@@ -197,7 +216,7 @@ def test_read_unaudited_files_returns_customer_friendly_json_resource(
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     task = web_services.get_task(created["task_id"])
     report_path = (
@@ -236,7 +255,7 @@ def test_read_unaudited_files_reports_invalid_utf8(
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     ).json()
     task = web_services.get_task(created["task_id"])
     report_path = Path(task.record.output_root) / ".task/未审核文件.json"
@@ -274,7 +293,7 @@ def test_list_returns_every_created_task_status_without_internal_fields(
         web_services.repository.create_task(
             request,
             state,
-            TaskEvent("1.0", task_id, "created", created_at, {}),
+            TaskEvent("2.0", task_id, "created", created_at, {}),
         )
 
     response = client.get("/api/v1/tasks", headers={"X-Local-Token": "secret"})
@@ -303,7 +322,7 @@ def test_created_task_remains_in_rest_list_when_worker_start_fails(
     created = client.post(
         "/api/v1/tasks",
         headers=authorized_post_headers(client),
-        json={"input_root": str(input_root)},
+        json={"input_root": str(input_root), "region_code": "hunan"},
     )
     listed = client.get("/api/v1/tasks", headers={"X-Local-Token": "secret"})
 

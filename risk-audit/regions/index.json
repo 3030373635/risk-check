@@ -1,0 +1,25 @@
+{
+  "regions": [
+    {
+      "baseline_root": "baselines/hunan/templates",
+      "config_file": "configs/hunan/audit-config.json",
+      "enabled": true,
+      "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
+      "region_code": "hunan",
+      "region_name": "湖南",
+      "rulepack_content_hash": "80843e8f18ef66c8145e9ba2e17a930c4869b5ca3dd38a310de29a92a5ec3779",
+      "rulepack_version": "1.9.21"
+    },
+    {
+      "baseline_root": "baselines/chongqing/templates",
+      "config_file": "configs/chongqing/audit-config.json",
+      "enabled": true,
+      "entity_file": "entities/chongqing/会计主体清单.xlsx",
+      "region_code": "chongqing",
+      "region_name": "重庆",
+      "rulepack_content_hash": "19d74215862ed53afbac5bbae9955dce8bb189ed0b37f939e18bdac53af04dde",
+      "rulepack_version": "1.9.22"
+    }
+  ],
+  "schema_version": "1.0"
+}

@@ -55,8 +55,13 @@ def test_writer_does_not_touch_hidden_content_or_visibility(tmp_path):
 
 
 def test_visibility_choice_is_inside_snapshot_hash(pack,registry):
+    """隐藏表选项与地区信息必须进入快照哈希。"""
+
+    pack['manifest']['region_code']='chongqing'
+    pack['manifest']['region_name']='重庆'
     a=build_snapshot(pack,[],registry.versions(),'r')
     b=build_snapshot(pack,[],registry.versions(),'r',include_hidden=True)
     assert a['sheet_visibility_policy']=='visible_only' and b['sheet_visibility_policy']=='include_hidden'
     for s in (a,b):
+        assert s['region_code']=='chongqing' and s['region_name']=='重庆'
         digest=s.pop('snapshot_hash');assert digest==sha256_json(s)

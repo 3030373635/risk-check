@@ -114,6 +114,8 @@ def update_draft(draft: Path, source: Path) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest.update(
         version=TARGET_VERSION,
+        region_code="hunan",
+        region_name="湖南",
         engine_compatibility=">=1.9.21,<2.0.0",
         audit_as_of="2026-10-12",
         title="1012 湖南公司版模板匹配及财务管理专项规则包",

@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from risk_audit.util import sha256_file, sha256_json
+from risk_audit_web.region_profiles import RegionProfileError, load_region_catalog
 from risk_audit_web.task_paths import PortablePaths
 
 
@@ -253,12 +254,34 @@ def run_startup_diagnostics(paths: PortablePaths) -> DiagnosticReport:
     # 全包 SHA-256 校验仅在构建交付阶段执行，避免启动时读取整套 Python 和 LibreOffice。
     required = [
         _required_path_item(paths.soffice),
-        verify_active_rulepack(paths.rulepacks),
-        _required_path_item(paths.config_file),
-        _required_path_item(paths.entity_file),
-        _required_path_item(paths.baseline_root, expect_directory=True),
+        _verify_region_catalog(paths),
     ]
     return DiagnosticReport(required)
+
+
+def _verify_region_catalog(paths: PortablePaths) -> DiagnosticItem:
+    """校验地区目录可用性；paths 为便携程序路径集合，返回汇总诊断。"""
+    try:
+        catalog = load_region_catalog(paths.resources_root)
+    except RegionProfileError as error:
+        return DiagnosticItem(
+            "invalid_region_catalog",
+            str(paths.region_index),
+            f"地区资源索引无效：{paths.region_index}；{error}",
+        )
+    available_count = sum(profile.available for profile in catalog.profiles.values())
+    if available_count == 0:
+        return DiagnosticItem(
+            "no_available_region",
+            str(paths.region_index),
+            f"没有可用地区，请补齐地区规则和业务资源：{paths.region_index}",
+        )
+    # 单个地区的缺失原因由地区接口公开，不阻断其他已就绪地区创建任务。
+    return DiagnosticItem(
+        "ok",
+        str(paths.region_index),
+        f"地区资源索引有效，可用地区 {available_count} 个",
+    )
 
 
 def load_active_rulepack(rulepacks_root: Path) -> Path:

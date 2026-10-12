@@ -14,7 +14,7 @@ def create_request(input_root: Path):
     """创建严格任务请求；input_root 为用户选择的输入目录。"""
     from risk_audit_web.api_models import TaskCreateRequest
 
-    return TaskCreateRequest(input_root=str(input_root))
+    return TaskCreateRequest(input_root=str(input_root), region_code="hunan")
 
 
 def test_concurrent_tasks_reserve_distinct_output_directories(
@@ -157,12 +157,29 @@ def test_system_status_summarizes_successful_diagnostics(
     }]
 
 
-def test_system_status_reports_auditor_and_rule_versions(web_services) -> None:
-    """系统状态必须区分审核器版本和规则版本；web_services 为真实服务。"""
+def test_system_status_reports_auditor_and_available_regions(web_services) -> None:
+    """系统状态必须显示审核器版本和可用地区数量；web_services 为真实服务。"""
     status = web_services.system_status()
 
-    assert status["app_version"] == "2.1.3"
-    assert status["rule_version"] == "1.9.19"
+    assert status["app_version"] == "2.2.0"
+    assert status["available_region_count"] == 1
+    assert "rule_version" not in status
+
+
+def test_created_task_keeps_pinned_region_after_index_changes(
+    web_services,
+    input_root: Path,
+) -> None:
+    """创建后的任务不得重新读取地区索引；参数为服务和输入目录。"""
+    task = web_services.create_task(create_request(input_root))
+    web_services.paths.region_index.write_text('{"schema_version":"broken"}', encoding="utf-8")
+
+    request = web_services.repository.read_request(task.record.task_id)
+
+    assert request.region_code == "hunan"
+    assert request.region_name == "湖南"
+    assert request.rulepack_version == "1.9.21"
+    assert request.rulepack == str(web_services._region_catalog.require("hunan").rulepack)
 
 
 def test_system_status_only_exposes_failed_diagnostics(

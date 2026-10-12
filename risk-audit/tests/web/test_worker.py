@@ -2,11 +2,29 @@
 
 from pathlib import Path
 from dataclasses import replace
+import json
+import shutil
 import tempfile
 import threading
 import time
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def write_request_rulepack(request):
+    """创建请求固定的真实规则包；request 为任务请求。"""
+    rulepack = Path(request.rulepack)
+    shutil.copytree(
+        ROOT / "rulepacks" / "releases" / request.rulepack_version,
+        rulepack,
+        dirs_exist_ok=True,
+    )
+    manifest = json.loads((rulepack / "manifest.json").read_text(encoding="utf-8"))
+    content_hash = str(manifest["content_hash"])
+    return replace(request, rulepack_content_hash=content_hash)
 
 
 def create_worker_task(tmp_path: Path, task_id: str = "task-1"):
@@ -17,14 +35,71 @@ def create_worker_task(tmp_path: Path, task_id: str = "task-1"):
 
     repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
     repository.initialize()
-    request = make_request(tmp_path, task_id)
+    request = write_request_rulepack(make_request(tmp_path, task_id))
     Path(request.output_root).mkdir(parents=True)
     repository.create_task(
         request,
         make_state(task_id),
-        TaskEvent("1.0", task_id, "created", request.created_at, {}),
+        TaskEvent("2.0", task_id, "created", request.created_at, {}),
     )
     return repository, request
+
+
+def test_worker_rejects_changed_pinned_rulepack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """固定规则包内容变化时 Worker 必须安全失败；参数为隔离根和补丁工具。"""
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path)
+    monkeypatch.setattr(worker, "configure_conversion_runtime", lambda *args: None)
+    rule_path = Path(request.rulepack) / "rules/R01.json"
+    rule_path.write_text('{"id":"changed"}\n', encoding="utf-8")
+    audit_called = False
+
+    def audit_func(*_args, **_kwargs):
+        """记录不应发生的审核调用；参数为审核入口透传参数。"""
+        nonlocal audit_called
+        audit_called = True
+        return {"write_completed": True, "business_results": []}
+
+    code = worker.run_worker(repository.database_path, request.task_id, audit_func=audit_func)
+
+    state = repository.read_state(request.task_id)
+    assert code == 1
+    assert audit_called is False
+    assert state.status == "failed"
+    assert state.error_code == "RULEPACK_CHANGED"
+    assert "规则包" in state.message
+
+
+def test_worker_rejects_changed_pinned_rulepack_region(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """固定任务的 manifest 地区被篡改时 Worker 必须拒绝执行。"""
+
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path)
+    monkeypatch.setattr(worker, "configure_conversion_runtime", lambda *args: None)
+    manifest_path = Path(request.rulepack) / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["region_code"] = "chongqing"
+    manifest["region_name"] = "重庆"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    code = worker.run_worker(
+        repository.database_path,
+        request.task_id,
+        audit_func=lambda **_kwargs: {"write_completed": True},
+    )
+
+    state = repository.read_state(request.task_id)
+    assert code == 1
+    assert state.error_code == "RULEPACK_CHANGED"
+    assert "地区" in state.message
 
 
 @pytest.mark.parametrize(
@@ -155,11 +230,12 @@ def test_worker_uses_system_temp_for_long_output_path(
         make_request(tmp_path, task_id),
         output_root=str((tmp_path / "outputs" / ("超长材料目录" * 20)).resolve()),
     )
+    request = write_request_rulepack(request)
     Path(request.output_root).mkdir(parents=True)
     repository.create_task(
         request,
         make_state(task_id),
-        TaskEvent("1.0", task_id, "created", request.created_at, {}),
+        TaskEvent("2.0", task_id, "created", request.created_at, {}),
     )
     observed_paths: dict[str, Path] = {}
 

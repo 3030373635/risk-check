@@ -7,20 +7,31 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 
-def make_request(tmp_path: Path, task_id: str = "task-1"):
-    """创建测试任务请求；tmp_path 为测试根目录，task_id 为任务编号。"""
+def make_request(
+    tmp_path: Path,
+    task_id: str = "task-1",
+    region_code: str = "hunan",
+):
+    """创建测试任务请求；参数为测试根目录、任务编号和地区代码。"""
     from risk_audit_web.task_contracts import TaskRequest
 
+    region_name = "湖南" if region_code == "hunan" else "重庆"
+    rulepack_version = "1.9.21" if region_code == "hunan" else "1.9.22"
+    resource_root = tmp_path / "resources" / region_code
     return TaskRequest(
-        schema_version="1.0",
+        schema_version="2.0",
         task_id=task_id,
-        display_name="资料",
+        display_name=f"{region_name} 资料",
+        region_code=region_code,
+        region_name=region_name,
+        rulepack_version=rulepack_version,
+        rulepack_content_hash=("a" if region_code == "hunan" else "b") * 64,
         input_root=str((tmp_path / "input").resolve()),
         output_root=str((tmp_path / "outputs" / task_id).resolve()),
-        rulepack=str((tmp_path / "rulepack").resolve()),
-        entity_file=str((tmp_path / "entities.xlsx").resolve()),
-        baseline_root=str((tmp_path / "baselines").resolve()),
-        config_file=None,
+        rulepack=str((resource_root / "rulepacks" / rulepack_version).resolve()),
+        entity_file=str((resource_root / "entities.xlsx").resolve()),
+        baseline_root=str((resource_root / "baselines").resolve()),
+        config_file=str((resource_root / "audit-config.json").resolve()),
         soffice_path=str((tmp_path / "soffice").resolve()),
         created_at="2026-09-30T10:00:00+08:00",
     )
@@ -31,7 +42,7 @@ def make_state(task_id: str = "task-1"):
     from risk_audit_web.task_contracts import TaskState
 
     return TaskState(
-        schema_version="1.0",
+        schema_version="2.0",
         task_id=task_id,
         status="running",
         stage="startup",
@@ -55,7 +66,7 @@ def make_event(task_id: str = "task-1"):
     from risk_audit_web.task_contracts import TaskEvent
 
     return TaskEvent(
-        schema_version="1.0",
+        schema_version="2.0",
         task_id=task_id,
         event="created",
         occurred_at="2026-09-30T10:00:00+08:00",
@@ -73,7 +84,7 @@ def test_initialize_creates_versioned_wal_database(tmp_path: Path) -> None:
     repository.initialize()
 
     with sqlite3.connect(database_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         tables = {
             row[0]
@@ -119,6 +130,23 @@ def test_initialize_rejects_unknown_database_version(tmp_path: Path) -> None:
         TaskRepository(database_path).initialize()
 
 
+def test_initialize_rejects_version_one_without_deleting_data(tmp_path: Path) -> None:
+    """旧版数据库必须明确拒绝且保留原数据；tmp_path 为隔离目录。"""
+    from risk_audit_web.task_repository import TaskDatabaseError, TaskRepository
+
+    database_path = tmp_path / "tasks.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE legacy_tasks (task_id TEXT PRIMARY KEY)")
+        connection.execute("INSERT INTO legacy_tasks VALUES ('legacy-1')")
+        connection.execute("PRAGMA user_version = 1")
+
+    with pytest.raises(TaskDatabaseError, match="版本：1，当前版本：2"):
+        TaskRepository(database_path).initialize()
+
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute("SELECT task_id FROM legacy_tasks").fetchone()[0] == "legacy-1"
+
+
 def test_initialize_rejects_incomplete_versioned_schema(tmp_path: Path) -> None:
     """声明为当前版本但缺少字段的数据库必须失败；tmp_path 为隔离目录。"""
     from risk_audit_web.task_repository import TaskDatabaseError, TaskRepository
@@ -126,7 +154,7 @@ def test_initialize_rejects_incomplete_versioned_schema(tmp_path: Path) -> None:
     database_path = tmp_path / "tasks.sqlite3"
     with sqlite3.connect(database_path) as connection:
         connection.execute("CREATE TABLE tasks (task_id TEXT PRIMARY KEY)")
-        connection.execute("PRAGMA user_version = 1")
+        connection.execute("PRAGMA user_version = 2")
 
     with pytest.raises(TaskDatabaseError, match="缺少字段"):
         TaskRepository(database_path).initialize()
@@ -150,6 +178,41 @@ def test_list_tasks_isolates_invalid_result_summary(tmp_path: Path) -> None:
     assert [task.task_id for task in result.tasks] == ["valid"]
     assert len(result.warnings) == 1
     assert "broken" in result.warnings[0]
+
+
+def test_parallel_regions_keep_pinned_resources_isolated(tmp_path: Path) -> None:
+    """同秒写入湖南和重庆任务时固定资源不得串用；tmp_path 为隔离目录。"""
+    from risk_audit_web.task_repository import TaskRepository
+
+    repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
+    repository.initialize()
+    requests = [
+        make_request(tmp_path, "task-hunan", "hunan"),
+        make_request(tmp_path, "task-chongqing", "chongqing"),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                repository.create_task,
+                request,
+                make_state(request.task_id),
+                make_event(request.task_id),
+            )
+            for request in requests
+        ]
+        for future in futures:
+            future.result()
+
+    restored = {
+        task_id: repository.read_request(task_id)
+        for task_id in ("task-hunan", "task-chongqing")
+    }
+    assert restored["task-hunan"] == requests[0]
+    assert restored["task-chongqing"] == requests[1]
+    assert restored["task-hunan"].entity_file != restored["task-chongqing"].entity_file
+    assert restored["task-hunan"].baseline_root != restored["task-chongqing"].baseline_root
+    assert restored["task-hunan"].config_file != restored["task-chongqing"].config_file
+    assert restored["task-hunan"].rulepack_content_hash != restored["task-chongqing"].rulepack_content_hash
 
 
 def test_cancel_and_field_updates_do_not_overwrite_each_other(tmp_path: Path) -> None:
@@ -182,7 +245,7 @@ def test_cancel_and_field_updates_do_not_overwrite_each_other(tmp_path: Path) ->
         """连续追加事件；无参数。"""
         for index in range(20):
             repository.append_event(TaskEvent(
-                "1.0",
+                "2.0",
                 "task-1",
                 "progress",
                 f"2026-09-30T10:01:{index:02d}+08:00",

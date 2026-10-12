@@ -681,4 +681,33 @@ def build_registry() -> CapabilityRegistry:
     reg('financial_management_applicability', ['matrix'], ['business_id', 'measure_ids'], [], [],
         ['issue_type', 'measure_id', 'duty_measure_present', 'applicability_text',
          'applicability_state', 'applicability_decision'], ['row'], financial_management_applicability)
+    from risk_audit.checks.rules_1012_chongqing import (
+        power_supply_branch_key_points,
+        system_control_consistency,
+    )
+    # 重庆两条专项规则需要跨表或跨业务核对，因此以报送包为执行边界。
+    reg(
+        'system_control_consistency',
+        ['package'],
+        [],
+        [],
+        [],
+        [
+            'issue_type', 'opinion', 'measure_id', 'control_mode', 'actual_control_mode',
+            'expected_build_status', 'actual_build_status',
+            'expected_system_names', 'actual_system_names',
+        ],
+        ['row', 'material'],
+        system_control_consistency,
+    )
+    reg(
+        'power_supply_branch_key_points',
+        ['package'],
+        ['expected_key_points', 'business_aliases'],
+        [],
+        [],
+        ['issue_type', 'opinion', 'business_id', 'missing_key_points', 'key_point', 'entity_code'],
+        ['row', 'material'],
+        power_supply_branch_key_points,
+    )
     return r

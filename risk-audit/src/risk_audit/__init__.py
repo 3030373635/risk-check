@@ -1,3 +1,3 @@
 """Deterministic, offline risk-matrix auditor."""
 
-__version__ = "1.9.21"
+__version__ = "2.2.0"

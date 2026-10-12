@@ -55,7 +55,7 @@
         </div>
         <div class="version-badges">
           <div class="version-badge">审核器版本 <strong id="app-version">—</strong></div>
-          <div class="version-badge">规则版本 <strong id="rule-version">—</strong></div>
+          <div class="version-badge">可用地区 <strong id="available-region-count">—</strong></div>
         </div>
       </header>
 
@@ -104,7 +104,7 @@
             </div>
             <div class="table-responsive">
               <table class="table align-middle mb-0">
-                <thead><tr><th>任务</th><th>状态</th><th>创建时间</th><th>当前阶段</th><th>进度</th><th class="text-end">操作</th></tr></thead>
+                <thead><tr><th>任务</th><th>地区</th><th>状态</th><th>创建时间</th><th>当前阶段</th><th>进度</th><th class="text-end">操作</th></tr></thead>
                 <tbody id="tasks-table-body"></tbody>
               </table>
               <div class="empty-state d-none" id="tasks-empty-state">
@@ -124,6 +124,13 @@
             <div class="col-12 col-xl-8">
               <form class="panel form-panel" id="create-task-form">
                 <div class="mb-4">
+                  <label class="form-label" for="region-code">审核地区</label>
+                  <select class="form-select form-select-lg" id="region-code" required>
+                    <option value="">请选择审核地区</option>
+                  </select>
+                  <div class="form-text region-availability" id="region-availability">正在读取地区规则。</div>
+                </div>
+                <div class="mb-4">
                   <label class="form-label" for="input-directory">待审核材料目录</label>
                   <div class="input-group input-group-lg">
                     <input class="form-control" id="input-directory" readonly required placeholder="请选择本机材料目录">
@@ -131,7 +138,7 @@
                       <i class="bi bi-folder2-open" aria-hidden="true"></i> 选择目录
                     </button>
                   </div>
-                  <div class="form-text">任务名称由系统自动生成：文件夹名称-年月日-时分秒。</div>
+                  <div class="form-text">任务名称由系统自动生成：地区 文件夹名称-年月日-时分秒。</div>
                 </div>
                 <div class="mb-4">
                   <label class="form-label" for="output-path-preview">输出位置</label>
@@ -201,7 +208,7 @@
               </aside>
               <aside class="panel mt-4 metadata-panel">
                 <h2>任务信息</h2>
-                <dl><dt>材料目录</dt><dd id="detail-input-root">—</dd><dt>输出目录</dt><dd id="detail-output-root">—</dd><dt>创建时间</dt><dd id="detail-created-at">—</dd></dl>
+                <dl><dt>审核地区</dt><dd id="detail-region">—</dd><dt>规则版本</dt><dd id="detail-rule-version">—</dd><dt>材料目录</dt><dd id="detail-input-root">—</dd><dt>输出目录</dt><dd id="detail-output-root">—</dd><dt>创建时间</dt><dd id="detail-created-at">—</dd></dl>
               </aside>
             </div>
           </div>
