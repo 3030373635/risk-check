@@ -168,6 +168,23 @@ def test_startup_diagnostics_lists_missing_region_index(tmp_path: Path) -> None:
     assert any(str(paths.region_index) in item.message for item in report.items)
 
 
+def test_startup_diagnostics_rejects_non_executable_libreoffice(tmp_path: Path) -> None:
+    """macOS LibreOffice 存在但不可执行时必须禁止创建任务。"""
+    from risk_audit_web.diagnostics import run_startup_diagnostics
+    from risk_audit_web.task_paths import PortablePaths
+
+    paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="darwin")
+    paths.soffice.parent.mkdir(parents=True)
+    paths.soffice.write_bytes(b"not executable")
+    chongqing = _write_region(paths.resources_root, "chongqing", ready=True)
+    _write_region_index(paths.resources_root, [chongqing])
+
+    report = run_startup_diagnostics(paths)
+
+    assert not report.can_start
+    assert any(item.code == "not_executable" for item in report.items)
+
+
 def test_startup_diagnostics_rejects_additional_region(tmp_path: Path) -> None:
     """重庆分支混入其他地区时必须阻止创建任务。"""
     from risk_audit_web.diagnostics import run_startup_diagnostics

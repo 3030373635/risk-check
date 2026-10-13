@@ -14,7 +14,27 @@ from urllib.request import Request, urlopen
 
 
 APP_ROOT_ENVIRONMENT = "RISK_AUDIT_APP_ROOT"
+DEV_SOFFICE_ENVIRONMENT = "RISK_AUDIT_DEV_SOFFICE"
 PORTABLE_ROOT_DIRECTORIES = ("app", "runtime", "data", "outputs")
+
+
+def resolve_development_soffice(
+    environment: Mapping[str, str],
+    platform_name: str,
+) -> Path:
+    """解析开发环境 LibreOffice；environment 为环境变量，platform_name 为运行平台。"""
+    raw_path = environment.get(DEV_SOFFICE_ENVIRONMENT)
+    if raw_path is not None:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            raise ValueError(f"{DEV_SOFFICE_ENVIRONMENT} 必须是绝对路径：{raw_path!r}")
+        return candidate.resolve()
+    if platform_name == "darwin":
+        return Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    if platform_name == "win32":
+        program_files = environment.get("PROGRAMFILES", r"C:\Program Files")
+        return Path(program_files) / "LibreOffice/program/soffice.com"
+    return Path("/usr/bin/soffice")
 
 
 def worker_arguments(
@@ -51,9 +71,11 @@ def resolve_application_paths(
 
     raw_root = environment.get(APP_ROOT_ENVIRONMENT)
     if raw_root is None:
-        return PortablePaths.from_app_root(
+        runtime_platform = platform_name or sys.platform
+        return PortablePaths.from_development_root(
             source_root,
-            platform_name=platform_name,
+            resolve_development_soffice(environment, runtime_platform),
+            platform_name=runtime_platform,
         ), False
     candidate = Path(raw_root)
     if not candidate.is_absolute():
@@ -204,6 +226,16 @@ def run_primary_instance(
             open_path=open_path,
             background_runner=run_in_background,
         )
+        status = services.system_status()
+        runtime_mode = "便携模式" if portable else "开发模式"
+        runtime_identity = (
+            f"{runtime_mode}；应用版本={status['app_version']}；"
+            f"规则版本={status['rulepack_version'] or '不可用'}；"
+            f"资源根={paths.resources_root}"
+        )
+        # 终端直接显示实际加载的版本，便于发现源码和规则混用。
+        print(runtime_identity, flush=True)
+        logger.info(runtime_identity)
         app = create_app(
             SecuritySettings(session.token, session.port),
             controller,
@@ -241,11 +273,11 @@ def run_web_application(argv: Sequence[str]) -> int:
     from risk_audit_web.browser import open_default_browser
     from risk_audit_web.platform_runtime import is_process_alive
     from risk_audit_web.single_instance import SingleInstanceLock
-    from risk_audit_web.task_paths import PortablePaths
 
     if argv:
         return 2
-    executable = Path(sys.executable).resolve()
+    # 保留 .venv 符号链接入口，否则 Worker 会绕过虚拟环境丢失运行依赖。
+    executable = Path(sys.executable).absolute()
     project_root = Path(__file__).resolve().parents[2]
     paths, portable = resolve_application_paths(
         os.environ,
@@ -260,6 +292,13 @@ def run_web_application(argv: Sequence[str]) -> int:
             health_check=check_session_health,
             browser_opener=open_default_browser,
         )
+        if not reopened:
+            print(
+                "另一个审核器实例正在运行，但无法确认或打开它的页面。"
+                "请先在原页面退出审核器，再重新启动；"
+                "如果它正在启动，请稍候重试。",
+                file=sys.stderr,
+            )
         return 0 if reopened else 1
     return run_primary_instance(
         paths,

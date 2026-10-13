@@ -28,6 +28,7 @@ def portable_paths(tmp_path: Path):
     paths = PortablePaths.from_app_root(tmp_path / "app")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
+    paths.soffice.chmod(0o755)
     version = "1.9.29"
     release = paths.rulepacks / "releases" / version
     shutil.copytree(PROJECT_ROOT / "rulepacks" / "releases" / version, release)

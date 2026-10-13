@@ -3,6 +3,7 @@
 import builtins
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -132,3 +133,111 @@ def test_application_paths_keep_source_mode_without_environment(tmp_path: Path) 
 
     assert not portable
     assert paths.app_root == (tmp_path / "source").resolve()
+
+
+def test_source_mode_reads_repository_resources_and_external_libreoffice(tmp_path: Path) -> None:
+    """源码模式必须直接读仓库资源，不得回退到便携包 runtime。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    source_root = tmp_path / "source"
+    soffice = tmp_path / "LibreOffice.app/Contents/MacOS/soffice"
+
+    paths, portable = resolve_application_paths(
+        {"RISK_AUDIT_DEV_SOFFICE": str(soffice)},
+        source_root,
+        platform_name="darwin",
+    )
+
+    assert not portable
+    assert paths.resources_root == source_root.resolve()
+    assert paths.region_index == source_root.resolve() / "regions/index.json"
+    assert paths.soffice == soffice.resolve()
+    assert paths.data_root == source_root.resolve() / "data"
+    assert paths.outputs_root == source_root.resolve() / "outputs"
+
+
+def test_source_mode_rejects_relative_libreoffice_override(tmp_path: Path) -> None:
+    """开发模式不得接受依赖当前目录的 LibreOffice 相对路径。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    with pytest.raises(ValueError, match="RISK_AUDIT_DEV_SOFFICE"):
+        resolve_application_paths(
+            {"RISK_AUDIT_DEV_SOFFICE": "relative/soffice"},
+            tmp_path / "source",
+            platform_name="darwin",
+        )
+
+
+def test_source_mode_uses_default_macos_libreoffice(tmp_path: Path) -> None:
+    """macOS 源码模式未覆盖路径时必须使用系统应用目录。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    paths, portable = resolve_application_paths(
+        {},
+        tmp_path / "source",
+        platform_name="darwin",
+    )
+
+    assert not portable
+    assert paths.soffice == Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+
+
+def test_secondary_instance_reports_conflicting_application_root(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    """全局锁属于其他数据根时必须报错，不得静默退出。"""
+    from risk_audit_web.app import run_web_application
+    from risk_audit_web.task_paths import PortablePaths
+
+    paths = PortablePaths.from_app_root(tmp_path / "source")
+    unavailable_lock = SimpleNamespace(acquire=lambda: False)
+    monkeypatch.setattr(
+        "risk_audit_web.app.resolve_application_paths",
+        lambda *_args, **_kwargs: (paths, False),
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.single_instance.SingleInstanceLock",
+        lambda: unavailable_lock,
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.app.reopen_existing_instance",
+        lambda *_args, **_kwargs: False,
+    )
+
+    assert run_web_application([]) == 1
+    assert "另一个审核器实例正在运行" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows 虚拟环境入口不使用 POSIX 符号链接")
+def test_main_instance_preserves_virtualenv_executable_for_workers(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Worker 必须继续使用虚拟环境入口，不得解引用到基础 Python。"""
+    from risk_audit_web.app import run_web_application
+    from risk_audit_web.task_paths import PortablePaths
+
+    virtualenv_python = tmp_path / ".venv/bin/python"
+    virtualenv_python.parent.mkdir(parents=True)
+    virtualenv_python.symlink_to(Path(os.sys.executable).resolve())
+    paths = PortablePaths.from_app_root(tmp_path / "source")
+    available_lock = SimpleNamespace(acquire=lambda: True)
+    captured_executables: list[Path] = []
+    monkeypatch.setattr("risk_audit_web.app.sys.executable", str(virtualenv_python))
+    monkeypatch.setattr(
+        "risk_audit_web.app.resolve_application_paths",
+        lambda *_args, **_kwargs: (paths, False),
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.single_instance.SingleInstanceLock",
+        lambda: available_lock,
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.app.run_primary_instance",
+        lambda _paths, executable, _lock, **_kwargs: captured_executables.append(executable) or 0,
+    )
+
+    assert run_web_application([]) == 0
+    assert captured_executables == [virtualenv_python.absolute()]

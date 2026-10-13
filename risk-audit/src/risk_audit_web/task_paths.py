@@ -22,13 +22,15 @@ class PathValidationError(ValueError):
 
 @dataclass(frozen=True)
 class PortablePaths:
-    """保存便携程序的固定目录；所有路径均锚定在主程序目录。"""
+    """保存应用运行目录；便携模式默认使用发布包内的资源。"""
 
     app_root: Path
     runtime_root: Path
     data_root: Path
     outputs_root: Path
     platform_name: str
+    resources_override: Path | None = None
+    soffice_override: Path | None = None
 
     @classmethod
     def from_app_root(
@@ -47,9 +49,32 @@ class PortablePaths:
             platform_name=platform_name or sys.platform,
         )
 
+    @classmethod
+    def from_development_root(
+        cls,
+        development_root: Path,
+        soffice: Path,
+        *,
+        platform_name: str | None = None,
+    ) -> "PortablePaths":
+        """生成源码开发目录；development_root 为仓库根，soffice 为外部转换程序。"""
+        resolved_root = development_root.resolve()
+        return cls(
+            app_root=resolved_root,
+            runtime_root=resolved_root / "runtime",
+            data_root=resolved_root / "data",
+            outputs_root=resolved_root / "outputs",
+            platform_name=platform_name or sys.platform,
+            # 开发模式直接读取仓库中的 regions、rulepacks 和 baselines。
+            resources_override=resolved_root,
+            soffice_override=soffice.resolve(),
+        )
+
     @property
     def soffice(self) -> Path:
-        """返回目标平台包内 LibreOffice 可执行文件路径；无参数。"""
+        """返回当前模式使用的 LibreOffice 可执行文件路径；无参数。"""
+        if self.soffice_override is not None:
+            return self.soffice_override
         if self.platform_name == "win32":
             # Windows 命令行转换必须使用会等待任务结束的控制台入口。
             return self.runtime_root / "libreoffice/program/soffice.com"
@@ -65,7 +90,7 @@ class PortablePaths:
     @property
     def resources_root(self) -> Path:
         """返回统一运行资源根目录；无参数。"""
-        return self.runtime_root / "resources"
+        return self.resources_override or self.runtime_root / "resources"
 
     @property
     def region_index(self) -> Path:

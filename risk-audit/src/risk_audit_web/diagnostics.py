@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -153,6 +154,19 @@ def _required_path_item(path: Path, *, expect_directory: bool = False) -> Diagno
     )
 
 
+def _required_executable_item(path: Path, platform_name: str) -> DiagnosticItem:
+    """检查运行程序；path 为可执行文件，platform_name 为目标平台。"""
+    if not path.is_file():
+        return DiagnosticItem("missing", str(path), f"必需运行资源缺失：{path}")
+    if platform_name != "win32" and not os.access(path, os.X_OK):
+        return DiagnosticItem(
+            "not_executable",
+            str(path),
+            f"运行资源没有执行权限：{path}",
+        )
+    return DiagnosticItem("ok", str(path), f"运行资源可执行：{path}")
+
+
 def _is_release_version(value: Any) -> bool:
     """判断发布版本是否为单一安全目录名；value 为待检查版本值。"""
     return (
@@ -254,7 +268,7 @@ def run_startup_diagnostics(paths: PortablePaths) -> DiagnosticReport:
     """执行快速启动诊断；paths 为便携程序路径集合。"""
     # 全包 SHA-256 校验仅在构建交付阶段执行，避免启动时读取整套 Python 和 LibreOffice。
     required = [
-        _required_path_item(paths.soffice),
+        _required_executable_item(paths.soffice, paths.platform_name),
         _verify_region_catalog(paths),
     ]
     return DiagnosticReport(required)
