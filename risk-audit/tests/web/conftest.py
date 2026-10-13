@@ -29,7 +29,7 @@ def portable_paths(tmp_path: Path):
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
     paths.soffice.chmod(0o755)
-    version = "1.9.29"
+    version = "1.9.30"
     release = paths.rulepacks / "releases" / version
     shutil.copytree(PROJECT_ROOT / "rulepacks" / "releases" / version, release)
     manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))

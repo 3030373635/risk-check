@@ -13,13 +13,17 @@ from risk_audit.checks.registry import CheckContext, build_registry
 from risk_audit.configuration.loader import load_pack
 from risk_audit.models import Entity, FieldValue, FileRecord, Record
 from risk_audit.output_0916 import EXISTING_HEADER, enrich_matrices
+from risk_audit.pipeline_versions import SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 from risk_audit.readers.confirmed_v180 import parse_workbook_v180
+from risk_audit.runner import CONFIRMED_RULE_VERSIONS, PREPROCESSING_RULE_VERSIONS
 from risk_audit.util import sha256_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源/风控矩阵1013-重庆.docx"
 RELEASE = ROOT / "rulepacks/releases/1.9.29"
+UPDATED_SOURCE = ROOT / "规则来源/风控矩阵-1013-重庆.docx"
+UPDATED_RELEASE = ROOT / "rulepacks/releases/1.9.30"
 
 
 def make_record(record_type: str, row: int, **values: str) -> Record:
@@ -50,6 +54,76 @@ def make_record(record_type: str, row: int, **values: str) -> Record:
         f"{record_type}-{row}",
         business_id="financial_management",
     )
+
+
+def make_context(records: list[Record]) -> CheckContext:
+    """构造重庆岗位责任清单审核上下文。
+
+    Args:
+        records: 本次规则检查使用的岗位责任清单记录。
+
+    Returns:
+        包含固定重庆主体和财务管理业务范围的审核上下文。
+    """
+
+    return CheckContext(
+        records,
+        [],
+        records,
+        {"CQ001": Entity("CQ001", "国网重庆市电力公司")},
+        {},
+        {},
+        ["CQ001"],
+        [{
+            "business_id": "financial_management",
+            "business_code": "02",
+            "variant_id": "default",
+        }],
+    )
+
+
+def updated_person_name_check() -> tuple[dict, object]:
+    """读取重庆 1.9.30 第20条及其审核能力。
+
+    Returns:
+        第20条检查配置和已注册的审核能力。
+    """
+
+    pack = load_pack(UPDATED_RELEASE)
+    rules = {rule["rule_id"]: rule for rule in pack["rules"]}
+    check = rules["chongqing.person_name_single"]["checks"][0]
+    capability = build_registry().get(check["operator"], check["operator_version"])
+    assert capability is not None
+    return check, capability
+
+
+def test_person_name_single_rule_rejects_name_separators() -> None:
+    """第20条应将顿号、中英文逗号识别为同一行填写多个人员。"""
+
+    check, capability = updated_person_name_check()
+
+    for row, person_names in enumerate(("张三、李四", "张三，李四", "张三,李四"), start=8):
+        record = make_record("position_duty", row, person_names=person_names)
+        issues = capability.runner(make_context([record]), check["params"])
+
+        assert len(issues) == 1
+        assert issues[0]["kind"] == "violation"
+        assert issues[0]["record"] is record
+
+    expected_message = "【第20条】每行岗位名称中只能有一个对应人员，若有多人，则应分多行填写。"
+    assert check["message"] == {
+        "review": expected_message,
+        "violation": expected_message,
+    }
+
+
+def test_person_name_single_rule_accepts_one_person() -> None:
+    """第20条不得对单个人员姓名产生审核意见。"""
+
+    check, capability = updated_person_name_check()
+    record = make_record("position_duty", 8, person_names="张三")
+
+    assert capability.runner(make_context([record]), check["params"]) == []
 
 
 def test_reference_exists_v3_ignores_matrix_applicability() -> None:
@@ -162,7 +236,7 @@ def test_matrix_enrichment_removes_existing_measure_column(tmp_path: Path) -> No
     ]
 
 
-def test_1013_release_is_active_and_rebuildable() -> None:
+def test_1013_release_is_rebuildable() -> None:
     """重庆 1.9.29 应冻结 1013 来源、重排删除项后的编号并可确定性复验。"""
 
     assert SOURCE.is_file()
@@ -171,7 +245,6 @@ def test_1013_release_is_active_and_rebuildable() -> None:
     reference_check = rules["references.current_matrix"]["checks"][0]
     responsibility_rule = rules["chongqing.responsibility_alignment"]
     completeness_rule = rules["chongqing.control_measure_completeness"]
-    profile = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))["regions"][0]
 
     assert pack["manifest"]["version"] == "1.9.29"
     assert pack["manifest"]["source_document_sha256"] == sha256_file(SOURCE)
@@ -182,13 +255,45 @@ def test_1013_release_is_active_and_rebuildable() -> None:
     assert responsibility_rule["checks"][0]["message"]["violation"] == "【第18条】{opinion}"
     assert completeness_rule["display_code"] == "R19"
     assert completeness_rule["checks"][0]["message"]["violation"] == "【第19条】{opinion}"
-    assert profile["rulepack_version"] == "1.9.29"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/publish_chongqing_rule_numbers_1929.py"),
+            "--verify-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
+
+
+def test_1013_updated_release_is_active_and_rebuildable() -> None:
+    """重庆 1.9.30 应冻结新版来源、启用第20条并可确定性复验。"""
+
+    assert UPDATED_SOURCE.is_file()
+    pack = load_pack(UPDATED_RELEASE)
+    rules = {rule["rule_id"]: rule for rule in pack["rules"]}
+    person_name_rule = rules["chongqing.person_name_single"]
+    profile = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))["regions"][0]
+
+    assert pack["manifest"]["version"] == "1.9.30"
+    assert pack["manifest"]["source_document_sha256"] == sha256_file(UPDATED_SOURCE)
+    assert person_name_rule["display_code"] == "R20"
+    assert person_name_rule["scope"]["record_type"] == "position_duty"
+    assert "1.9.30" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.30" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.30" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+    assert profile["rulepack_version"] == "1.9.30"
     assert profile["rulepack_content_hash"] == pack["manifest"]["content_hash"]
 
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "tools/publish_chongqing_rule_numbers_1929.py"),
+            str(ROOT / "tools/publish_rules_1013_chongqing_1930.py"),
             "--verify-only",
         ],
         cwd=ROOT,
