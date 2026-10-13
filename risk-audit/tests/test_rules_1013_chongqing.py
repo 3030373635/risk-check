@@ -19,7 +19,7 @@ from risk_audit.util import sha256_file
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "规则来源/风控矩阵1013-重庆.docx"
-RELEASE = ROOT / "rulepacks/releases/1.9.28"
+RELEASE = ROOT / "rulepacks/releases/1.9.29"
 
 
 def make_record(record_type: str, row: int, **values: str) -> Record:
@@ -163,26 +163,32 @@ def test_matrix_enrichment_removes_existing_measure_column(tmp_path: Path) -> No
 
 
 def test_1013_release_is_active_and_rebuildable() -> None:
-    """重庆 1.9.28 应冻结 1013 来源、移除第16条并可确定性复验。"""
+    """重庆 1.9.29 应冻结 1013 来源、重排删除项后的编号并可确定性复验。"""
 
     assert SOURCE.is_file()
     pack = load_pack(RELEASE)
     rules = {rule["rule_id"]: rule for rule in pack["rules"]}
     reference_check = rules["references.current_matrix"]["checks"][0]
+    responsibility_rule = rules["chongqing.responsibility_alignment"]
+    completeness_rule = rules["chongqing.control_measure_completeness"]
     profile = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))["regions"][0]
 
-    assert pack["manifest"]["version"] == "1.9.28"
+    assert pack["manifest"]["version"] == "1.9.29"
     assert pack["manifest"]["source_document_sha256"] == sha256_file(SOURCE)
     assert "matrices.measure_applicability" not in rules
     assert reference_check["operator_version"] == 3
     assert "适用性" not in reference_check["message"]["violation"]
-    assert profile["rulepack_version"] == "1.9.28"
+    assert responsibility_rule["display_code"] == "R18"
+    assert responsibility_rule["checks"][0]["message"]["violation"] == "【第18条】{opinion}"
+    assert completeness_rule["display_code"] == "R19"
+    assert completeness_rule["checks"][0]["message"]["violation"] == "【第19条】{opinion}"
+    assert profile["rulepack_version"] == "1.9.29"
     assert profile["rulepack_content_hash"] == pack["manifest"]["content_hash"]
 
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "tools/publish_rules_1013_chongqing_1928.py"),
+            str(ROOT / "tools/publish_chongqing_rule_numbers_1929.py"),
             "--verify-only",
         ],
         cwd=ROOT,

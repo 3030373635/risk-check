@@ -102,7 +102,7 @@ def test_0928_source_and_release_are_rebuildable() -> None:
     pack = load_pack(RELEASE)
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
 
-    assert __version__ == "2.2.1"
+    assert __version__ == "2.2.2"
     assert active == {
         "version": "1.9.20",
         "content_hash": pack["manifest"]["content_hash"],

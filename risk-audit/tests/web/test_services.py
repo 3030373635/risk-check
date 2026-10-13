@@ -161,10 +161,10 @@ def test_system_status_reports_auditor_and_fixed_region(web_services) -> None:
     """系统状态必须显示审核器版本和固定地区；web_services 为真实服务。"""
     status = web_services.system_status()
 
-    assert status["app_version"] == "2.2.1"
+    assert status["app_version"] == "2.2.2"
     assert status["region_code"] == "chongqing"
     assert status["region_name"] == "重庆"
-    assert status["rulepack_version"] == "1.9.28"
+    assert status["rulepack_version"] == "1.9.29"
     assert "rule_version" not in status
 
 
@@ -194,7 +194,7 @@ def test_created_task_keeps_pinned_region_after_index_changes(
 
     assert request.region_code == "chongqing"
     assert request.region_name == "重庆"
-    assert request.rulepack_version == "1.9.28"
+    assert request.rulepack_version == "1.9.29"
     assert request.rulepack == str(web_services._region_catalog.require("chongqing").rulepack)
 
 

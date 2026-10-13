@@ -1,0 +1,11 @@
+{
+  "audit_as_of": "2026-10-13",
+  "engine_compatibility": ">=1.9.28,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "abd676d4cd508aad0bd1dc573fe9c8a795463d048ba6924c489e6bb359d5dc50",
+  "status": "draft",
+  "title": "重庆第18、19条审核意见编号修复规则包",
+  "version": "1.9.29"
+}

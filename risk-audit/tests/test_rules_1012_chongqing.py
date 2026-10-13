@@ -1083,9 +1083,9 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
     profile = index["regions"][0]
     manifest = json.loads(
-        (ROOT / "rulepacks/releases/1.9.28/manifest.json").read_text(encoding="utf-8")
+        (ROOT / "rulepacks/releases/1.9.29/manifest.json").read_text(encoding="utf-8")
     )
-    assert profile["rulepack_version"] == "1.9.28"
+    assert profile["rulepack_version"] == "1.9.29"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
 
 
@@ -1102,7 +1102,7 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     ),
     (
         "chongqing.responsibility_alignment",
-        19,
+        18,
         {
             "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
             "responsibility": "各级单位-财务资产部-总账报表管理",
@@ -1110,7 +1110,7 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     ),
     (
         "chongqing.control_measure_completeness",
-        20,
+        19,
         {
             "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
             "key_control_point": "1.会计主体完整性管控",

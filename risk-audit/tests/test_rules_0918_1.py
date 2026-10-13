@@ -25,7 +25,7 @@ def test_active_rule_accepts_metering_work_responsible_position() -> None:
 
 def test_0918_1_release_is_preserved() -> None:
     """0918-1 源文档和历史 1.9.14 发布包必须保持可追溯。"""
-    assert __version__ == "2.2.1"
+    assert __version__ == "2.2.2"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
     assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.14")

@@ -136,7 +136,7 @@ def test_matching_applicability_and_duty_states_leave_opinion_empty(
 
 def test_0920_2_release_is_rebuildable() -> None:
     """0920-2来源必须冻结，1.9.16历史修复包必须可重建。"""
-    assert __version__ == "2.2.1"
+    assert __version__ == "2.2.2"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
     assert active["version"] == "1.9.20"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.16")

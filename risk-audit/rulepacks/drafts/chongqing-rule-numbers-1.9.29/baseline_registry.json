@@ -1,0 +1,558 @@
+{
+  "businesses": [
+    {
+      "aliases": [
+        "营销售电",
+        "营销与售电"
+      ],
+      "business_code": "01",
+      "business_id": "sales_electricity",
+      "business_name": "营销售电",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/01 营销售电/01风控矩阵-营销售电.xlsx",
+            "sha256": "3971b1e881759e7ab7243ab0c2a4a6577fc31226cf118859f8825e455ba29da5"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "交易与购电",
+        "交易购电",
+        "营销购电"
+      ],
+      "business_code": "02",
+      "business_id": "power_purchase_trading",
+      "business_name": "交易与购电",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/02 交易与购电/02风控矩阵-交易与购电.xlsx",
+            "sha256": "5ceff09e3a45fcb050155a8281957b170bfea71fbbb97d103c6a88c82b72331a"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "35千伏-750千伏电网基建",
+        "35Kv-750Kv电网基建项目",
+        "电网基建"
+      ],
+      "business_code": "03",
+      "business_id": "grid_construction",
+      "business_name": "35千伏-750千伏电网基建",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/03 35千伏-750千伏电网基建/03风控矩阵-35千伏-750千伏电网基建.xlsx",
+            "sha256": "cc0d0667106e6499df5b2b4cec066c6b3a7a9dd243b79b1574787e5253c4e07e"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "迁改工程管理",
+        "迁改工程"
+      ],
+      "business_code": "04",
+      "business_id": "relocation_project_management",
+      "business_name": "迁改工程管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/04 迁改工程管理/04风控矩阵-迁改工程管理.xlsx",
+            "sha256": "c401500bcc78c708bea633f2947bbb6ceeb9b5660af9568686d7bdd216828af8"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "配网工程管理",
+        "配网工程"
+      ],
+      "business_code": "05",
+      "business_id": "distribution_grid_project_management",
+      "business_name": "配网工程管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/05 配网工程管理/05风控矩阵-配网工程管理.xlsx",
+            "sha256": "e371a2f06aadb8107fbbe3d44da3dd4db74d2a3db5cbd4c13941490ade21ccd4"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "设备（资产）管理",
+        "设备资产管理",
+        "设备管理"
+      ],
+      "business_code": "06",
+      "business_id": "asset_management",
+      "business_name": "设备（资产）管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/06 设备（资产）管理/06风控矩阵-设备（资产）管理.xlsx",
+            "sha256": "254101feb0206b4684b1e7707a014451c08bbb8e95097d96e81e844df80db4fe"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "物资（服务）采购与实施",
+        "物资服务采购与实施",
+        "物资采购与实施"
+      ],
+      "business_code": "07",
+      "business_id": "procurement_implementation",
+      "business_name": "物资（服务）采购与实施",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/07 物资（服务）采购与实施/07风控矩阵-物资（服务）采购与实施.xlsx",
+            "sha256": "5588f4ad36be83f120e61ec5a12badbd25b6127ec00956f28c23a86363eabd5a"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "数字化与研发投入",
+        "数字化研发投入",
+        "数字化与研发",
+        "科研投入"
+      ],
+      "business_code": "08",
+      "business_id": "digitalization_rd_investment",
+      "business_name": "数字化与研发投入",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/08 数字化与研发投入/08风控矩阵-数字化与研发投入.xlsx",
+            "sha256": "841162d38f13ca82489739a73c21d126e4cb616bef255e187833e0129728613f"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "职工福利保障与薪酬管理",
+        "职工福利与薪酬管理"
+      ],
+      "business_code": "09",
+      "business_id": "employee_welfare_compensation",
+      "business_name": "职工福利保障与薪酬管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/09 职工福利保障与薪酬管理/09风控矩阵-职工福利保障与薪酬管理.xlsx",
+            "sha256": "925e8c54c0f30a7044e9a00e62abcbed99f38f72f1ef34099ef7bf2f1153b5b5"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "员工报账",
+        "员工报销"
+      ],
+      "business_code": "10",
+      "business_id": "employee_reimbursement",
+      "business_name": "员工报账",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "1.第一批重庆公司风控矩阵/10 员工报账/10风控矩阵-员工报账.xlsx",
+            "sha256": "db3033aeff488078ce7f4e78427f36089e91e59aceda7dd79b6fc207bed9ea36"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "股权（产权）管理",
+        "股权产权管理",
+        "股权管理",
+        "产权管理"
+      ],
+      "business_code": "01",
+      "business_id": "equity_management",
+      "business_name": "股权（产权）管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/01 股权（产权）管理/01风控矩阵-股权（产权）管理.xlsx",
+            "sha256": "96cbe23563ba14f3e560fa53b79a7c550ef9078e6491cc02664ffc5035f652d5"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "财务管理"
+      ],
+      "business_code": "02",
+      "business_id": "financial_management",
+      "business_name": "财务管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/02 财务管理/02风控矩阵-财务管理.xlsx",
+            "sha256": "80cc3c4abd46a4ac21199f32608bad95bb77507d7007f1f17913565c9a381efe"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "合同管理"
+      ],
+      "business_code": "03",
+      "business_id": "contract_management",
+      "business_name": "合同管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/03 合同管理/03风控矩阵-合同管理.xlsx",
+            "sha256": "7ba7d8f703dc9ffb12d1ddd52c85d26a095a13623cb6147ca17980ae363d53ae"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "特高压建设",
+        "特高压管理"
+      ],
+      "business_code": "04",
+      "business_id": "ultra_high_voltage_construction",
+      "business_name": "特高压建设",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/04 特高压建设/04风控矩阵-特高压建设.xlsx",
+            "sha256": "515589e413dae0747a646814946217e2aac9557e5c578b702f5691e539def6d6"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "抽蓄（水电）项目建设与运营",
+        "抽蓄水电项目建设与运营"
+      ],
+      "business_code": "05",
+      "business_id": "pumped_storage_hydropower",
+      "business_name": "抽蓄（水电）项目建设与运营",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/05 抽蓄（水电）项目建设与运营/05风控矩阵-抽蓄（水电）项目建设与运营.xlsx",
+            "sha256": "e461156df112c1e020b533087d38b7019d2d0d88bbd02a0f19977f00b1315dcc"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "软件开发与实施服务",
+        "软件开发实施服务"
+      ],
+      "business_code": "21",
+      "business_id": "software_development_implementation",
+      "business_name": "软件开发与实施服务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/21 软件开发与实施服务/21风控矩阵-软件开发与实施服务.xlsx",
+            "sha256": "9b0a33deb8d05ec6da5d843f633ccb5b19a84ff2e2d33658d5a742da95e2c3d1"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "合同能源管理项目",
+        "合同能源管理"
+      ],
+      "business_code": "23",
+      "business_id": "contract_energy_management",
+      "business_name": "合同能源管理项目",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/23 合同能源管理项目/23风控矩阵-合同能源管理项目.xlsx",
+            "sha256": "ad66ce9134fbfe6d9b8c161e2767a40fe80924703d22d6dbaceed8e7f86dd965"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "数科平台业务",
+        "数字科技平台业务"
+      ],
+      "business_code": "24",
+      "business_id": "digital_platform_business",
+      "business_name": "数科平台业务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/24 数科平台业务/24风控矩阵-数科平台业务.xlsx",
+            "sha256": "1305a103a023201c81c240f5532c06292d775cb3526ac86330e6f2a2b995cc60"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "充电设施建设及运营管理",
+        "充电设施建设运营管理"
+      ],
+      "business_code": "25",
+      "business_id": "charging_facility_operation",
+      "business_name": "充电设施建设及运营管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/25 充电设施建设及运营管理/25风控矩阵-充电设施建设及运营管理.xlsx",
+            "sha256": "efa8f6d96a568cf59c2ca0a4053b967756060e73006c06b40fdd4146e4c47076"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "监理业务",
+        "工程监理"
+      ],
+      "business_code": "26",
+      "business_id": "supervision_business",
+      "business_name": "监理业务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/26 监理业务/26风控矩阵-监理业务.xlsx",
+            "sha256": "99f15ba90284ef43b66b7939924a33152be78afc153b0b82e2668270753cad05"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "招标代理",
+        "招标代理业务"
+      ],
+      "business_code": "27",
+      "business_id": "tendering_agency",
+      "business_name": "招标代理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/27 招标代理/27风控矩阵-招标代理.xlsx",
+            "sha256": "4c37d9bd9789d076a66440ad8a2aba645893c83affcc426c9643c3f3111eb7e0"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "教育培训"
+      ],
+      "business_code": "28",
+      "business_id": "education_training",
+      "business_name": "教育培训",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/28 教育培训/28风控矩阵-教育培训.xlsx",
+            "sha256": "9700e0246e5c0313a904d5043f29bbfce0e74d046a09dd8bb14049bd7e527769"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "施工建设"
+      ],
+      "business_code": "29",
+      "business_id": "construction",
+      "business_name": "施工建设",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/29 施工建设/29风控矩阵-施工建设.xlsx",
+            "sha256": "1c54a6ddb46189500fa8eaf290d2ef97e83aae075a1ea67f1a1c0493ffeced03"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "物业后勤业务",
+        "物业后勤"
+      ],
+      "business_code": "30",
+      "business_id": "property_logistics",
+      "business_name": "物业后勤业务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/30 物业后勤业务/30风控矩阵-物业后勤业务.xlsx",
+            "sha256": "8e1a5bc6e1292715af8c453af331d23a7e03d75e16683995304e6ddf106a5d1b"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "供电服务"
+      ],
+      "business_code": "31",
+      "business_id": "power_supply_service",
+      "business_name": "供电服务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/31 供电服务/31风控矩阵-供电服务.xlsx",
+            "sha256": "f68db6bcf57d679647158592545a582fbc6d4872e55ad990951ee15c3ff1620e"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "售电业务"
+      ],
+      "business_code": "32",
+      "business_id": "electricity_sales_business",
+      "business_name": "售电业务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/32 售电业务/32风控矩阵-售电业务.xlsx",
+            "sha256": "197777728405712d9253646cb8bb7e8e7dfde3d3256c7754301c31de25aa64ec"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "检修运维成本项目全流程管理",
+        "检修运维成本项目管理"
+      ],
+      "business_code": "33",
+      "business_id": "maintenance_cost_project_management",
+      "business_name": "检修运维成本项目全流程管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/33 检修运维成本项目全流程管理/33风控矩阵-检修运维成本项目全流程管理.xlsx",
+            "sha256": "3af99b976ee65bdc66c12b5a106829ae3240c115bd72baee71e6ddc0d689d21a"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "违章罚款收入管理",
+        "违章罚款收入"
+      ],
+      "business_code": "34",
+      "business_id": "violation_fine_income_management",
+      "business_name": "违章罚款收入管理",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/34 违章罚款收入管理/34风控矩阵-违章罚款收入管理.xlsx",
+            "sha256": "17d57c22a7af9ee08fcb8e9844298339303d3cc58ff3be0595d76661bde43157"
+          },
+          "variant_id": "default"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "设计业务",
+        "工程设计"
+      ],
+      "business_code": "37",
+      "business_id": "design_business",
+      "business_name": "设计业务",
+      "variants": [
+        {
+          "aliases": [],
+          "template": {
+            "path": "2.第二批重庆公司风控矩阵/37 设计业务/37风控矩阵-设计业务.xlsx",
+            "sha256": "831dff2985fc5a0bd62b3dff269a4b36e3d0a327f433d516cde2a97d41cdd222"
+          },
+          "variant_id": "default"
+        }
+      ]
+    }
+  ],
+  "schema_version": "2.0"
+}
