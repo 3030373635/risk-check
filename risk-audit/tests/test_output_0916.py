@@ -306,6 +306,42 @@ def test_sort_clips_oversized_merge_before_styled_blank_tail(tmp_path):
     assert list(output.merged_cells.ranges) == []
 
 
+def test_sort_expands_department_merge_across_unsortable_duty_rows(tmp_path):
+    """合法部门合并包含无编号岗位明细时仍应完成排序。
+
+    Args:
+        tmp_path: pytest 提供的隔离临时目录。
+    """
+    path = tmp_path / '10员工报账岗位责任清单.xlsx'
+    book = Workbook(); sheet = book.active; sheet.title = '岗位责任清单'
+    sheet.append(['部门', '岗位名称', '人员姓名', '岗位职责编号', '角色', '岗位职责', '控制措施编号'])
+    sheet.append(['财务部', '会计', '张三', 1, '经办', '处理编号12事项', '员工报账业务-12.控制点-控制措施01'])
+    sheet.append([None, '会计', '张三', 2, '经办', '处理尚未配置编号的事项', None])
+    sheet.append([None, '会计', '张三', 3, '经办', '处理编号2事项', '员工报账业务-2.控制点-控制措施01'])
+    sheet.append([None, '会计', '张三', 4, '经办', '处理另一项未配置编号的事项', None])
+    sheet.append(['建设部', '工程专责', '李四', 1, '经办', '处理编号3事项', '员工报账业务-3.控制点-控制措施01'])
+    sheet.append([None, '工程专责', '李四', 2, '经办', '处理编号1事项', '员工报账业务-1.控制点-控制措施01'])
+    sheet.merge_cells('A2:A5'); sheet.merge_cells('A6:A7'); book.save(path)
+    file, aliases = file_record(path)
+
+    module().sort_duties(file, {}, tmp_path / 'work', aliases)
+
+    output = load_workbook(file._preprocessed_path).active
+    assert [output.cell(row, 7).value for row in range(2, 8)] == [
+        '员工报账业务-1.控制点-控制措施01',
+        None,
+        '员工报账业务-2.控制点-控制措施01',
+        None,
+        '员工报账业务-3.控制点-控制措施01',
+        '员工报账业务-12.控制点-控制措施01',
+    ]
+    # 合并展开后，每条岗位明细都必须保留原部门归属。
+    assert [output.cell(row, 1).value for row in range(2, 8)] == [
+        '建设部', '财务部', '财务部', '财务部', '建设部', '财务部',
+    ]
+    assert list(output.merged_cells.ranges) == []
+
+
 def test_sort_rejects_oversized_merge_crossing_real_content(tmp_path):
     """验证岗位排序拒绝跨越真实内容行的超长合并范围。
 
@@ -317,10 +353,42 @@ def test_sort_rejects_oversized_merge_crossing_real_content(tmp_path):
     for number in (12, 2, 1):
         ws.append([f'薪酬业务-{number}.控制点-控制措施01', '财务部', '核算专责', '张三',
                    '对资料真实性负主体责任', '经办'])
-    ws['A5'] = '填表说明：保留其他有效区域'
+    # 说明文字可能落在“岗位职责”列，不能仅凭该字段把它当成岗位明细。
+    ws['E5'] = '填表说明：保留其他有效区域'
     ws.merge_cells('B3:B4'); book.save(path)
     file, aliases = file_record(path)
 
+    with ZipFile(path) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    root = etree.fromstring(parts['xl/worksheets/sheet1.xml'])
+    namespaces = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+    root.xpath('//m:mergeCell[@ref="B3:B4"]', namespaces=namespaces)[0].set('ref', 'B3:B1048576')
+    parts['xl/worksheets/sheet1.xml'] = etree.tostring(root)
+    with ZipFile(path, 'w') as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+
+    with pytest.raises(ValueError, match='岗位排序合并范围跨越有效明细或其他区域'):
+        module().sort_duties(file, {}, tmp_path / 'work', aliases)
+
+
+def test_sort_rejects_department_merge_crossing_horizontal_instruction(tmp_path):
+    """部门纵向合并跨过横向合并说明时必须拒绝排序。
+
+    Args:
+        tmp_path: pytest 提供的隔离临时目录。
+    """
+    path = tmp_path / '10员工报账跨说明区岗位清单.xlsx'
+    book = Workbook(); sheet = book.active; sheet.title = '岗位职责清单'
+    sheet.append(['控制措施编号', '部门', '岗位名称', '人员姓名', '岗位职责', '角色'])
+    for number in (12, 2, 1):
+        sheet.append([f'员工报账业务-{number}.控制点-控制措施01', '财务部', '会计', '张三',
+                      '对资料真实性负主体责任', '经办'])
+    sheet['B5'] = '填表说明：以下内容不属于岗位明细'
+    sheet.merge_cells('B3:B4'); sheet.merge_cells('B5:F5'); book.save(path)
+    file, aliases = file_record(path)
+
+    # 模拟异常模板：部门合并继续向下延伸并跨过横向合并的说明行。
     with ZipFile(path) as archive:
         parts = {name: archive.read(name) for name in archive.namelist()}
     root = etree.fromstring(parts['xl/worksheets/sheet1.xml'])

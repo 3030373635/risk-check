@@ -109,6 +109,22 @@ def _is_sortable_duty_row(row: Any) -> bool:
     )
 
 
+def _is_duty_detail_row(row: Any) -> bool:
+    """判断记录是否有岗位明细证据。
+
+    Args:
+        row: 待判断的岗位清单记录。
+    """
+    identity_fields = ('position', 'person_names', 'duty_id', 'role')
+    identity_sources = {
+        field_value.coordinate
+        for field in identity_fields
+        if (field_value := row.fields.get(field)) and norm_text(field_value.current)
+    }
+    # 横向合并说明会回填多个字段；至少两个独立单元格才构成岗位身份依据。
+    return len(identity_sources) >= 2
+
+
 def _cell_has_content(cell: Any) -> bool:
     """判断 OOXML 单元格是否包含值或公式；cell 为工作表 XML 单元格节点。"""
     if cell.find(f'{{{MAIN}}}f') is not None:
@@ -187,6 +203,7 @@ def sort_duties(file: FileRecord, baselines: dict, work_dir: Path, aliases: dict
                 # 0916-4 明确按编号数字排序，旧基准清单的行次不再覆盖数字顺序。
                 ordered = sorted(details, key=_sort_key)
                 mapping = {row.row: slot for row, slot in zip(ordered, sorted(row.row for row in details))}
+                record_rows = {row.row for row in sheet.records if _is_duty_detail_row(row)}
                 if all(old == new for old, new in mapping.items()):
                     continue
                 # 使用业务区域的实际表头边界，字段识别冲突时也必须移动部门等原始业务列。
@@ -269,8 +286,12 @@ def sort_duties(file: FileRecord, baselines: dict, work_dir: Path, aliases: dict
                         merge_columns = range(left, right + 1)
                         if not any(number in mapping for number in merge_rows) or not any(column in move_columns for column in merge_columns):
                             continue
-                        if not all(number in mapping for number in merge_rows) or not all(column in move_columns for column in merge_columns):
+                        merge_within_records = all(number in record_rows for number in merge_rows)
+                        merge_within_columns = all(column in move_columns for column in merge_columns)
+                        if not merge_within_records or not merge_within_columns:
                             raise ValueError(f'岗位排序合并范围跨越有效明细或其他区域：{file.relative_path}#{title}!{merge.get("ref")}')
+                        # 无控制措施编号的合法岗位明细不参与排序，但必须展开合并并保留原位。
+                        mapping.update({number: number for number in merge_rows if number not in mapping})
                         anchor = cells.get(f'{get_column_letter(left)}{top}')
                         if anchor is not None:
                             for number in merge_rows:
