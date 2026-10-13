@@ -10,6 +10,7 @@ from risk_audit.business_identity import (
     normalize_business_text,
     validate_business_registry,
 )
+from risk_audit.entity_groups import prepare_entity_groups
 from risk_audit.inventory import classify_material
 from risk_audit.inventory_v180 import scan_package_v180
 from risk_audit.models import Entity
@@ -135,6 +136,120 @@ def test_identify_business_uses_direct_parent_directory_code(business_registry: 
         "05",
         "配网工程管理",
     )
+
+
+def test_identify_business_uses_registered_ancestor_for_nested_material(
+    business_registry: dict,
+) -> None:
+    """业务材料再套附件目录时仍必须归属外层业务目录。
+
+    Args:
+        business_registry: pytest 提供的模板业务配置。
+    """
+
+    result = identify_business(
+        Path('1.营销售电矩阵及“三清单”/三清单/岗位内控责任清单.xlsx'),
+        business_registry,
+    )
+
+    assert (result.business_id, result.business_code) == ('sales_electricity', '01')
+    assert result.business_directory == Path('1.营销售电矩阵及“三清单”')
+
+
+def test_identify_business_uses_outer_directory_when_nested_directory_matches_same_business(
+    business_registry: dict,
+) -> None:
+    """内外目录命中同一业务时必须使用包含整套材料的外层目录。
+
+    Args:
+        business_registry: pytest 提供的模板业务配置。
+    """
+
+    result = identify_business(
+        Path(
+            '1.营销售电矩阵及“三清单”/'
+            '01.营销售电（永川公司）“三清单”/'
+            '岗位内控责任清单.xlsx'
+        ),
+        business_registry,
+    )
+
+    assert result.business_directory == Path('1.营销售电矩阵及“三清单”')
+
+
+def test_identify_business_keeps_nested_variant_directory_as_business_boundary(
+    business_registry: dict,
+) -> None:
+    """包含模板变体的子目录是业务边界，不得被外层通用目录覆盖。
+
+    Args:
+        business_registry: pytest 提供的模板业务配置。
+    """
+
+    result = identify_business(
+        Path(
+            '03.电网基建/'
+            '03.电网基建35千伏-220千伏三清单/'
+            '03风控矩阵.xlsx'
+        ),
+        business_registry,
+    )
+
+    assert result.business_directory == Path(
+        '03.电网基建/03.电网基建35千伏-220千伏三清单'
+    )
+    assert result.variant_id == '35-220kv'
+
+
+def test_identify_business_stops_before_numbered_batch_wrapper(
+    business_registry: dict,
+) -> None:
+    """外层批次目录的序号不得干扰已确认的业务边界。
+
+    Args:
+        business_registry: pytest 提供的模板业务配置。
+    """
+
+    result = identify_business(
+        Path('1.第一批重庆公司风控矩阵/01 营销售电/01风控矩阵.xlsx'),
+        business_registry,
+    )
+
+    assert result.business_id == 'sales_electricity'
+    assert result.business_directory == Path('1.第一批重庆公司风控矩阵/01 营销售电')
+
+
+def test_nested_business_materials_share_canonical_business_and_subject_directories(
+    tmp_path: Path,
+    business_registry: dict,
+) -> None:
+    """直接材料与子目录材料必须进入同一业务和主体。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        business_registry: pytest 提供的模板业务配置。
+    """
+
+    root = tmp_path / '永川公司矩阵'
+    business_directory = root / '1.营销售电矩阵及“三清单”'
+    nested_directory = business_directory / '三清单'
+    nested_directory.mkdir(parents=True)
+    Workbook().save(business_directory / '01风控矩阵-营销售电.xlsx')
+    Workbook().save(nested_directory / '岗位内控责任清单.xlsx')
+
+    files = scan_package_v180(root, {}, {}, business_registry)
+    groups = prepare_entity_groups(
+        files,
+        root,
+        {},
+        entity_mode='parent_directory',
+    )
+
+    assert {file.business_directory for file in files} == {
+        Path('1.营销售电矩阵及“三清单”'),
+    }
+    assert len(groups) == 1
+    assert next(iter(groups.values()))['entity_name'] == '永川公司矩阵'
 
 
 def test_identify_business_uses_selected_root_for_direct_package_variant(business_registry: dict):
@@ -654,8 +769,53 @@ def test_selected_business_root_does_not_guess_subject_from_business_name(tmp_pa
     assert {(file.business_id, file.business_code, file.variant_id) for file in files} == {
         ("financial_management", "02", "default"),
     }
+    assert {file.business_directory for file in files} == {Path('.')}
+    assert {file.preservation['business_name'] for file in files} == {package_root.name}
     assert {file.entity_code for file in files} == {None}
     assert all(not any("业务模板" in error for error in file.parse_errors) for file in files)
+
+
+@pytest.mark.parametrize("scanner_name", ["current", "confirmed"])
+def test_selected_business_root_merges_nested_material_directories(
+    tmp_path: Path,
+    scanner_name: str,
+) -> None:
+    """直接选择业务包时，根目录矩阵与子目录三清单必须归为同一业务和主体。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        scanner_name: 待验证的扫描器名称。
+    """
+    from risk_audit.inventory import scan_package
+    from risk_audit.inventory_v180 import scan_package_v180
+
+    project_root = Path(__file__).resolve().parents[2]
+    registry = read_json(
+        project_root / "risk-audit/rulepacks/releases/1.9.20/baseline_registry.json"
+    )
+    package_root = tmp_path / '1.营销售电矩阵及“三清单”'
+    nested_directory = package_root / '三清单'
+    nested_directory.mkdir(parents=True)
+
+    workbook = Workbook()
+    workbook.active.append(["控制措施编号", "控制措施"])
+    workbook.save(package_root / '01风控矩阵.xlsx')
+    workbook.save(nested_directory / '岗位内控责任清单.xlsx')
+
+    scanner = scan_package if scanner_name == "current" else scan_package_v180
+    files = scanner(package_root, {}, {}, registry)
+    groups = prepare_entity_groups(
+        files,
+        package_root,
+        {},
+        {},
+        registry,
+        entity_mode='parent_directory',
+    )
+
+    assert {file.business_id for file in files} == {'sales_electricity'}
+    assert {file.business_directory for file in files} == {Path('.')}
+    assert len(groups) == 1
 
 
 @pytest.mark.parametrize("scanner_name", ["current", "confirmed"])

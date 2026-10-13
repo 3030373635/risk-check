@@ -166,6 +166,48 @@ def test_business_directories_with_half_width_parentheses_belong_to_parent_unit(
     assert [item['business_code'] for item in businesses] == ['06', '07']
 
 
+def test_nested_materials_use_canonical_business_directory_for_scope(tmp_path: Path) -> None:
+    """范围解析必须在主体赋码前就合并业务子目录材料。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    business_directory = Path('永川公司矩阵/1.营销售电矩阵及“三清单”')
+    files = []
+    for relative_path, material_type in [
+        (business_directory / '01风控矩阵-营销售电.xlsx', 'matrix'),
+        (business_directory / '三清单/岗位内控责任清单.xlsx', 'three_lists'),
+    ]:
+        files.append(FileRecord(
+            tmp_path / relative_path,
+            relative_path,
+            f'hash-{material_type}',
+            'xlsx',
+            None,
+            [],
+            False,
+            '01',
+            'default',
+            material_type,
+            business_id='sales_electricity',
+            business_directory=business_directory,
+        ))
+
+    from risk_audit.submission_scope import resolve_submission_scopes
+
+    scopes, _ = resolve_submission_scopes(
+        tmp_path,
+        files,
+        {},
+        {},
+        'batch',
+        entity_mode='parent_directory',
+    )
+
+    assert list(scopes) == ['@目录:永川公司矩阵']
+
+
 def test_child_unit_directories_keep_uploaded_materials_separate(tmp_path):
     """tmp_path 为隔离目录；上层目录相同的子单位仍按实际材料目录分组。"""
     first = uploaded(tmp_path, '株洲高新公司/设计本部', '10')

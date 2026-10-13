@@ -104,6 +104,7 @@ def scan_package_v180(
         if not material:
             continue
         business_id = None
+        business_directory = None
         business_error = ''
         template_match = {'status': 'not_applicable', 'reason': ''}
         if material == 'explanation':
@@ -117,6 +118,7 @@ def scan_package_v180(
                 )
                 business_id = business_identity.business_id
                 business = business_identity.business_code
+                business_directory = business_identity.business_directory
                 variant = business_identity.variant_id
                 template_match = {
                     'status': 'matched',
@@ -143,6 +145,7 @@ def scan_package_v180(
             identity.extend(text.splitlines()[:30])
         code, evidence, conflict = identify_material_entity(
             path, base, entities, aliases, identity, business_registry, business_id, business,
+            business_directory,
         )
         errors = []
         if file_format == 'unknown':
@@ -152,7 +155,8 @@ def scan_package_v180(
         if code is None:
             errors.append('主体证据冲突' if conflict else '无法确定会计主体')
         record = FileRecord(path, relative, sha256_file(path), file_format, code, evidence, conflict,
-                            business, variant, material, parse_errors=errors, business_id=business_id)
+                            business, variant, material, parse_errors=errors, business_id=business_id,
+                            business_directory=business_directory)
         if matched_from_workbook:
             # 命名检查复用扫描阶段的标题证据，避免对已确认类型的重庆材料重复报错。
             record.preservation['material_match'] = {
@@ -164,7 +168,7 @@ def scan_package_v180(
                 and business_registry.get('schema_version') == '2.0'
                 and template_match['status'] == 'matched'):
             # 展示名始终保留报送业务目录，标准名仅用于追溯规则映射。
-            record.preservation['business_name'] = relative.parent.name or base.name
+            record.preservation['business_name'] = business_directory.name or base.name
             record.preservation['registry_business_name'] = business_identity.business_name
         records.append(record)
     return records

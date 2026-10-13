@@ -143,6 +143,63 @@ def test_statistics_groups_and_displays_business_by_directory(tmp_path: Path) ->
     }
 
 
+def test_statistics_merges_nested_materials_by_canonical_business_directory(
+    tmp_path: Path,
+) -> None:
+    """统计表必须使用规范业务目录，不得把附件子目录当成业务或主体。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    business_directory = Path('1.营销售电矩阵及“三清单”')
+    matrix = _file(
+        tmp_path,
+        f'{business_directory}/01风控矩阵-营销售电.xlsx',
+        'matrix',
+        '01',
+    )
+    duties = _file(
+        tmp_path,
+        f'{business_directory}/三清单/岗位内控责任清单.xlsx',
+        'three_lists',
+        '01',
+    )
+    for file in (matrix, duties):
+        file.business_id = 'sales_electricity'
+        file.business_directory = business_directory
+    ownership = {
+        str(matrix.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': '【第3条】请核实矩阵字段。',
+        }],
+        str(duties.relative_path): [{
+            'sheet': '岗位内控责任清单',
+            'cell': 'I2',
+            'program_text': '【第5条】请补充人员姓名。',
+        }],
+    }
+    target = tmp_path / '审核统计表.html'
+
+    write_audit_statistics_html(target, [matrix, duties], ownership, '永川公司矩阵')
+
+    document = html.fromstring(target.read_text(encoding='utf-8'))
+    source = json.loads(document.get_element_by_id('audit-source-data').text)
+    assert source == {
+        'units': [{
+            'path': '永川公司矩阵',
+            'businesses': [{
+                'name': '1.营销售电矩阵及“三清单”',
+                'records': [
+                    '【第3条】请核实矩阵字段。 1条。',
+                    '【第5条】请补充人员姓名。 1条。',
+                ],
+            }],
+        }],
+    }
+
+
 def test_statistics_writes_each_business_on_separate_row_without_truncation(tmp_path: Path) -> None:
     """每个业务必须独占一行，避免主体汇总超过 Excel 单元格字符上限。
 

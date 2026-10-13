@@ -40,12 +40,12 @@ def _unit_and_business(
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
 
-    directories = file.relative_path.parts[:-1]
-    if not directories:
+    business_directory = file.business_directory or file.relative_path.parent
+    if business_directory == Path('.'):
         return root_subject_name or '未识别主题', package_name
-    # 文件直接上级是业务目录，业务目录上级才是主体路径。
-    business_name = directories[-1]
-    unit_directories = directories[:-1]
+    # 扫描阶段已排除“三清单”等附件子目录，统计不再自行猜测目录层级。
+    business_name = business_directory.name
+    unit_directories = business_directory.parts[:-1]
     unit_name = '/'.join(part for part in (package_name, *unit_directories) if part)
     return unit_name, business_name
 
@@ -59,7 +59,8 @@ def _business_group_key(file: FileRecord, business_name: str) -> tuple[str, str]
     """
 
     # 有业务目录时以目录为唯一分组身份，文件上的识别结果不得拆分它。
-    identity = f'directory:{file.relative_path.parent.as_posix()}'
+    business_directory = file.business_directory or file.relative_path.parent
+    identity = f'directory:{business_directory.as_posix()}'
     return identity, file.variant_id or 'default'
 
 

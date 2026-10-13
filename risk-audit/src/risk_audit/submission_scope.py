@@ -5,16 +5,27 @@ from pathlib import Path
 from risk_audit.util import write_compact_json
 
 
-def unit_directory(path, root):
+def unit_directory(path, root, business_directory=None):
     """按固定层级取得主体目录。
 
     Args:
         path: 当前材料的绝对路径。
         root: 用户选择的输入根目录。
+        business_directory: 扫描阶段确定的相对业务目录；无法确定时为 None。
     """
 
     path = Path(path).resolve()
     root = Path(root).resolve()
+    if business_directory is not None:
+        relative_business_directory = Path(business_directory)
+        if relative_business_directory == Path('.'):
+            # 输入根本身是业务目录，主体应取根目录的外层目录。
+            return root.parent
+        subject_directory = (root / relative_business_directory).resolve().parent
+        # 规范业务目录必须在输入根内，禁止使用越界路径归属主体。
+        if subject_directory == root or root in subject_directory.parents:
+            return subject_directory
+        raise ValueError(f'业务目录超出输入范围：{business_directory}')
     business_directory = path.parent
     if business_directory == root:
         # 直接选择业务目录时，主体目录是输入根的外层目录，不能把业务自身重复当主体。
@@ -45,7 +56,7 @@ def submission_group(file, root, business_registry=None):
     """返回隔离分组键；file/root 为扫描记录与输入根，business_registry 用于排除新版业务目录。"""
     if file.entity_code:
         return file.entity_code
-    directory = unit_directory(file.source, root)
+    directory = unit_directory(file.source, root, file.business_directory)
     return '@目录:' + relative_directory_identity(directory, root)
 
 

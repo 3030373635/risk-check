@@ -20,6 +20,14 @@ _TABLE_HEADER_MARKERS = (
     "不相容岗位",
     "系统名称",
 )
+_NESTED_MATERIAL_DIRECTORY_MARKERS = (
+    "三清单",
+    "附件",
+    "系统规则",
+    "系统控制",
+    "岗位内控",
+    "不相容",
+)
 
 
 class BusinessIdentityError(ValueError):
@@ -33,6 +41,7 @@ class BusinessIdentity:
     business_id: str
     business_code: str
     business_name: str
+    business_directory: Path
     variant_id: str
     matched_alias: str
     matched_variant_alias: str = ""
@@ -161,6 +170,38 @@ def normalize_business_text(value: str) -> str:
     return _SEPARATORS.sub("", normalized)
 
 
+def _is_nested_material_directory(name: str) -> bool:
+    """判断目录是否为业务内部的清单附件层。
+
+    Args:
+        name: 待判断的目录原始名称。
+    """
+
+    return "矩阵" not in name and any(
+        marker in name
+        for marker in _NESTED_MATERIAL_DIRECTORY_MARKERS
+    )
+
+
+def _has_non_default_variant(name: str, business: dict[str, Any]) -> bool:
+    """判断目录是否包含当前业务的非默认模板变体证据。
+
+    Args:
+        name: 待检查的目录名称。
+        business: 已匹配的业务配置。
+    """
+
+    normalized_name = normalize_business_text(name)
+    for variant in business.get("variants", []):
+        if variant.get("variant_id") == "default":
+            continue
+        for alias in variant.get("aliases", []):
+            normalized_alias = normalize_business_text(alias)
+            if normalized_alias and normalized_alias in normalized_name:
+                return True
+    return False
+
+
 def validate_business_registry(registry: dict[str, Any]) -> list[str]:
     """校验模板业务配置；registry 为 baseline_registry 内容，返回全部错误信息。"""
     errors: list[str] = []
@@ -273,52 +314,101 @@ def identify_business(
         workbook_evidence: 调用方已读取的工作簿证据；不参与业务归属判断。
     """
 
-    # 单业务包可被直接选为输入目录，此时相对路径没有父目录，必须使用输入根目录名。
-    business_directory = relative_path.parent.name or input_root_name
-    business_matches: list[tuple[int, str, dict[str, Any]]] = []
-    normalized_directory = normalize_business_text(business_directory)
-    for business_item in registry.get("businesses", []):
-        for alias in business_item.get("aliases", []):
-            normalized_alias = normalize_business_text(alias)
-            if normalized_alias and normalized_alias in normalized_directory:
-                business_matches.append((len(normalized_alias), alias, business_item))
+    # 从最近目录向上查找，允许业务目录内存在“三清单”等附件子目录。
+    directory_candidates = list(relative_path.parents[:-1])
+    if not directory_candidates:
+        # 直接选择单业务包时，根目录是唯一可用的业务目录证据。
+        directory_candidates = [Path('.')]
+    elif input_root_name and all(
+        _is_nested_material_directory(directory.name)
+        for directory in directory_candidates
+    ):
+        # 直接选择业务包时，仅允许跨越明确的附件材料层使用根目录身份。
+        directory_candidates.append(Path('.'))
 
-    if business_matches:
-        matched_businesses = {item[2]["business_id"] for item in business_matches}
-        if len(matched_businesses) != 1:
-            candidates = "、".join(
-                sorted({
-                    f"{item[2]['business_name']}（命中“{item[1]}”）"
-                    for item in business_matches
-                })
+    business = None
+    matched_alias = ""
+    matched_directory = Path('.')
+    normalized_directory = ""
+    for directory in directory_candidates:
+        directory_name = directory.name if directory != Path('.') else input_root_name
+        normalized_candidate = normalize_business_text(directory_name)
+        candidate_business = None
+        candidate_alias = ""
+        business_matches: list[tuple[int, str, dict[str, Any]]] = []
+        for business_item in registry.get("businesses", []):
+            for alias in business_item.get("aliases", []):
+                normalized_alias = normalize_business_text(alias)
+                if normalized_alias and normalized_alias in normalized_candidate:
+                    business_matches.append((len(normalized_alias), alias, business_item))
+
+        if business_matches:
+            matched_businesses = {item[2]["business_id"] for item in business_matches}
+            if len(matched_businesses) != 1:
+                if business is not None:
+                    # 业务边界已确定时，上层批次或主体目录不再参与归属判断。
+                    break
+                candidates = "、".join(
+                    sorted({
+                        f"{item[2]['business_name']}（命中“{item[1]}”）"
+                        for item in business_matches
+                    })
+                )
+                raise BusinessIdentityError(
+                    f"业务模板映射冲突：{relative_path}；目录={directory_name}；"
+                    f"候选：{candidates}；请检查 baseline_registry.json 的 aliases 配置"
+                )
+            _, candidate_alias, candidate_business = max(
+                business_matches,
+                key=lambda item: item[0],
             )
-            raise BusinessIdentityError(
-                f"业务模板映射冲突：{relative_path}；候选：{candidates}；"
-                "请检查 baseline_registry.json 的 aliases 配置"
-            )
-        _, matched_alias, business = max(business_matches, key=lambda item: item[0])
-    else:
-        # 别名未命中时，仅允许使用业务目录自身的唯一编号回退。
-        code_match = _BUSINESS_CODE_PREFIX.match(business_directory)
-        business_code = code_match.group(1).zfill(2) if code_match else ""
-        code_matches = [
-            item
-            for item in registry.get("businesses", [])
-            if str(item.get("business_code", "")).zfill(2) == business_code
-        ] if business_code else []
-        if len(code_matches) > 1:
-            candidates = "、".join(str(item.get("business_name", "")) for item in code_matches)
-            raise BusinessIdentityError(
-                f"业务编号映射冲突：{relative_path}；父目录={business_directory}；"
-                f"编号={business_code}；候选：{candidates}"
-            )
-        if not code_matches:
-            raise BusinessIdentityError(
-                f"未找到业务模板映射：{relative_path}；父目录={business_directory}；"
-                "请使用可识别的业务名称或唯一业务编号"
-            )
-        business = code_matches[0]
-        matched_alias = ""
+        else:
+            # 别名未命中时，尝试使用当前候选目录的唯一业务编号。
+            code_match = _BUSINESS_CODE_PREFIX.match(directory_name)
+            business_code = code_match.group(1).zfill(2) if code_match else ""
+            code_matches = [
+                item
+                for item in registry.get("businesses", [])
+                if str(item.get("business_code", "")).zfill(2) == business_code
+            ] if business_code else []
+            if len(code_matches) > 1:
+                if business is not None:
+                    # 序号可能属于外层批次目录，不得覆盖内层已识别的业务。
+                    break
+                candidates = "、".join(str(item.get("business_name", "")) for item in code_matches)
+                raise BusinessIdentityError(
+                    f"业务编号映射冲突：{relative_path}；目录={directory_name}；"
+                    f"编号={business_code}；候选：{candidates}"
+                )
+            if code_matches:
+                candidate_business = code_matches[0]
+
+        if candidate_business is None:
+            if business is not None:
+                # 已找到业务后遇到非业务目录，禁止跨越主体层继续匹配。
+                break
+            continue
+        if business is not None:
+            if candidate_business["business_id"] != business["business_id"]:
+                # 最近的已识别业务优先，上层其他业务名不得覆盖归属。
+                break
+            if (
+                not _is_nested_material_directory(matched_directory.name)
+                or _has_non_default_variant(matched_directory.name, business)
+            ):
+                # 变体目录等真实业务边界应保留，即使名称中同时含有“三清单”。
+                break
+        business = candidate_business
+        matched_alias = candidate_alias
+        matched_directory = directory
+        normalized_directory = normalized_candidate
+
+    if business is None:
+        direct_parent = relative_path.parent.name or input_root_name
+        raise BusinessIdentityError(
+            f"未找到业务模板映射：{relative_path}；父目录={direct_parent}；"
+            "请使用可识别的业务名称或唯一业务编号"
+        )
 
     variants = business.get("variants", [])
     # 电压等模板变体也只能由业务目录确定，文件名和表内文字不得覆盖。
@@ -362,6 +452,7 @@ def identify_business(
         business_id=business["business_id"],
         business_code=business["business_code"],
         business_name=business["business_name"],
+        business_directory=matched_directory,
         variant_id=variant["variant_id"],
         matched_alias=matched_alias,
         matched_variant_alias=matched_variant_alias,

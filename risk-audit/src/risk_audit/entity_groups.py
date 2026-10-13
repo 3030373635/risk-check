@@ -8,7 +8,7 @@ from risk_audit.util import norm_text
 
 def source_entity_name(file, root):
     """提取报送名称；file 为扫描记录，root 为输入根目录。"""
-    return material_directory_name(file.source, root)
+    return material_directory_name(file.source, root, file.business_directory)
 
 
 def prepare_entity_groups(
@@ -31,7 +31,7 @@ def prepare_entity_groups(
     for file in files:
         candidate = file.entity_code
         if entity_mode == 'parent_directory':
-            directory = unit_directory(file.source, root)
+            directory = unit_directory(file.source, root, file.business_directory)
             name = directory.name
             # 完整相对路径是主体身份；显示名仅使用业务上级目录的原始名称。
             key = '@目录主体:' + relative_directory_identity(directory, root)
@@ -47,7 +47,7 @@ def prepare_entity_groups(
             key, status, message = candidate, 'matched', '主体已匹配会计主体清单'
         else:
             name = source_entity_name(file, root)
-            directory = unit_directory(file.source, root)
+            directory = unit_directory(file.source, root, file.business_directory)
             missing = [entity for entity in missing_code if norm_text(entity.name) == norm_text(name)]
             if missing:
                 name, status, message = missing[0].name, 'missing_code', '会计主体清单中有单位名称，但单位代码为空'

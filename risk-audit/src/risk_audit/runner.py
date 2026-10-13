@@ -314,6 +314,16 @@ def _write_audit_progress_details(path: Path, details: dict[str, Any]) -> None:
     append_compact_json_line(path, details)
 
 
+def _file_business_directory(file: FileRecord) -> Path:
+    """返回文件的规范业务目录。
+
+    Args:
+        file: 已完成扫描和业务识别的文件记录。
+    """
+
+    return file.business_directory or file.relative_path.parent
+
+
 def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple[str, str, str, str]]:
     """确定按目录隔离的审核业务单元。
 
@@ -325,7 +335,7 @@ def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple
     # 目录身份与标准规则身份分开保存，两个目录映射到同一规则时仍须独立审核。
     file_keys = {
         (
-            file.relative_path.parent.as_posix(),
+            _file_business_directory(file).as_posix(),
             file.business_id or file.business_code or '',
             file.business_code or '',
             file.variant_id,
@@ -356,9 +366,9 @@ def _business_display_name(files: list[FileRecord], fallback: str, input_root_na
     """
 
     names = {
-        file.relative_path.parent.name or input_root_name
+        _file_business_directory(file).name or input_root_name
         for file in files
-        if file.relative_path.parent.name or input_root_name
+        if _file_business_directory(file).name or input_root_name
     }
     if names:
         # 同一规则身份意外对应多个目录时，保留所有原名，不退回文件业务编号猜测。
@@ -639,7 +649,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 for file in group_files
                 if file.material_type != 'explanation'
                 and (
-                    file.relative_path.parent.as_posix() == business_directory
+                    _file_business_directory(file).as_posix() == business_directory
                     if business_directory
                     else (file.business_id or file.business_code or '', file.variant_id)
                     == (business_id, variant_id)

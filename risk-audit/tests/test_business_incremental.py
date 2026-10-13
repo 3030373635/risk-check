@@ -6,10 +6,65 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from risk_audit import runner
+from risk_audit.models import FileRecord
 from risk_audit.util import sha256_file
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_nested_materials_build_one_business_audit_unit(tmp_path: Path) -> None:
+    """同一规范业务目录下的直接材料和子目录材料必须合并审核。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    business_directory = Path('永川公司矩阵/1.营销售电矩阵及“三清单”')
+    matrix_path = business_directory / '01风控矩阵-营销售电.xlsx'
+    duties_path = business_directory / '三清单/岗位内控责任清单.xlsx'
+    files = [
+        FileRecord(
+            tmp_path / matrix_path,
+            matrix_path,
+            'matrix-hash',
+            'xlsx',
+            'ENTITY',
+            [],
+            False,
+            '01',
+            'default',
+            'matrix',
+            business_id='sales_electricity',
+            business_directory=business_directory,
+        ),
+        FileRecord(
+            tmp_path / duties_path,
+            duties_path,
+            'duties-hash',
+            'xlsx',
+            'ENTITY',
+            [],
+            False,
+            '01',
+            'default',
+            'three_lists',
+            business_id='sales_electricity',
+            business_directory=business_directory,
+        ),
+    ]
+    scope = {
+        'businesses': [{
+            'business_id': 'sales_electricity',
+            'business_code': '01',
+            'variant_id': 'default',
+            'required': True,
+        }],
+    }
+
+    assert runner._business_keys(scope, files) == [
+        (business_directory.as_posix(), 'sales_electricity', '01', 'default'),
+    ]
 
 
 def create_business_batch(tmp_path, units):

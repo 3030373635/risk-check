@@ -126,6 +126,7 @@ def scan_package(
         if not material: continue
         rel = path.relative_to(base)
         business_id = None
+        business_directory = None
         business_error = ""
         if material == "explanation":
             business, variant = None, "default"
@@ -134,6 +135,7 @@ def scan_package(
                 # 直接选择单个业务包时，根目录名称是业务识别的唯一目录证据。
                 identity = identify_business_v2(rel, business_registry, base.name)
                 business_id, business, variant = identity.business_id, identity.business_code, identity.variant_id
+                business_directory = identity.business_directory
             except BusinessIdentityError as error:
                 business, variant, business_error = None, "default", str(error)
         else:
@@ -148,6 +150,7 @@ def scan_package(
             except Exception: pass
         code, evidence, conflict = identify_material_entity(
             path, base, entities, aliases, identity_texts, business_registry, business_id, business,
+            business_directory,
         )
         fmt = true_format(path)
         errors = []
@@ -157,11 +160,12 @@ def scan_package(
         if code is None:
             errors.append("主体证据冲突" if conflict else "无法确定会计主体")
         record = FileRecord(path, rel, sha256_file(path), fmt, code, evidence, conflict,
-                            business, variant, material, parse_errors=errors, business_id=business_id)
+                            business, variant, material, parse_errors=errors, business_id=business_id,
+                            business_directory=business_directory)
         if (material != "explanation" and business_registry
                 and business_registry.get("schema_version") == "2.0" and business_id):
             # 展示名始终保留报送业务目录，标准名仅用于追溯规则映射。
-            record.preservation["business_name"] = rel.parent.name or base.name
+            record.preservation["business_name"] = business_directory.name or base.name
             record.preservation["registry_business_name"] = identity.business_name
         out.append(record)
     return out

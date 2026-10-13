@@ -79,6 +79,7 @@ class FileRecord:
     converted_from: str | None = None
     preservation: dict[str, Any] = field(default_factory=dict)
     business_id: str | None = None
+    business_directory: Path | None = None
 
 
 @dataclass

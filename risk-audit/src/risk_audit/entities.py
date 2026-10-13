@@ -21,16 +21,17 @@ def reported_entity_name(text):
     return ''
 
 
-def material_directory_name(path, root):
+def material_directory_name(path, root, business_directory=None):
     """取得主体目录名称。
 
     Args:
         path: 当前材料的绝对路径。
         root: 用户选择的输入根目录。
+        business_directory: 扫描阶段确定的相对业务目录。
     """
     from risk_audit.submission_scope import unit_directory
 
-    directory = unit_directory(path, root)
+    directory = unit_directory(path, root, business_directory)
     label = directory.name
     # 输入根本身是单位目录时也保留全称，普通批次根不能当作单位名称。
     if directory != root or re.fullmatch(ENTITY_NAME_PATTERN, label) or label.endswith('公司'):
@@ -38,7 +39,15 @@ def material_directory_name(path, root):
     return '未识别单位（见文件路径）'
 
 
-def directory_material_entity(path, root, entities, business_registry=None, business_id=None, business_code=None):
+def directory_material_entity(
+    path,
+    root,
+    entities,
+    business_registry=None,
+    business_id=None,
+    business_code=None,
+    business_directory=None,
+):
     """按单位目录识别材料主体。
 
     Args:
@@ -48,12 +57,13 @@ def directory_material_entity(path, root, entities, business_registry=None, busi
         business_registry: 可选的模板业务配置。
         business_id: 当前材料已识别的稳定业务标识。
         business_code: 当前材料已识别的业务编号。
+        business_directory: 扫描阶段确定的相对业务目录。
     """
     from risk_audit.submission_scope import unit_directory
 
     root = Path(root)
-    directory = unit_directory(path, root)
-    name = material_directory_name(path, root)
+    directory = unit_directory(path, root, business_directory)
+    name = material_directory_name(path, root, business_directory)
     codes = [code for code, entity in entities.items() if norm_text(name) == norm_text(entity.name)]
     if len(codes) == 1:
         return codes[0], [f'正式单位目录全称:{name}'], False
@@ -65,14 +75,22 @@ def directory_material_entity(path, root, entities, business_registry=None, busi
 
 
 def identify_material_entity(path, root, entities, aliases, texts, business_registry=None, business_id=None,
-                             business_code=None):
+                             business_code=None, business_directory=None):
     """仅按单位目录识别材料主体，文件名和说明正文不参与归属判断。
 
     path/root 为材料与输入根，entities 为正式名册；aliases/texts 为扫描器传入的信息；
-    business_registry/business_id/business_code 用于排除新版业务目录，
+    business_registry/business_id/business_code 描述当前业务，business_directory 是规范业务目录，
     本规则不使用简称或正文推定主体。返回代码、目录证据及冲突标记。
     """
-    return directory_material_entity(path, root, entities, business_registry, business_id, business_code)
+    return directory_material_entity(
+        path,
+        root,
+        entities,
+        business_registry,
+        business_id,
+        business_code,
+        business_directory,
+    )
 
 
 def load_entities(path: str | Path) -> tuple[dict[str, Entity], list[Entity]]:
