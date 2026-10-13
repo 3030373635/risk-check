@@ -56,7 +56,11 @@ def test_create_task_allows_fixed_region_without_templates_and_config(
     assert response.status_code == 201
     request = web_services.repository.read_request(response.json()["task_id"])
     assert request.config_file is None
-    assert request.baseline_root.endswith("/baselines/chongqing/templates")
+    # 使用路径对象比较，避免 Windows 与 POSIX 路径分隔符差异影响断言。
+    expected_baseline_root = (
+        web_services.paths.resources_root / "baselines" / "chongqing" / "templates"
+    )
+    assert Path(request.baseline_root) == expected_baseline_root
 
 
 def test_create_task_rejects_disabled_fixed_region(
