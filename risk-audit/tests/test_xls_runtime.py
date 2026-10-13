@@ -1,9 +1,67 @@
-"""验证 LibreOffice 可执行文件和 profile 的任务级隔离。"""
+"""验证 LibreOffice 转换修复和运行时隔离。"""
 
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from openpyxl import Workbook, load_workbook
+
+
+def test_normalize_converted_auto_filter_ranges_repairs_row_only_reference(
+    tmp_path: Path,
+) -> None:
+    """LibreOffice 产生的纯行号筛选范围必须转为合法单元格范围。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+    from risk_audit.readers import xls
+
+    converted = tmp_path / "converted.xlsx"
+    workbook = Workbook()
+    historical_sheet = workbook.active
+    historical_sheet.title = "历史版本"
+    historical_sheet["A1"] = "起点"
+    historical_sheet["IU423"] = "终点"
+    historical_sheet.auto_filter.ref = "A16:IU423"
+    current_sheet = workbook.create_sheet("正式版本")
+    current_sheet["A1"] = "标题"
+    current_sheet["G10"] = "内容"
+    current_sheet.auto_filter.ref = "A1:G10"
+    workbook.save(converted)
+
+    invalid_workbook = converted.with_name("invalid-filter.xlsx")
+    with zipfile.ZipFile(converted, "r") as source_zip:
+        with zipfile.ZipFile(invalid_workbook, "w") as target_zip:
+            for item in source_zip.infolist():
+                content = source_zip.read(item.filename)
+                if item.filename == "xl/worksheets/sheet1.xml":
+                    # 复现 LibreOffice 从旧版 XLS 产生的非法 OOXML 筛选范围。
+                    content = content.replace(
+                        b'<autoFilter ref="A16:IU423"/>',
+                        b'<autoFilter ref="16:423"/>',
+                    )
+                target_zip.writestr(item, content)
+
+    with pytest.raises(ValueError, match="Unable to read workbook"):
+        load_workbook(invalid_workbook)
+
+    normalize_ranges = getattr(xls, "normalize_converted_auto_filter_ranges", None)
+    assert normalize_ranges is not None, "缺少转换后筛选范围规范化函数"
+    changes = normalize_ranges(invalid_workbook)
+
+    assert changes == [
+        {
+            "sheet_path": "xl/worksheets/sheet1.xml",
+            "original_ref": "16:423",
+            "normalized_ref": "A16:IU423",
+        }
+    ]
+    repaired_workbook = load_workbook(invalid_workbook)
+    assert repaired_workbook["历史版本"].auto_filter.ref == "A16:IU423"
+    assert repaired_workbook["正式版本"].auto_filter.ref == "A1:G10"
+    repaired_workbook.close()
 
 
 def test_convert_xls_uses_short_explicit_destination(monkeypatch, tmp_path: Path) -> None:
@@ -24,24 +82,73 @@ def test_convert_xls_uses_short_explicit_destination(monkeypatch, tmp_path: Path
     source.write_bytes(b"xls")
     destination = tmp_path / "work/converted/0123456789abcdef0123456789abcdef.xlsx"
     captured = {}
+    stage_calls: list[str] = []
+    normalized_filters = [
+        {
+            "sheet_path": "xl/worksheets/sheet9.xml",
+            "original_ref": "16:423",
+            "normalized_ref": "A16:IU423",
+        }
+    ]
 
     def fake_run(command, **kwargs):
-        """记录真实命令边界并生成转换目标；参数对应 subprocess.run。"""
+        """记录真实命令边界并生成转换目标。
+
+        Args:
+            command: LibreOffice 命令参数。
+            kwargs: 子进程运行选项。
+        """
         captured["command"] = command
         captured["kwargs"] = kwargs
         converted_source = Path(command[-1])
         converted_source.with_suffix(".xlsx").write_bytes(b"xlsx")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
+    def fake_restore(_source: Path, _destination: Path) -> int:
+        """记录公式缓存恢复阶段。
+
+        Args:
+            _source: 原始 XLS 路径。
+            _destination: 转换后的 XLSX 路径。
+        """
+        stage_calls.append("restore")
+        return 0
+
+    def fake_normalize(_converted: Path) -> list[dict[str, str]]:
+        """记录筛选范围规范化阶段。
+
+        Args:
+            _converted: 转换后的 XLSX 路径。
+        """
+        stage_calls.append("normalize")
+        return normalized_filters
+
+    def fake_compare(_source: Path, _converted: Path) -> dict[str, bool]:
+        """记录转换保真校验阶段。
+
+        Args:
+            _source: 原始 XLS 路径。
+            _converted: 转换后的 XLSX 路径。
+        """
+        stage_calls.append("compare")
+        return {"passed": True}
+
     monkeypatch.setattr(xls.subprocess, "run", fake_run)
-    monkeypatch.setattr(xls, "restore_biff_formula_caches", lambda *args: 0)
-    monkeypatch.setattr(xls, "compare_conversion", lambda *args: {"passed": True})
+    monkeypatch.setattr(xls, "restore_biff_formula_caches", fake_restore)
+    monkeypatch.setattr(
+        xls,
+        "normalize_converted_auto_filter_ranges",
+        fake_normalize,
+    )
+    monkeypatch.setattr(xls, "compare_conversion", fake_compare)
     monkeypatch.setattr(xls, "sys", SimpleNamespace(platform="win32"), raising=False)
 
     xls.configure_conversion_runtime(soffice, profile)
-    converted, _report = xls.convert_xls(source, destination)
+    converted, report = xls.convert_xls(source, destination)
 
     assert converted == destination
+    assert stage_calls == ["restore", "normalize", "compare"]
+    assert report["normalized_auto_filters"] == normalized_filters
     assert captured["command"][0] == str(soffice.resolve())
     assert Path(captured["command"][-1]).name == "0123456789abcdef0123456789abcdef.xls"
     assert Path(captured["command"][-1]).parent == destination.parent

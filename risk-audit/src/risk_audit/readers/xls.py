@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,11 @@ WINDOWS_SAFE_PATH_LIMIT = 240
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKGREL = "http://schemas.openxmlformats.org/package/2006/relationships"
+ROW_ONLY_FILTER_PATTERN = re.compile(r"^(?P<start_row>\d+):(?P<end_row>\d+)$")
+WORKSHEET_DIMENSION_PATTERN = re.compile(
+    r"^\$?(?P<start_column>[A-Za-z]{1,3})\$?\d+"
+    r"(?::\$?(?P<end_column>[A-Za-z]{1,3})\$?\d+)?$"
+)
 PROFILE_SETTINGS = """<?xml version="1.0" encoding="UTF-8"?>
 <oor:items xmlns:oor="http://openoffice.org/2001/registry">
   <item oor:path="/org.openoffice.Office.Common/Security/Scripting">
@@ -137,6 +143,73 @@ def _restore_merge_ranges(
         end = f"{get_column_letter(column_high)}{row_high}"
         etree.SubElement(merge_cells, f"{{{MAIN}}}mergeCell", ref=f"{start}:{end}")
     root.insert(insert_index, merge_cells)
+
+
+def normalize_converted_auto_filter_ranges(converted: Path) -> list[dict[str, str]]:
+    """修复 LibreOffice 转换旧版 XLS 时产生的纯行号筛选范围。
+
+    Args:
+        converted: LibreOffice 生成的 XLSX 文件路径。
+
+    Returns:
+        已修复的工作表 XML 路径、原范围和规范化范围。
+    """
+    replacements: dict[str, bytes] = {}
+    changes: list[dict[str, str]] = []
+    with zipfile.ZipFile(converted, "r") as source_zip:
+        for item in source_zip.infolist():
+            if not re.fullmatch(r"xl/worksheets/sheet\d+\.xml", item.filename):
+                continue
+            root = etree.fromstring(source_zip.read(item.filename))
+            auto_filter = root.find(f"{{{MAIN}}}autoFilter")
+            original_ref = auto_filter.get("ref", "") if auto_filter is not None else ""
+            row_match = ROW_ONLY_FILTER_PATTERN.fullmatch(original_ref)
+            if row_match is None:
+                continue
+
+            dimension = root.find(f"{{{MAIN}}}dimension")
+            dimension_ref = dimension.get("ref", "") if dimension is not None else ""
+            dimension_match = WORKSHEET_DIMENSION_PATTERN.fullmatch(dimension_ref)
+            if dimension_match is None:
+                raise ValueError(
+                    f"无法根据工作表维度修复筛选范围："
+                    f"sheet_path={item.filename}; filter_ref={original_ref}; "
+                    f"dimension_ref={dimension_ref or '<empty>'}"
+                )
+
+            start_column = dimension_match.group("start_column").upper()
+            end_column = (
+                dimension_match.group("end_column") or start_column
+            ).upper()
+            normalized_ref = (
+                f"{start_column}{row_match.group('start_row')}:"
+                f"{end_column}{row_match.group('end_row')}"
+            )
+            # 只补全 LibreOffice 丢失的列边界，保留原始筛选行边界。
+            auto_filter.set("ref", normalized_ref)
+            replacements[item.filename] = etree.tostring(
+                root,
+                xml_declaration=True,
+                encoding="UTF-8",
+                standalone=True,
+            )
+            changes.append({
+                "sheet_path": item.filename,
+                "original_ref": original_ref,
+                "normalized_ref": normalized_ref,
+            })
+
+        if not replacements:
+            return changes
+        temporary_path = converted.with_suffix(".filters-normalized.xlsx")
+        with zipfile.ZipFile(temporary_path, "w") as target_zip:
+            for item in source_zip.infolist():
+                target_zip.writestr(
+                    item,
+                    replacements.get(item.filename, source_zip.read(item.filename)),
+                )
+    temporary_path.replace(converted)
+    return changes
 
 
 def compare_conversion(source: Path, converted: Path) -> dict[str, Any]:
@@ -355,8 +428,10 @@ def convert_xls(source: Path, destination: Path) -> tuple[Path, dict[str, Any]]:
     finally:
         staged_source.unlink(missing_ok=True)
     restored = restore_biff_formula_caches(source, destination)
+    normalized_auto_filters = normalize_converted_auto_filter_ranges(destination)
     report = compare_conversion(source, destination)
     report["formula_caches_restored"] = restored
+    report["normalized_auto_filters"] = normalized_auto_filters
     report["conversion_profile"] = {"isolated": True, "macros_disabled": True, "active_content_disabled": True, "external_links_update": "never"}
     if not report["passed"]: raise RuntimeError(f"xls conversion preservation check failed: {report}")
     return destination, report
