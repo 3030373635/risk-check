@@ -64,8 +64,12 @@ def _header_fields(ws: Any, kind: str, aliases: dict, bounds: tuple[int, int, in
         if first_row <= cell.row <= last_row and first_col <= cell.column <= last_col and cell.value not in (None, ""):
             cells_by_row.setdefault(cell.row, []).append(cell)
     for row, cells in cells_by_row.items():
-        values = [excel.current_text(cell) for cell in sorted(cells, key=lambda cell: cell.column)]
-        business_values = ["" if excel.AUDIT_HEADER.search(value) else value for value in values]
+        ordered_cells = sorted(cells, key=lambda cell: cell.column)
+        values = [excel.current_text(cell) for cell in ordered_cells]
+        business_values = [
+            "" if excel.AUDIT_HEADER.search(value) or excel._is_horizontal_group_header(ws, cell.row, cell.column) else value
+            for cell, value in zip(ordered_cells, values)
+        ]
         matches = header_row_matches(business_values, kind, reverse, allow_fuzzy=row < first_row + 5)
         fields = {field for field, _ in matches if field}
         if fields:

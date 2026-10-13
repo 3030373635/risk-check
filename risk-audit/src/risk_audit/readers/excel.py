@@ -113,6 +113,19 @@ def _merged_value(ws: Any, row: int, col: int) -> Any:
     return cell
 
 
+def _is_horizontal_group_header(ws: Any, row: int, col: int) -> bool:
+    """判断单元格是否属于横向跨多列分组表头。
+
+    参数 ws 为工作表，row 为表头行号，col 为列号；纵向合并的叶子字段返回 False。
+    """
+    return any(
+        cell_range.min_col < cell_range.max_col
+        and cell_range.min_row <= row <= cell_range.max_row
+        and cell_range.min_col <= col <= cell_range.max_col
+        for cell_range in ws.merged_cells.ranges
+    )
+
+
 def _sheet_type(ws: Any, material_type: str, aliases: dict | None = None) -> str | None:
     title = norm_text(ws.title)
     a1 = norm_text(ws.cell(1, 1).value)
@@ -126,7 +139,11 @@ def _sheet_type(ws: Any, material_type: str, aliases: dict | None = None) -> str
             reverse={norm_text(v):k for k,vs in aliases.get(kind,{}).items() for v in vs}
             for row in range(1, 31):
                 values = [current_text(ws.cell(row, col)) for col in range(1, max_col + 1)]
-                fields = {field for field, _ in header_row_matches(values, kind, reverse, allow_fuzzy=row <= 5) if field}
+                matches = header_row_matches(values, kind, reverse, allow_fuzzy=row <= 5)
+                fields = {
+                    field for col, (field, _) in enumerate(matches, 1)
+                    if field and not _is_horizontal_group_header(ws, row, col)
+                }
                 if required <= fields:return kind
     if re.fullmatch(r"Sheet\d+",ws.title,re.I):return None
     header_probe = {norm_text(c.value) for c in ws._cells.values() if c.row <= 8 and c.value not in (None, "")}
@@ -169,7 +186,12 @@ def _map_columns(ws: Any, sheet_type: str, aliases: dict[str, dict[str, list[str
     for row in range(1, max_probe + 1):
         values = [current_text(ws.cell(row, col)) for col in range(1, max_col + 1)]
         business_values = ["" if AUDIT_HEADER.search(value) else value for value in values]
-        row_matches[row] = header_row_matches(business_values, sheet_type, reverse, extended=extended, allow_fuzzy=row <= 5)
+        matches = header_row_matches(business_values, sheet_type, reverse, extended=extended, allow_fuzzy=row <= 5)
+        # 横向合并的父级表头只用于组织下级列，不能成为业务字段候选。
+        row_matches[row] = [
+            (None, '') if field and _is_horizontal_group_header(ws, row, col) else (field, owner)
+            for col, (field, owner) in enumerate(matches, 1)
+        ]
     hit_counts = {row: sum(bool(field) for field, _ in matches) for row, matches in row_matches.items()}
     primary = max(hit_counts,key=lambda row:hit_counts[row]) if max(hit_counts.values(),default=0)>=2 else 2
     scan_rows = [primary]

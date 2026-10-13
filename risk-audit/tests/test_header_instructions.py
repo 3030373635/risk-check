@@ -194,3 +194,42 @@ def test_fuzzy_header_requires_complete_core_fields_within_first_five_rows(tmp_p
     fuzzy_position_book(header_row, complete=complete).save(path)
     file = FileRecord(path, Path(path.name), "digest", "xlsx", "E1", [], False, "01", "default", "three_lists")
     assert parse_workbook_v180(file, path, ALIASES) == []
+
+
+def test_horizontal_merged_group_header_is_not_mapped_as_leaf_field(tmp_path):
+    """横向跨多列的分组表头不是叶子字段；tmp_path 为临时目录。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "风控矩阵"
+    sheet.append(["风控矩阵"])
+    sheet.append(["控制措施编号", "责任主体", "控制措施分类", None, "控制载体"])
+    sheet.append([None, None, "不相容岗位", "分级授权", None])
+    sheet.append(["M1", "财务部-主任", "√", None, "审批单"])
+    for column in ("A", "B", "E"):
+        sheet.merge_cells(f"{column}2:{column}3")
+    sheet.merge_cells("C2:D2")
+    path = tmp_path / "横向分组表头.xlsx"
+    book.save(path)
+    file = FileRecord(path, Path(path.name), "digest", "xlsx", "E1", [], False, "01", "default", "matrix")
+
+    parsed = parse_workbook_v180(file, path, ALIASES)
+
+    assert "control_measure" not in parsed[0].columns
+    assert parsed[0].columns["carrier"] == 5
+
+
+def test_exact_header_wins_over_unmerged_fuzzy_header(tmp_path):
+    """精确表头应优先于同行的包含式模糊表头；tmp_path 为临时目录。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "风控矩阵"
+    sheet.append(["控制措施编号", "控制措施", "控制措施分类", "责任主体", "控制载体"])
+    sheet.append(["M1", "复核申请资料。", "不相容岗位", "财务部-主任", "审批单"])
+    path = tmp_path / "精确表头优先.xlsx"
+    book.save(path)
+    file = FileRecord(path, Path(path.name), "digest", "xlsx", "E1", [], False, "01", "default", "matrix")
+
+    parsed = parse_workbook_v180(file, path, ALIASES)
+
+    assert parsed[0].columns["control_measure"] == 2
+    assert parsed[0].records[0].value("control_measure") == "复核申请资料。"
