@@ -271,15 +271,13 @@ def test_1013_release_is_rebuildable() -> None:
     assert json.loads(result.stdout)["verified"] is True
 
 
-def test_1013_updated_release_is_active_and_rebuildable() -> None:
+def test_1013_updated_release_is_rebuildable() -> None:
     """重庆 1.9.30 应冻结新版来源、启用第20条并可确定性复验。"""
 
     assert UPDATED_SOURCE.is_file()
     pack = load_pack(UPDATED_RELEASE)
     rules = {rule["rule_id"]: rule for rule in pack["rules"]}
     person_name_rule = rules["chongqing.person_name_single"]
-    profile = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))["regions"][0]
-
     assert pack["manifest"]["version"] == "1.9.30"
     assert pack["manifest"]["source_document_sha256"] == sha256_file(UPDATED_SOURCE)
     assert person_name_rule["display_code"] == "R20"
@@ -287,9 +285,6 @@ def test_1013_updated_release_is_active_and_rebuildable() -> None:
     assert "1.9.30" in CONFIRMED_RULE_VERSIONS
     assert "1.9.30" in PREPROCESSING_RULE_VERSIONS
     assert "1.9.30" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
-    assert profile["rulepack_version"] == "1.9.30"
-    assert profile["rulepack_content_hash"] == pack["manifest"]["content_hash"]
-
     result = subprocess.run(
         [
             sys.executable,

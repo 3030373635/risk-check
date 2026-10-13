@@ -164,7 +164,7 @@ REPORT_TEMPLATE = r'''<!doctype html>
       white-space: nowrap;
     }
     .record.is-failed .record-label { background: var(--report-red-soft); color: var(--report-red); }
-    .record-message { line-height: 1.65; overflow-wrap: anywhere; }
+    .record-message { line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
     .record-count { min-width: 48px; padding-top: 3px; font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
     .empty-state { display: none; padding: 42px 18px; color: var(--report-muted); text-align: center; }
     .empty-state.is-visible { display: block; }

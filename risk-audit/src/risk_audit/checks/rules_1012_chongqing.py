@@ -15,9 +15,7 @@ _RESPONSIBILITY_ITEM_SEPARATORS = {"、", "，", ",", ";", "；", "\n"}
 _RESPONSIBILITY_SEGMENT_SEPARATORS = {"-", "—", "－"}
 _RESPONSIBILITY_BRACKETS = {"(": ")", "（": "）", "[": "]", "【": "】"}
 _OPINIONS = {
-    "missing_key_points": "需核实适用的矩阵或关键控制点是否完整",
     "extra_business": "需核实该矩阵或关键控制点是否适用",
-    "extra_key_point": "需核实该矩阵或关键控制点是否适用",
     "responsibility_generic_company": "请将责任主体修改为“公司名称-部门名称-岗位名称”的形式",
     "responsibility_company_missing": "需在矩阵责任主体中补充公司名称",
     "responsibility_department_mismatch": "请核实岗位责任清单中的部门名称与矩阵责任主体中的部门名称是否一致",
@@ -26,6 +24,43 @@ _OPINIONS = {
 }
 _DEFAULT_SYSTEM_OPINION = "需核实系统规则清单与矩阵中的控制措施编号是否一致"
 _ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
+
+
+def _format_key_points(points: list[list[int]] | list[int]) -> str:
+    """格式化关键控制点编号。
+
+    Args:
+        points: 多个分级编号，或单个分级编号。
+    """
+
+    normalized_points = points if points and isinstance(points[0], list) else [points]
+    return "、".join(".".join(str(value) for value in point) for point in normalized_points)
+
+
+def _branch_key_point_opinion(issue_type: str, evidence: dict[str, Any]) -> str | None:
+    """生成供电分公司关键控制点的明确整改意见。
+
+    Args:
+        issue_type: 稳定的问题类型。
+        evidence: 当前问题的业务、编号和名称证据。
+    """
+
+    if issue_type == "missing_key_points":
+        business_name = str(evidence.get("business_name") or "").strip()
+        point_text = _format_key_points(evidence.get("missing_key_points") or [])
+        return (
+            f"{business_name}缺少供电分公司适用清单要求的关键控制点：{point_text}。"
+            "请补充；如确实不适用，请说明原因。"
+        )
+    if issue_type == "extra_key_point":
+        point_text = str(evidence.get("key_point_name") or "").strip()
+        if not point_text:
+            point_text = _format_key_points(evidence.get("key_point") or [])
+        return (
+            f"存在供电分公司适用清单外的关键控制点：{point_text}。"
+            "请核实是否适用；适用则保留并说明依据，不适用则删除。"
+        )
+    return None
 
 
 def _issue(record: Record | None, issue_type: str, **evidence: Any) -> dict[str, Any]:
@@ -37,7 +72,10 @@ def _issue(record: Record | None, issue_type: str, **evidence: Any) -> dict[str,
         evidence: 用于展示和去重的证据字段。
     """
 
-    opinion = _OPINIONS.get(issue_type, _DEFAULT_SYSTEM_OPINION)
+    opinion = (
+        _branch_key_point_opinion(issue_type, evidence)
+        or _OPINIONS.get(issue_type, _DEFAULT_SYSTEM_OPINION)
+    )
     return {
         "record": record,
         "kind": "violation",
@@ -393,9 +431,14 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
             continue
         actual: dict[str, dict[tuple[int, ...], list[Record]]] = {}
         business_records: dict[str, list[Record]] = {}
+        raw_business_records: dict[str, list[Record]] = {}
         for record in ctx.all_records:
             if record.entity_code != entity_code or record.record_type != "matrix":
                 continue
+            raw_business_id = record.business_id or record.business_code
+            if raw_business_id:
+                # 未命中任何别名的全新业务仍需保留原始矩阵记录。
+                raw_business_records.setdefault(raw_business_id, []).append(record)
             business_id = _business_id(record, aliases)
             point = _record_key_point(record)
             if business_id:
@@ -413,7 +456,6 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
             str(item) for item in ctx.resources.get("_entity_business_ids", []) if item
         }
         business_files = ctx.resources.get("_entity_business_files", {})
-        submitted_business_ids: set[str] = set()
         canonical_by_raw: dict[str, set[str]] = {}
         for business_id in raw_submitted_business_ids:
             canonical_ids = {
@@ -424,8 +466,6 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
             if business_id in expected:
                 canonical_ids.add(business_id)
             canonical_by_raw[business_id] = canonical_ids
-            # 同一 unmatched_* 单元可包含多份不同的来源业务文件。
-            submitted_business_ids.update(canonical_ids or {business_id})
         raw_current_business_id = str(
             ctx.resources.get("_current_business_id") or next(iter(scope_business_ids), "")
         )
@@ -438,39 +478,55 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
             if raw_current_business_id in expected
             else next(iter(current_canonical_ids), raw_current_business_id)
         )
-        # runner 使用含变体的唯一审核单元顺序，显式指定每个主体的唯一完整性轮次。
-        completeness_pass = ctx.resources.get("_entity_completeness_pass") is True
-        if completeness_pass:
-            for business_id in sorted(set(expected) - submitted_business_ids):
-                issues.append(_issue(
-                    None,
-                    "missing_key_points",
-                    entity_code=entity_code,
-                    business_id=business_id,
-                    business_code="",
-                    variant_id="default",
-                    missing_key_points=[list(point) for point in sorted(expected[business_id])],
-                ))
+        # 第17条只比较已送审矩阵，不对未出现的业务生成整项缺失意见。
         if (
             raw_current_business_id
             and raw_current_business_id not in expected
             and raw_current_business_id != _ENTITY_COMPLETENESS_BUSINESS_ID
             and not current_canonical_ids
         ):
-            records = business_records.get(current_business_id, [])
-            issues.append(_issue(
-                records[0] if records else None,
-                "extra_business",
-                entity_code=entity_code,
-                business_id=current_business_id,
-                business_code="",
-                variant_id="default",
-            ))
+            records = (
+                business_records.get(current_business_id)
+                or raw_business_records.get(raw_current_business_id, [])
+            )
+            extra_records: dict[tuple[int, ...], Record] = {}
+            for record in records:
+                point = _record_key_point(record)
+                if point is not None:
+                    # 同一关键控制点下的多条措施只输出一条清单外意见。
+                    extra_records.setdefault(point, record)
+            if extra_records:
+                for point, record in sorted(extra_records.items()):
+                    issues.append(_issue(
+                        record,
+                        "extra_key_point",
+                        business_id=current_business_id,
+                        business_name=current_business_id,
+                        key_point=list(point),
+                        key_point_name=record.value("key_control_point"),
+                    ))
+            else:
+                # 无法识别控制点时保留整张矩阵的适用性提示。
+                issues.append(_issue(
+                    records[0] if records else None,
+                    "extra_business",
+                    entity_code=entity_code,
+                    business_id=current_business_id,
+                    business_code="",
+                    variant_id="default",
+                    business_name=current_business_id,
+                ))
         for business_id in sorted(target_business_ids):
             expected_points = expected[business_id]
             actual_points = set(actual.get(business_id, {}))
             missing = sorted(expected_points - actual_points)
             if missing:
+                # 保留别名归一前的实际文件，供统计表复用真实业务分组。
+                business_file_path = next((
+                    record.file_path
+                    for record in business_records.get(business_id, [])
+                    if record.file_path
+                ), "")
                 issues.append(_issue(
                     None,
                     "missing_key_points",
@@ -478,6 +534,8 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
                     business_id=business_id,
                     business_code="",
                     variant_id="default",
+                    business_name=(aliases.get(business_id) or [business_id])[0],
+                    business_file_path=business_file_path,
                     missing_key_points=[list(point) for point in missing],
                 ))
             for point in sorted(actual_points - expected_points):
@@ -487,6 +545,8 @@ def power_supply_branch_key_points(ctx: CheckContext, params: dict[str, Any]) ->
                     record,
                     "extra_key_point",
                     business_id=business_id,
+                    business_name=(aliases.get(business_id) or [business_id])[0],
                     key_point=list(point),
+                    key_point_name=record.value("key_control_point"),
                 ))
     return issues

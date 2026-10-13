@@ -719,7 +719,11 @@ def build_registry() -> CapabilityRegistry:
         ['expected_key_points', 'business_aliases'],
         [],
         [],
-        ['issue_type', 'opinion', 'business_id', 'missing_key_points', 'key_point', 'entity_code'],
+        [
+            'issue_type', 'opinion', 'business_id', 'business_name',
+            'business_file_path', 'missing_key_points', 'key_point',
+            'key_point_name', 'entity_code',
+        ],
         ['row', 'material'],
         power_supply_branch_key_points,
     )

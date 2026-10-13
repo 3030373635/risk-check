@@ -483,7 +483,12 @@ def test_branch_key_points_reports_missing_and_extra_points() -> None:
     assert capability is not None
     actual = [
         make_record("matrix", 3, measure_id="29.1"),
-        make_record("matrix", 4, measure_id="99.1"),
+        make_record(
+            "matrix",
+            4,
+            measure_id="99.1",
+            key_control_point="99.测试控制点",
+        ),
     ]
     params = {
         "expected_key_points": {"financial_management": [[29], [45]]},
@@ -497,7 +502,16 @@ def test_branch_key_points_reports_missing_and_extra_points() -> None:
         "extra_key_point",
     }
     missing = next(issue for issue in issues if issue["evidence"]["issue_type"] == "missing_key_points")
+    extra = next(issue for issue in issues if issue["evidence"]["issue_type"] == "extra_key_point")
     assert missing["evidence"]["missing_key_points"] == [[45]]
+    assert missing["evidence"]["opinion"] == (
+        "财务管理缺少供电分公司适用清单要求的关键控制点：45。"
+        "请补充；如确实不适用，请说明原因。"
+    )
+    assert extra["evidence"]["opinion"] == (
+        "存在供电分公司适用清单外的关键控制点：99.测试控制点。"
+        "请核实是否适用；适用则保留并说明依据，不适用则删除。"
+    )
 
 
 def test_branch_key_points_only_applies_to_power_supply_branch() -> None:
@@ -604,8 +618,8 @@ def test_branch_key_points_keeps_files_in_same_directory_as_one_business() -> No
     assert capability.runner(context, params) == []
 
 
-def test_branch_key_points_reports_all_businesses_for_entity_without_business_files() -> None:
-    """供电分公司只有说明材料时应报告全部来源业务缺失。"""
+def test_branch_key_points_ignores_unsubmitted_businesses_for_entity() -> None:
+    """供电分公司未送审任何矩阵时不应生成缺失意见。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
     context = make_context([], business_id="__entity_completeness__")
@@ -613,7 +627,6 @@ def test_branch_key_points_reports_all_businesses_for_entity_without_business_fi
         "_entity_business_ids": [],
         "_entity_business_files": {},
         "_current_business_id": "__entity_completeness__",
-        "_entity_completeness_pass": True,
     })
     params = {
         "expected_key_points": {
@@ -626,12 +639,7 @@ def test_branch_key_points_reports_all_businesses_for_entity_without_business_fi
         },
     }
 
-    issues = capability.runner(context, params)
-
-    assert {issue["evidence"]["business_id"] for issue in issues} == {
-        "financial_management",
-        "marketing_management",
-    }
+    assert capability.runner(context, params) == []
 
 
 def test_branch_key_points_only_checks_current_business_unit() -> None:
@@ -655,8 +663,8 @@ def test_branch_key_points_only_checks_current_business_unit() -> None:
     assert issues[0]["evidence"]["business_id"] == "financial_management"
 
 
-def test_branch_key_points_reports_wholly_missing_business_once_per_entity() -> None:
-    """供电分公司整项未报业务时应在主体首个单元提示完整性。"""
+def test_branch_key_points_ignores_other_unsubmitted_businesses() -> None:
+    """已送审业务通过时不应补报其他未送审业务的缺失。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
     actual = [make_record("matrix", 3, measure_id="29.1")]
@@ -664,7 +672,6 @@ def test_branch_key_points_reports_wholly_missing_business_once_per_entity() -> 
     context.resources.update({
         "_entity_business_ids": ["financial_management"],
         "_current_business_id": "financial_management",
-        "_entity_completeness_pass": True,
     })
     params = {
         "expected_key_points": {
@@ -677,23 +684,31 @@ def test_branch_key_points_reports_wholly_missing_business_once_per_entity() -> 
         },
     }
 
-    issues = capability.runner(context, params)
-
-    assert len(issues) == 1
-    assert issues[0]["evidence"]["business_id"] == "marketing_management"
-    assert issues[0]["evidence"]["missing_key_points"] == [[1], [2]]
+    assert capability.runner(context, params) == []
 
 
 def test_branch_key_points_reports_extra_business_matrix() -> None:
-    """供电分公司提交不在来源 17 项中的整张矩阵时应提示适用性。"""
+    """供电分公司提交清单外整张矩阵时应逐个提示清单外控制点。"""
 
     capability = build_registry().get("power_supply_branch_key_points", 1)
-    record = make_record("matrix", 3, business_id="education_training", measure_id="1.1")
-    context = make_context([record], business_id="education_training")
+    record = make_record(
+        "matrix",
+        3,
+        business_id="education_training",
+        measure_id="1.1",
+        key_control_point="1.培训计划制定",
+    )
+    duplicate = make_record(
+        "matrix",
+        4,
+        business_id="education_training",
+        measure_id="1.2",
+        key_control_point="1.培训计划制定",
+    )
+    context = make_context([record, duplicate], business_id="education_training")
     context.resources.update({
         "_entity_business_ids": ["education_training"],
         "_current_business_id": "education_training",
-        "_entity_completeness_pass": True,
     })
     params = {
         "expected_key_points": {"financial_management": [[29]]},
@@ -703,11 +718,80 @@ def test_branch_key_points_reports_extra_business_matrix() -> None:
     issues = capability.runner(context, params)
 
     assert {issue["evidence"]["issue_type"] for issue in issues} == {
-        "extra_business",
-        "missing_key_points",
+        "extra_key_point",
     }
-    extra = next(issue for issue in issues if issue["evidence"]["issue_type"] == "extra_business")
+    extra_issues = [
+        issue for issue in issues
+        if issue["evidence"]["issue_type"] == "extra_key_point"
+    ]
+    assert len(extra_issues) == 1
+    extra = extra_issues[0]
     assert extra["record"] is record
+    assert extra["evidence"]["key_point_name"] == "1.培训计划制定"
+
+
+def test_branch_key_points_keeps_source_file_for_alias_matched_missing_point() -> None:
+    """未匹配业务通过目录别名归一后，缺失意见应保留实际文件路径。"""
+
+    capability = build_registry().get("power_supply_branch_key_points", 1)
+    record = make_record("matrix", 3, business_id="unmatched_1234", measure_id="29.1")
+    record.file_path = "11.财务管理矩阵及三清单/财务管理风控矩阵.xlsx"
+    context = make_context([record], business_id="unmatched_1234")
+    context.resources.update({
+        "_entity_business_ids": ["unmatched_1234"],
+        "_entity_business_files": {
+            "unmatched_1234": ["11.财务管理矩阵及三清单/财务管理风控矩阵.xlsx"],
+        },
+        "_current_business_id": "unmatched_1234",
+    })
+    params = {
+        "expected_key_points": {"financial_management": [[29], [45]]},
+        "business_aliases": {"financial_management": ["财务管理"]},
+    }
+
+    issues = capability.runner(context, params)
+
+    assert len(issues) == 1
+    assert issues[0]["evidence"]["issue_type"] == "missing_key_points"
+    assert issues[0]["evidence"]["business_id"] == "financial_management"
+    assert issues[0]["evidence"]["business_file_path"] == record.file_path
+
+
+def test_branch_key_points_reports_unmatched_extra_business_by_key_point() -> None:
+    """全新 unmatched 业务不能归一时，仍应按矩阵关键控制点提示。"""
+
+    capability = build_registry().get("power_supply_branch_key_points", 1)
+    record = make_record(
+        "matrix",
+        7,
+        business_id="unmatched_new",
+        measure_id="7.1",
+        key_control_point="7.新业务控制点",
+    )
+    record.file_path = "99.新业务矩阵及三清单/新业务风控矩阵.xlsx"
+    context = make_context([record], business_id="unmatched_new")
+    context.resources.update({
+        "_entity_business_ids": ["unmatched_new"],
+        "_entity_business_files": {"unmatched_new": [record.file_path]},
+        "_current_business_id": "unmatched_new",
+    })
+    params = {
+        "expected_key_points": {"financial_management": [[29]]},
+        "business_aliases": {"financial_management": ["财务管理"]},
+    }
+
+    issues = capability.runner(context, params)
+
+    assert {issue["evidence"]["issue_type"] for issue in issues} == {
+        "extra_key_point",
+    }
+    extra_issues = [
+        issue for issue in issues
+        if issue["evidence"]["issue_type"] == "extra_key_point"
+    ]
+    assert len(extra_issues) == 1
+    assert extra_issues[0]["record"] is record
+    assert extra_issues[0]["evidence"]["key_point_name"] == "7.新业务控制点"
 
 
 def test_branch_key_points_does_not_repeat_entity_missing_on_second_variant() -> None:
@@ -720,7 +804,6 @@ def test_branch_key_points_does_not_repeat_entity_missing_on_second_variant() ->
         "_entity_business_ids": ["grid_construction"],
         "_entity_business_files": {"grid_construction": ["电网基建风控矩阵.xlsx"]},
         "_current_business_id": "grid_construction",
-        "_entity_completeness_pass": False,
     })
     params = {
         "expected_key_points": {
@@ -1083,10 +1166,55 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
     profile = index["regions"][0]
     manifest = json.loads(
-        (ROOT / "rulepacks/releases/1.9.30/manifest.json").read_text(encoding="utf-8")
+        (ROOT / "rulepacks/releases/1.9.31/manifest.json").read_text(encoding="utf-8")
     )
-    assert profile["rulepack_version"] == "1.9.30"
+    assert profile["rulepack_version"] == "1.9.31"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
+
+
+def test_current_release_maps_maintenance_directory_to_full_business_name() -> None:
+    """目录名“检修运维”应统一匹配完整的模板业务名。"""
+
+    index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
+    profile = index["regions"][0]
+    release = ROOT / "rulepacks/releases" / profile["rulepack_version"]
+    pack = load_pack(release)
+
+    identity = identify_business(
+        Path("14风控矩阵-检修运维/14风控矩阵-检修运维-完整版.xlsx"),
+        pack["baseline_registry"],
+    )
+    rule = next(
+        item
+        for item in pack["rules"]
+        if item["rule_id"] == "chongqing.power_supply_branch_key_points"
+    )
+    aliases = rule["checks"][0]["params"]["business_aliases"]
+
+    assert identity.business_id == "maintenance_cost_project_management"
+    assert "检修运维" in aliases["maintenance_cost_project_management"]
+    assert "1.9.31" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.31" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.31" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+
+
+def test_current_release_is_deterministically_rebuildable() -> None:
+    """重庆 1.9.31 规则包应可由发布脚本确定性重建。"""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools/publish_rules_1014_chongqing_1931.py"),
+            "--verify-only",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["verified"] is True
 
 
 @pytest.mark.parametrize(("rule_id", "rule_number", "record_values"), [

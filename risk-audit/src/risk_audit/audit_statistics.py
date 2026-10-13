@@ -12,7 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from risk_audit.audit_statistics_html import render_audit_statistics_html
-from risk_audit.models import FileRecord
+from risk_audit.models import FileRecord, Finding
 from risk_audit.util import natural_key
 from risk_audit.writer import _output_path
 
@@ -20,6 +20,10 @@ from risk_audit.writer import _output_path
 RULE_LABEL_PATTERN = re.compile(r'【第(\d+)条】')
 PREPROCESSING_LABEL = '【预处理】'
 COUNT_SUFFIX_PATTERN = re.compile(r'\s+\d+\s*条[.。]?\s*$')
+BRANCH_KEY_POINT_SUMMARIES = {
+    'missing_key_points': '【第17条】缺少供电分公司适用清单要求的关键控制点',
+    'extra_key_point': '【第17条】存在供电分公司适用清单外的关键控制点',
+}
 
 
 def _safe_excel_text(value: str) -> str:
@@ -91,6 +95,128 @@ def _register_grouped_business(
     return unit_name, business
 
 
+def _register_material_finding_business(
+    grouped: dict,
+    files: list[FileRecord],
+    host_file: FileRecord,
+    finding: Finding,
+    package_name: str,
+    root_subject_name: str,
+) -> tuple[str, dict] | None:
+    """按资料级意见的真实业务登记统计分组。
+
+    Args:
+        grouped: 按主体和业务归集的统计容器。
+        files: 本次审核扫描到的全部文件。
+        host_file: 实际承载资料级意见的文件。
+        finding: 与当前意见对应的资料级审核结果。
+        package_name: 审核包名称。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+    """
+
+    if finding.check_id != 'power_supply_branch_key_points' or not finding.business_id:
+        return None
+    business_file_path = str(finding.evidence.get('business_file_path') or '')
+    # unmatched_* 业务已在规则中按目录归一，统计时用原文件路径找回现有分组。
+    matching_file = next((
+        file for file in files
+        if file.entity_code == finding.entity_code
+        and (file.variant_id or 'default') == (finding.variant_id or 'default')
+        and (
+            file.business_id == finding.business_id
+            or business_file_path in {
+                str(file.relative_path),
+                str(_output_path(file)),
+            }
+        )
+    ), None)
+    if matching_file is not None:
+        return _register_grouped_business(
+            grouped,
+            matching_file,
+            package_name,
+            root_subject_name,
+        )
+
+    location = _unit_and_business(host_file, package_name, root_subject_name)
+    if location is None:
+        return None
+    unit_name, _ = location
+    business_name = str(finding.evidence.get('business_name') or finding.business_id)
+    business_key = (f'finding:{finding.business_id}', finding.variant_id or 'default')
+    business = grouped[unit_name].setdefault(
+        business_key,
+        {'name': business_name, 'items': {}},
+    )
+    return unit_name, business
+
+
+def _finding_for_occurrence(
+    message: str,
+    state: dict,
+    file: FileRecord,
+    findings_by_message: dict[str, list[Finding]],
+) -> Finding | None:
+    """查找与统计表单元格意见对应的结构化审核结果。
+
+    Args:
+        message: 当前拆分后的程序意见。
+        state: 当前意见单元格归属记录。
+        file: 当前意见所在的业务文件。
+        findings_by_message: 按完整意见文本索引的审核结果。
+    """
+
+    candidates = findings_by_message.get(message, [])
+    row_match = re.search(r'\d+', str(state.get('cell') or ''))
+    row_number = int(row_match.group()) if row_match else None
+    exact = next((
+        finding for finding in candidates
+        if finding.file_path == str(file.relative_path)
+        and (not finding.sheet or finding.sheet == state.get('sheet', ''))
+        and (finding.row is None or finding.row == row_number)
+    ), None)
+    if exact is not None:
+        return exact
+    return next((
+        finding for finding in candidates
+        if (finding.location_policy == 'material' or not finding.file_path)
+        and (not finding.entity_code or finding.entity_code == file.entity_code)
+    ), None)
+
+
+def _format_finding_key_point(point: list[int]) -> str:
+    """格式化统计明细中的关键控制点编号。
+
+    Args:
+        point: 一个关键控制点的分级编号。
+    """
+
+    return '.'.join(str(value) for value in point)
+
+
+def _branch_key_point_details(finding: Finding) -> list[str]:
+    """生成第17条统计汇总下的关键控制点明细。
+
+    Args:
+        finding: 第17条供电分公司适用清单审核结果。
+    """
+
+    issue_type = finding.evidence.get('issue_type')
+    if issue_type == 'missing_key_points':
+        return [
+            _format_finding_key_point(point)
+            for point in finding.evidence.get('missing_key_points') or []
+        ]
+    if issue_type == 'extra_key_point':
+        point_name = str(finding.evidence.get('key_point_name') or '').strip()
+        if not point_name:
+            point_name = _format_finding_key_point(finding.evidence.get('key_point') or [])
+        if finding.sheet and finding.row:
+            return [f'{point_name}（{finding.sheet}第{finding.row}行）']
+        return [point_name]
+    return []
+
+
 def _rule_numbers(message: str) -> tuple[int, ...]:
     """提取并规范规则序号组合；message 为已写入审核意见单元格的一条意见。"""
     numbers = [int(value) for value in RULE_LABEL_PATTERN.findall(message)]
@@ -156,6 +282,7 @@ def _collect_statistics(
     package_name: str,
     business_failures: list[dict] | None = None,
     root_subject_name: str = '',
+    findings: list[Finding] | None = None,
 ) -> dict:
     """归集审核统计。
 
@@ -165,6 +292,7 @@ def _collect_statistics(
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+        findings: 本次结构化审核结果，用于还原资料级意见的真实业务归属。
     """
     logger = logging.getLogger(__name__)
     grouped = defaultdict(dict)
@@ -173,6 +301,9 @@ def _collect_statistics(
         # 晚表头或非标准文件名可能在扫描时仍是 unclassified，实际写回记录仍应纳入。
         for file in files if file.material_type != 'explanation'
     }
+    findings_by_message: dict[str, list[Finding]] = defaultdict(list)
+    for finding in findings or []:
+        findings_by_message[finding.message].append(finding)
     for file in files:
         if file.material_type == 'explanation' or not (file.business_id or file.business_code):
             continue
@@ -187,15 +318,60 @@ def _collect_statistics(
         _, business = registration
         for state in states:
             for message in _program_opinions(state.get('program_text', '')):
+                finding = _finding_for_occurrence(
+                    message,
+                    state,
+                    file,
+                    findings_by_message,
+                )
+                routed_registration = (
+                    _register_material_finding_business(
+                        grouped,
+                        files,
+                        file,
+                        finding,
+                        package_name,
+                        root_subject_name,
+                    )
+                    if finding is not None
+                    and (finding.location_policy == 'material' or not finding.file_path)
+                    else None
+                )
+                # 资料级意见按实际缺失业务展示，文件只承担写回载体职责。
+                target_business = routed_registration[1] if routed_registration else business
                 group = _opinion_group(message)
                 if group is None:
                     logger.warning('审核统计表未能识别意见规则序号：文件=%s，意见=%s',
                                    output_path, message)
                     continue
                 normalized_message = _normalized_message(message, group)
+                issue_type = finding.evidence.get('issue_type') if finding is not None else None
+                if (
+                    finding is not None
+                    and finding.check_id == 'power_supply_branch_key_points'
+                    and issue_type in BRANCH_KEY_POINT_SUMMARIES
+                ):
+                    statistics_key = ('branch_key_points', issue_type)
+                    item = target_business['items'].setdefault(
+                        statistics_key,
+                        {
+                            'message': BRANCH_KEY_POINT_SUMMARIES[issue_type],
+                            'occurrences': set(),
+                            'details': set(),
+                        },
+                    )
+                    item['details'].update(_branch_key_point_details(finding))
+                    occurrence = (
+                        output_path,
+                        state.get('sheet', ''),
+                        state.get('cell', ''),
+                        message,
+                    )
+                    item['occurrences'].add(occurrence)
+                    continue
                 # 规则编号相同但整改要求不同的意见必须分别统计，不能仅按规则编号合并。
                 statistics_key = (group[0], group[1], normalized_message)
-                item = business['items'].setdefault(
+                item = target_business['items'].setdefault(
                     statistics_key,
                     {'message': normalized_message, 'occurrences': set()},
                 )
@@ -234,6 +410,12 @@ def _business_records(items: dict) -> list[str]:
                 f'【详细日志】{failure["log_reference"]}',
             ])
             continue
+        if item.get('details'):
+            details = sorted(item['details'], key=natural_key)
+            records.append(
+                f'{item["message"]} {len(details)}项：\n' + '\n'.join(details)
+            )
+            continue
         records.append(f'{item["message"]} {len(item["occurrences"])}条。')
     return records or ['无']
 
@@ -263,6 +445,7 @@ def write_audit_statistics(
     package_name: str,
     business_failures: list[dict] | None = None,
     root_subject_name: str = '',
+    findings: list[Finding] | None = None,
 ) -> None:
     """写入审核统计表。
 
@@ -273,6 +456,7 @@ def write_audit_statistics(
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+        findings: 本次结构化审核结果，用于还原资料级意见的真实业务归属。
     """
     grouped = _collect_statistics(
         files,
@@ -280,6 +464,7 @@ def write_audit_statistics(
         package_name,
         business_failures,
         root_subject_name,
+        findings,
     )
     source_data = _statistics_source_data(grouped)
     book = Workbook()
@@ -339,6 +524,7 @@ def write_audit_statistics_html(
     package_name: str,
     business_failures: list[dict] | None = None,
     root_subject_name: str = '',
+    findings: list[Finding] | None = None,
 ) -> None:
     """写入审核统计 HTML。
 
@@ -349,6 +535,7 @@ def write_audit_statistics_html(
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+        findings: 本次结构化审核结果，用于还原资料级意见的真实业务归属。
     """
     grouped = _collect_statistics(
         files,
@@ -356,6 +543,7 @@ def write_audit_statistics_html(
         package_name,
         business_failures,
         root_subject_name,
+        findings,
     )
     document = render_audit_statistics_html(_statistics_source_data(grouped))
     path.parent.mkdir(parents=True, exist_ok=True)

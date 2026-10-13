@@ -1,0 +1,11 @@
+{
+  "audit_as_of": "2026-10-14",
+  "engine_compatibility": ">=1.9.28,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "b776a105d1ca78d19aaddcd80854c62714b103b3b7ddfef6f38392497d4e97db",
+  "status": "draft",
+  "title": "重庆第17条报送范围与业务别名修正规则包",
+  "version": "1.9.31"
+}

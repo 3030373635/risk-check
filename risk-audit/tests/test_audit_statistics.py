@@ -8,7 +8,7 @@ from lxml import html
 from openpyxl import load_workbook
 
 from risk_audit.audit_statistics import write_audit_statistics, write_audit_statistics_html
-from risk_audit.models import FileRecord
+from risk_audit.models import FileRecord, Finding
 
 
 def _file(tmp_path: Path, relative_path: str, material_type: str, business_code: str | None) -> FileRecord:
@@ -59,6 +59,247 @@ def test_statistics_groups_same_rule_combination_by_opinion_text(tmp_path):
         ('包名/a/b/c',
          'e：\n【第7条】请核实与矩阵对应的系统规则是否应该做出修改。 1条。'),
     ]
+
+
+def test_statistics_routes_material_finding_to_its_actual_business(tmp_path: Path) -> None:
+    """资料级缺报意见必须显示在实际缺失业务下，而不是承载意见的首个业务下。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    sales = _file(
+        tmp_path,
+        '大足供电分公司/01风控矩阵-营销售电/01风控矩阵-营销售电.xlsx',
+        'matrix',
+        '01',
+    )
+    sales.business_id = 'sales_electricity'
+    message = (
+        '【第17条】检修运维成本项目管理缺少供电分公司适用清单要求的关键控制点：1、2。'
+        '请补充；如确实不适用，请说明原因。'
+    )
+    ownership = {
+        str(sales.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'J4',
+            'program_text': message,
+        }],
+    }
+    finding = Finding(
+        finding_key='finding-key',
+        finding_id='finding-id',
+        rule_id='chongqing.power_supply_branch_key_points',
+        check_id='power_supply_branch_key_points',
+        display_code='R17',
+        revision=3,
+        severity='violation',
+        entity_code='205H',
+        entity_name='大足供电分公司',
+        business_code='',
+        variant_id='default',
+        file_path='',
+        sheet='',
+        row=None,
+        message=message,
+        evidence={
+            'issue_type': 'missing_key_points',
+            'business_name': '检修运维成本项目管理',
+            'missing_key_points': [[1], [2]],
+        },
+        location_policy='material',
+        business_id='maintenance_cost_project_management',
+    )
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(
+        target,
+        files=[sales],
+        ownership=ownership,
+        package_name='报送包',
+        findings=[finding],
+    )
+
+    assert list(load_workbook(target)['审核统计表'].values) == [
+        ('单位', '备注'),
+        ('报送包/大足供电分公司', '01风控矩阵-营销售电：\n无'),
+        (
+            '报送包/大足供电分公司',
+            '检修运维成本项目管理：\n'
+            '【第17条】缺少供电分公司适用清单要求的关键控制点 2项：\n'
+            '1\n'
+            '2',
+        ),
+    ]
+
+
+def test_statistics_reuses_alias_matched_business_for_material_finding(tmp_path: Path) -> None:
+    """资料级缺失意见应复用通过目录别名归一的实际业务分组。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    finance = _file(
+        tmp_path,
+        '大足供电分公司/11.财务管理矩阵及三清单/财务管理风控矩阵.xlsx',
+        'matrix',
+        None,
+    )
+    finance.business_id = 'unmatched_1234'
+    message = (
+        '【第17条】财务管理缺少供电分公司适用清单要求的关键控制点：45。'
+        '请补充；如确实不适用，请说明原因。'
+    )
+    ownership = {
+        str(finance.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'J4',
+            'program_text': message,
+        }],
+    }
+    finding = Finding(
+        finding_key='finding-key-alias',
+        finding_id='finding-id-alias',
+        rule_id='chongqing.power_supply_branch_key_points',
+        check_id='power_supply_branch_key_points',
+        display_code='R17',
+        revision=3,
+        severity='violation',
+        entity_code='205H',
+        entity_name='大足供电分公司',
+        business_code='',
+        variant_id='default',
+        file_path='',
+        sheet='',
+        row=None,
+        message=message,
+        evidence={
+            'issue_type': 'missing_key_points',
+            'business_name': '财务管理',
+            'business_file_path': str(finance.relative_path),
+            'missing_key_points': [[45]],
+        },
+        location_policy='material',
+        business_id='financial_management',
+    )
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(
+        target,
+        files=[finance],
+        ownership=ownership,
+        package_name='报送包',
+        findings=[finding],
+    )
+
+    assert list(load_workbook(target)['审核统计表'].values) == [
+        ('单位', '备注'),
+        (
+            '报送包/大足供电分公司',
+            '11.财务管理矩阵及三清单：\n'
+            '【第17条】缺少供电分公司适用清单要求的关键控制点 1项：\n'
+            '45',
+        ),
+    ]
+
+
+def test_statistics_groups_extra_key_points_with_names_and_rows(tmp_path: Path) -> None:
+    """适用清单外控制点应按类型汇总，并展示名称和矩阵定位行。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+
+    sales = _file(
+        tmp_path,
+        '大足供电分公司/01风控矩阵-营销售电/01风控矩阵-营销售电.xlsx',
+        'matrix',
+        '01',
+    )
+    sales.business_id = 'sales_electricity'
+    messages = [
+        (
+            '【第17条】存在供电分公司适用清单外的关键控制点：4.供用电合同签订。'
+            '请核实是否适用；适用则保留并说明依据，不适用则删除。'
+        ),
+        (
+            '【第17条】存在供电分公司适用清单外的关键控制点：6.电价码制定与执行。'
+            '请核实是否适用；适用则保留并说明依据，不适用则删除。'
+        ),
+    ]
+    ownership = {
+        str(sales.relative_path): [
+            {'sheet': '营销售电', 'cell': 'J13', 'program_text': messages[0]},
+            {'sheet': '营销售电', 'cell': 'J20', 'program_text': messages[1]},
+        ],
+    }
+    findings = [
+        Finding(
+            finding_key=f'finding-key-{index}',
+            finding_id=f'finding-id-{index}',
+            rule_id='chongqing.power_supply_branch_key_points',
+            check_id='power_supply_branch_key_points',
+            display_code='R17',
+            revision=3,
+            severity='violation',
+            entity_code='205H',
+            entity_name='大足供电分公司',
+            business_code='01',
+            variant_id='default',
+            file_path=str(sales.relative_path),
+            sheet='营销售电',
+            row=row,
+            message=message,
+            evidence={
+                'issue_type': 'extra_key_point',
+                'business_name': '营销售电',
+                'key_point': [point],
+                'key_point_name': point_name,
+            },
+            location_policy='row',
+            business_id='sales_electricity',
+        )
+        for index, (row, point, point_name, message) in enumerate([
+            (13, 4, '4.供用电合同签订', messages[0]),
+            (20, 6, '6.电价码制定与执行', messages[1]),
+        ])
+    ]
+    target = tmp_path / '审核统计表.xlsx'
+
+    write_audit_statistics(
+        target,
+        files=[sales],
+        ownership=ownership,
+        package_name='报送包',
+        findings=findings,
+    )
+
+    assert load_workbook(target)['审核统计表']['B2'].value == (
+        '01风控矩阵-营销售电：\n'
+        '【第17条】存在供电分公司适用清单外的关键控制点 2项：\n'
+        '4.供用电合同签订（营销售电第13行）\n'
+        '6.电价码制定与执行（营销售电第20行）'
+    )
+
+    html_target = tmp_path / '审核统计表.html'
+    write_audit_statistics_html(
+        html_target,
+        files=[sales],
+        ownership=ownership,
+        package_name='报送包',
+        findings=findings,
+    )
+
+    html_text = html_target.read_text(encoding='utf-8')
+    document = html.fromstring(html_text)
+    source = document.get_element_by_id('audit-source-data').text
+    assert json.loads(source)['units'][0]['businesses'][0]['records'] == [
+        '【第17条】存在供电分公司适用清单外的关键控制点 2项：\n'
+        '4.供用电合同签订（营销售电第13行）\n'
+        '6.电价码制定与执行（营销售电第20行）',
+    ]
+    assert 'white-space: pre-wrap' in html_text
 
 
 def test_html_statistics_uses_same_grouped_content_as_excel(tmp_path: Path) -> None:

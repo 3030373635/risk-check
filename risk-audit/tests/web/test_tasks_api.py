@@ -28,7 +28,7 @@ def test_create_task_uses_fixed_outputs_and_rejects_client_output(client, input_
     assert Path(payload["output_root"]).parent.name == "outputs"
     assert re.fullmatch(rf"重庆 {re.escape(input_root.name)}-\d{{8}}-\d{{6}}", payload["display_name"])
     assert payload["region_code"] == "chongqing"
-    assert payload["rulepack_version"] == "1.9.30"
+    assert payload["rulepack_version"] == "1.9.31"
     assert Path(payload["output_root"]).name == payload["display_name"]
     assert payload["status"] == "running"
 

@@ -712,7 +712,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 # 主体是否已报送材料由扫描名单确定；缺报某个业务不能被当作整个主体未报送。
                 local['_submitted_entity_codes'] = [entity_key] if any(
                     file.material_type != 'explanation' for file in group_files) else []
-                # 保留主体级已报业务集，供重庆完整性规则识别整项缺报。
+                # 保留主体级已报业务集，供重庆规则归一当前业务。
                 local['_entity_business_ids'] = [
                     business.get('business_id') or business['business_code']
                     for business in scopes[entity_key]['businesses']
@@ -726,7 +726,6 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                     for submitted_business_id in local['_entity_business_ids']
                 }
                 local['_current_business_id'] = business_id
-                local['_entity_completeness_pass'] = unit_index == 1
                 local['submission_scope'] = {**deepcopy(scopes[entity_key]), 'businesses': [
                     business for business in scopes[entity_key]['businesses']
                     if (business.get('business_id') or business['business_code'], business.get('variant_id', 'default'))
@@ -945,6 +944,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             input_resolved.name,
             business_failures=business_failures,
             root_subject_name=input_resolved.parent.name,
+            findings=findings,
         )
         # HTML 与 Excel 使用同一批审核结果独立生成，方便浏览器快速定位问题。
         write_audit_statistics_html(
@@ -954,6 +954,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             input_resolved.name,
             business_failures=business_failures,
             root_subject_name=input_resolved.parent.name,
+            findings=findings,
         )
     warnings.extend({'type': 'hidden_sheets_notice', 'file': a['file'], 'sheets': a['sheets'],
                      'message': '存在隐藏工作表，请按需查看处理提示；未默认纳入审核。' if not include_hidden else '本次明确选择纳入隐藏表，请查看实际处理结果。',
