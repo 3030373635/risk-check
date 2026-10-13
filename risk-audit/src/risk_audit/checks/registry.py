@@ -605,7 +605,7 @@ def build_registry() -> CapabilityRegistry:
     from risk_audit.checks.carriers_v5 import set_subset_v5
     r.register(replace(r.get('set_subset',4),version=5,runner=set_subset_v5))
     from risk_audit.checks.applicability_v180 import responsibility_applicability_check, responsibility_coverage_v8
-    from risk_audit.checks.confirmed_v180 import field_constraints_v2, roles_same_duty_v3, reference_exists_v2, responsibility_phrase_v7, value_mapping_v4
+    from risk_audit.checks.confirmed_v180 import field_constraints_v2, roles_same_duty_v3, reference_exists_v2, reference_exists_v3, responsibility_phrase_v7, value_mapping_v4
     from risk_audit.checks.materials_v180 import applicable_ordered_records
     from risk_audit.checks.materials_v180 import required_documents_v3, required_documents_v4, incompatible_constraints, applicable_deleted_text
     # 确认稿新能力单独版本化，避免改写冻结规则的判定行为。
@@ -636,6 +636,11 @@ def build_registry() -> CapabilityRegistry:
         optional_params=required_documents_capability.optional_params | {'require_entity_name'},
     ))
     r.register(replace(r.get('field_constraints', 2), version=3, runner=incompatible_constraints, record_types=frozenset({'incompatible_position'})))
+    r.register(replace(
+        r.get('reference_exists', 2),
+        version=3,
+        runner=reference_exists_v3,
+    ))
     coverage_capability = r.get('responsibility_coverage', 7)
     r.register(replace(coverage_capability, version=8, runner=responsibility_coverage_v8,
                        optional_params=coverage_capability.optional_params | {'responsibility_applicability'},

@@ -350,11 +350,24 @@ def validate_output_paths(files: list[FileRecord], *, anticipate_conversion: boo
         targets[key] = file.relative_path
 
 
-def write_outputs(files: list[FileRecord], findings: list[Finding], output_root: Path, *, metadata_dir: Path, entities: dict[str, Entity] | None = None, output_state: OutputState | None = None, baselines: dict | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def write_outputs(files: list[FileRecord], findings: list[Finding], output_root: Path, *,
+                  metadata_dir: Path, entities: dict[str, Entity] | None = None,
+                  output_state: OutputState | None = None, baselines: dict | None = None,
+                  include_existing_measure_column: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """写审核副本。
 
-    files 为输入，findings 为意见，output_root 为副本目标，entities 为名册，
-    output_state 为同批累计状态，baselines 为新版核对列基准，metadata_dir 为审核辅助资料目录。
+    Args:
+        files: 本次需要写出的材料记录。
+        findings: 需要写回材料的审核意见。
+        output_root: 审核副本输出目录。
+        metadata_dir: 审核辅助资料目录。
+        entities: 可选主体名册。
+        output_state: 同批材料的累计输出状态。
+        baselines: 新版矩阵核对列使用的模板基准。
+        include_existing_measure_column: 是否输出岗位清单已有措施编号列。
+
+    Returns:
+        输出警告列表和程序归属记录。
     """
     if any(f.evidence.get('publication_channel') == 'internal' for f in findings):
         raise ValueError('内部未完成检查不得写入单位审核意见；请修正结果分流后重试。')
@@ -484,7 +497,14 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
         if baselines is not None:
             from risk_audit.output_0916 import enrich_matrices
             try:
-                moves = enrich_matrices(file, destination, baselines, findings, files)
+                moves = enrich_matrices(
+                    file,
+                    destination,
+                    baselines,
+                    findings,
+                    files,
+                    include_existing_measure_column=include_existing_measure_column,
+                )
             except WorkbookOutputCompatibilityError as error:
                 # 丢弃已写入意见的半成品，以未改动的读取基线作为交付副本。
                 shutil.copy2(base, destination)

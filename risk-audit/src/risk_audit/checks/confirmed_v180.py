@@ -402,6 +402,83 @@ def reference_exists_v2(ctx: Any, p: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def reference_exists_v3(ctx: Any, p: dict[str, Any]) -> list[dict[str, Any]]:
+    """仅核查岗位清单编号是否存在于当前矩阵。
+
+    Args:
+        ctx: 当前主体、业务和变体范围内的审核上下文。
+        p: 来源字段、目标记录类型和目标字段配置。
+
+    Returns:
+        编号缺失、不可读取或未在当前矩阵中找到的问题列表。
+    """
+
+    grouped = defaultdict(list)
+    for matrix in ctx.all_records:
+        if matrix.record_type == p["target_record_type"]:
+            grouped[_scope(matrix)].append(matrix)
+
+    out = []
+    for row in ctx.records:
+        if row.record_type == "incompatible_position" and _no_incompatible_detail(row):
+            continue
+        reference = row.value(p["source_field"])
+        if not _scope_known(row):
+            out.append(_issue(
+                row,
+                "review",
+                "reference_field_unavailable",
+                reference=reference,
+                unavailable_reason="编号字段或主体、业务、变体不能可靠读取，暂不能对应当前矩阵",
+            ))
+            continue
+
+        scope = _scope(row)
+        matrices = grouped.get(scope, [])
+        # 目标矩阵未报送时由资料完整性规则负责，避免在每条岗位记录上重复提示。
+        if not _scope_has_sheet_or_record(ctx, scope, p["target_record_type"]):
+            continue
+        if not _readable(row, p["source_field"]):
+            out.append(_issue(
+                row,
+                "review",
+                "reference_field_unavailable",
+                reference=reference,
+                unavailable_reason="编号字段或主体、业务、变体不能可靠读取，暂不能对应当前矩阵",
+            ))
+            continue
+        if not norm_text(reference):
+            out.append(_issue(row, "violation", "reference_missing", reference=reference))
+            continue
+
+        reference_key = measure_id_key(reference)
+        matches = [
+            matrix
+            for matrix in matrices
+            if _readable(matrix, p["target_field"])
+            and measure_id_key(matrix.value(p["target_field"])) == reference_key
+        ]
+        if matches:
+            # 1013 重庆规则明确删除适用性判断，编号存在即通过本项检查。
+            continue
+        unavailable = not matrices or any(
+            not _readable(matrix, p["target_field"])
+            for matrix in matrices
+        )
+        out.append(_issue(
+            row,
+            "review" if unavailable else "violation",
+            "reference_matrix_unavailable" if unavailable else "reference_not_found",
+            reference=reference,
+            unavailable_reason=(
+                "同主体、同业务、同变体的当前矩阵不存在或编号字段不完整"
+                if unavailable
+                else ""
+            ),
+        ))
+    return out
+
+
 def responsibility_phrase_v7(ctx: Any, p: dict[str, Any]) -> list[dict[str, Any]]:
     """核查标准责任表述；ctx 为审核上下文，p.attributes 为已确认责任属性词表。"""
     out = []

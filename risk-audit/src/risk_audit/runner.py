@@ -432,6 +432,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         settings,
         enabled_rules=enabled_rules,
     )
+    # 1013 重庆规则删除第16条后，不再向矩阵输出岗位清单已有措施编号辅助列。
+    include_existing_measure_column = any(
+        rule["rule_id"] == "matrices.measure_applicability"
+        for rule in pack.get("rules", [])
+    )
     validate_pack(pack, registry)
     entities, missing_code, entity_source = _load_entity_source(entity_mode, entity_file)
     logger.info('扫描报送材料')
@@ -749,6 +754,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                             output_state=output_state,
                             baselines=(unit_baselines
                                        if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
+                            include_existing_measure_column=include_existing_measure_column,
                             metadata_dir=audit_directory,
                         )
                 except AuditCancelled:

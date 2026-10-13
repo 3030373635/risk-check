@@ -487,18 +487,33 @@ def _select_matrix_output_start(root: Any, cells: dict[str, Any], old_opinion: i
 
 
 def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findings: list[Finding],
-                    all_files: list[FileRecord] | None = None) -> dict[str, tuple[int, int]]:
-    """新增矩阵核对列；file 为材料记录，destination 为审核副本，baselines 为基准，findings 为当前意见，all_files 为同批材料。
+                    all_files: list[FileRecord] | None = None, *,
+                    include_existing_measure_column: bool = True) -> dict[str, tuple[int, int]]:
+    """新增矩阵核对列。
 
-    返回每张矩阵表的旧、新审核意见列，供程序意见归属同步更新。
+    Args:
+        file: 当前矩阵材料记录。
+        destination: 需要写入核对列的审核副本。
+        baselines: 当前业务对应的冻结模板数据。
+        findings: 当前审核意见，保留用于兼容既有调用接口。
+        all_files: 同批材料，用于关联岗位清单编号。
+        include_existing_measure_column: 是否输出岗位清单已有措施编号列。
+
+    Returns:
+        每张矩阵表的旧、新审核意见列，供程序意见归属同步更新。
     """
     sheets = [sheet for sheet in file.sheets if sheet.sheet_type == 'matrix']
     if not sheets:
         return {}
     _ = findings  # 意见写入由 writer 负责；本阶段只使用同批清单事实生成核对列。
-    present = {(*_scope_key(record), measure_numbers(record.value('measure_id'))) for item in (all_files or [file])
-               for sheet in item.sheets if sheet.sheet_type == 'position_duty' for record in sheet.records
-               if norm_text(record.value('measure_id'))}
+    present = {
+        (*_scope_key(record), measure_numbers(record.value('measure_id')))
+        for item in (all_files or [file])
+        for sheet in item.sheets
+        if include_existing_measure_column and sheet.sheet_type == 'position_duty'
+        for record in sheet.records
+        if norm_text(record.value('measure_id'))
+    }
     baseline = baselines.get((file.business_id or file.business_code, file.variant_id))
     template_status = file.preservation.get('template_match', {}).get('status', '')
     # 仅唯一匹配且模板可读时新增省公司责任主体核对列；无状态仅用于历史测试和旧运行恢复。
@@ -523,6 +538,13 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                     headers[text] = _coord_col(cell.get('r'))
             old_opinion = headers.get('审核意见', parts[0].output_column)
             auxiliary_columns[title] = {headers[name] for name in (REFERENCE_HEADER, EXISTING_HEADER) if name in headers}
+            if not include_existing_measure_column and EXISTING_HEADER in headers:
+                stale_existing_col = headers.pop(EXISTING_HEADER)
+                # 1013 规则删除该辅助列；重审旧输出时同时清理表头和历史编号数据。
+                for row in data:
+                    for cell in list(row.findall(f'{{{MAIN}}}c')):
+                        if _coord_col(cell.get('r')) == stale_existing_col:
+                            row.remove(cell)
             if not include_reference and REFERENCE_HEADER in headers:
                 stale_reference_col = headers.pop(REFERENCE_HEADER)
                 # 重跑变为未匹配时清除历史辅助列，避免旧模板责任主体继续展示。
@@ -532,16 +554,16 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                             row.remove(cell)
             occupied = max((_coord_col(ref) for ref in cells), default=1)
             reusable_output_columns = (
-                EXISTING_HEADER in headers
+                (not include_existing_measure_column or EXISTING_HEADER in headers)
                 and (not include_reference or REFERENCE_HEADER in headers)
             )
             if reusable_output_columns:
                 reference_col = headers.get(REFERENCE_HEADER) if include_reference else None
-                existing_col = headers[EXISTING_HEADER]
+                existing_col = headers.get(EXISTING_HEADER) if include_existing_measure_column else None
                 opinion_col = old_opinion
                 matrix_header_rows = {number for part in parts for number in part.header_rows}
                 first_matrix_header_row = min(matrix_header_rows)
-                clear_columns = {existing_col}
+                clear_columns = {existing_col} if existing_col is not None else set()
                 if reference_col is not None:
                     clear_columns.add(reference_col)
                 # 修正版保留核对表头时，先删除核对数据区旧值，再按本轮事实重建。
@@ -554,7 +576,7 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                             row.remove(cell)
             else:
                 # 原意见为最末列时挪到本轮核对内容之后，其余业务数据完全保留。
-                wanted_headers = {EXISTING_HEADER}
+                wanted_headers = {EXISTING_HEADER} if include_existing_measure_column else set()
                 if include_reference:
                     wanted_headers.add(REFERENCE_HEADER)
                 if not wanted_headers.intersection(headers):
@@ -566,9 +588,11 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                     reference_col = headers.get(REFERENCE_HEADER, next_column)
                     if REFERENCE_HEADER not in headers:
                         next_column += 1
-                existing_col = headers.get(EXISTING_HEADER, next_column)
-                if EXISTING_HEADER not in headers:
-                    next_column += 1
+                existing_col = None
+                if include_existing_measure_column:
+                    existing_col = headers.get(EXISTING_HEADER, next_column)
+                    if EXISTING_HEADER not in headers:
+                        next_column += 1
                 opinion_col = next_column
                 for row in data:
                     for cell in row.findall(f'{{{MAIN}}}c'):
@@ -600,7 +624,8 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                 header_row = _ensure_row(data, header, row_index, row_numbers)
                 if reference_col is not None:
                     _inline_cell(header_row, f'{get_column_letter(reference_col)}{header}', REFERENCE_HEADER, None)
-                _inline_cell(header_row, f'{get_column_letter(existing_col)}{header}', EXISTING_HEADER, None)
+                if existing_col is not None:
+                    _inline_cell(header_row, f'{get_column_letter(existing_col)}{header}', EXISTING_HEADER, None)
                 opinion_ref = f'{get_column_letter(opinion_col)}{header}'
                 if not any(cell.get('r') == opinion_ref for cell in header_row.findall(f'{{{MAIN}}}c')):
                     _inline_cell(header_row, opinion_ref, '审核意见', None)
@@ -608,7 +633,7 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                     row = _ensure_row(data, record.row, row_index, row_numbers)
                     matches = indexed[measure_numbers(record.value('measure_id'))]
                     # 同编号多条基准责任主体不可任取一条；完整基准应提供唯一措施记录。
-                    output_columns = {existing_col}
+                    output_columns = {existing_col} if existing_col is not None else set()
                     if reference_col is not None:
                         output_columns.add(reference_col)
                     for cell in list(row.findall(f'{{{MAIN}}}c')):
@@ -618,7 +643,10 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
                         cell = _baseline_cell(matches[0], styles, imported)
                         if cell is not None:
                             cell.set('r', f'{get_column_letter(reference_col)}{record.row}'); row.append(cell)
-                    if (*_scope_key(record), measure_numbers(record.value('measure_id'))) in present:
+                    if existing_col is not None and (
+                        *_scope_key(record),
+                        measure_numbers(record.value('measure_id')),
+                    ) in present:
                         _inline_cell(row, f'{get_column_letter(existing_col)}{record.row}', record.value('measure_id'), None)
                 part.output_column = opinion_col; part.audit_columns['审核意见'] = opinion_col
             for row in data:
@@ -631,7 +659,9 @@ def enrich_matrices(file: FileRecord, destination: Path, baselines: dict, findin
             columns = root.find(f'{{{MAIN}}}cols')
             if columns is None:
                 columns = etree.Element(f'{{{MAIN}}}cols'); data.addprevious(columns)
-            output_columns = [existing_col, opinion_col]
+            output_columns = [opinion_col]
+            if existing_col is not None:
+                output_columns.insert(0, existing_col)
             if reference_col is not None:
                 output_columns.insert(0, reference_col)
             for column in output_columns:
