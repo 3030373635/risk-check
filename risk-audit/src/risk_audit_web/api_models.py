@@ -17,14 +17,12 @@ class TaskCreateRequest(StrictModel):
     """描述用户可提交的新任务字段。"""
 
     input_root: str = Field(min_length=1)
-    region_code: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
 
 
 class OutputPathPreviewRequest(StrictModel):
     """描述输出路径预览请求。"""
 
     input_root: str = Field(min_length=1)
-    region_code: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
 
 
 class ShutdownRequest(StrictModel):

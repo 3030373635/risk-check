@@ -14,7 +14,7 @@ def create_request(input_root: Path):
     """创建严格任务请求；input_root 为用户选择的输入目录。"""
     from risk_audit_web.api_models import TaskCreateRequest
 
-    return TaskCreateRequest(input_root=str(input_root), region_code="hunan")
+    return TaskCreateRequest(input_root=str(input_root))
 
 
 def test_concurrent_tasks_reserve_distinct_output_directories(
@@ -157,13 +157,29 @@ def test_system_status_summarizes_successful_diagnostics(
     }]
 
 
-def test_system_status_reports_auditor_and_available_regions(web_services) -> None:
-    """系统状态必须显示审核器版本和可用地区数量；web_services 为真实服务。"""
+def test_system_status_reports_auditor_and_fixed_region(web_services) -> None:
+    """系统状态必须显示审核器版本和固定地区；web_services 为真实服务。"""
     status = web_services.system_status()
 
     assert status["app_version"] == "2.2.0"
-    assert status["available_region_count"] == 2
+    assert status["region_code"] == "chongqing"
+    assert status["region_name"] == "重庆"
+    assert status["rulepack_version"] == "1.9.27"
     assert "rule_version" not in status
+
+
+def test_system_status_remains_available_when_product_region_is_invalid(web_services) -> None:
+    """地区配置损坏时状态接口仍必须返回诊断信息。"""
+    from risk_audit_web.region_profiles import RegionCatalog
+
+    web_services._region_catalog = RegionCatalog({})
+
+    status = web_services.system_status()
+
+    assert status["region_code"] is None
+    assert status["region_name"] is None
+    assert status["rulepack_version"] is None
+    assert status["diagnostics"]
 
 
 def test_created_task_keeps_pinned_region_after_index_changes(
@@ -176,10 +192,10 @@ def test_created_task_keeps_pinned_region_after_index_changes(
 
     request = web_services.repository.read_request(task.record.task_id)
 
-    assert request.region_code == "hunan"
-    assert request.region_name == "湖南"
-    assert request.rulepack_version == "1.9.21"
-    assert request.rulepack == str(web_services._region_catalog.require("hunan").rulepack)
+    assert request.region_code == "chongqing"
+    assert request.region_name == "重庆"
+    assert request.rulepack_version == "1.9.27"
+    assert request.rulepack == str(web_services._region_catalog.require("chongqing").rulepack)
 
 
 def test_system_status_only_exposes_failed_diagnostics(

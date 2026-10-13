@@ -22,39 +22,26 @@ if str(SOURCE_ROOT) not in sys.path:
 
 @pytest.fixture
 def portable_paths(tmp_path: Path):
-    """创建湖南就绪、重庆待资源的最小便携目录；tmp_path 为测试根。"""
+    """创建重庆单地区的最小便携目录；tmp_path 为测试根。"""
     from risk_audit_web.task_paths import PortablePaths
 
     paths = PortablePaths.from_app_root(tmp_path / "app")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
-    regions = []
-    for region_code, region_name, version in (
-        ("hunan", "湖南", "1.9.21"),
-        ("chongqing", "重庆", "1.9.22"),
-    ):
-        release = paths.rulepacks / "releases" / version
-        shutil.copytree(PROJECT_ROOT / "rulepacks" / "releases" / version, release)
-        manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
-        content_hash = str(manifest["content_hash"])
-        regions.append({
-            "region_code": region_code,
-            "region_name": region_name,
-            "rulepack_version": version,
-            "rulepack_content_hash": content_hash,
-            "entity_mode": "registry" if region_code == "hunan" else "parent_directory",
-            "baseline_root": f"baselines/{region_code}/templates",
-            "config_file": f"configs/{region_code}/audit-config.json",
-            "enabled": True,
-        })
-    regions[0]["entity_file"] = "entities/hunan/entities.xlsx"
-    hunan_entity_file = paths.resources_root / "entities/hunan/entities.xlsx"
-    hunan_entity_file.parent.mkdir(parents=True)
-    hunan_entity_file.write_bytes(b"xlsx")
-    (paths.resources_root / "baselines/hunan/templates").mkdir(parents=True)
-    hunan_config_file = paths.resources_root / "configs/hunan/audit-config.json"
-    hunan_config_file.parent.mkdir(parents=True)
-    hunan_config_file.write_text('{"disabled_rules":[]}', encoding="utf-8")
+    version = "1.9.27"
+    release = paths.rulepacks / "releases" / version
+    shutil.copytree(PROJECT_ROOT / "rulepacks" / "releases" / version, release)
+    manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+    regions = [{
+        "region_code": "chongqing",
+        "region_name": "重庆",
+        "rulepack_version": version,
+        "rulepack_content_hash": str(manifest["content_hash"]),
+        "entity_mode": "parent_directory",
+        "baseline_root": "baselines/chongqing/templates",
+        "config_file": "configs/chongqing/audit-config.json",
+        "enabled": True,
+    }]
     paths.region_index.parent.mkdir(parents=True)
     paths.region_index.write_text(json.dumps({
         "schema_version": "1.0",
@@ -111,7 +98,6 @@ def web_services(portable_paths):
 def client(tmp_path: Path, web_services):
     """创建注册全部 REST 路由的安全客户端；tmp_path/services 为测试依赖。"""
     from fastapi.testclient import TestClient
-    from risk_audit_web.api.regions import router as regions_router
     from risk_audit_web.api.system import router as system_router
     from risk_audit_web.api.tasks import router as tasks_router
     from risk_audit_web.security import SecuritySettings
@@ -124,7 +110,7 @@ def client(tmp_path: Path, web_services):
         SecuritySettings("secret", 49152),
         web_services.server_controller,
         static_root,
-        routers=(system_router, regions_router, tasks_router),
+        routers=(system_router, tasks_router),
     )
     app.state.services = web_services
     with TestClient(app, base_url="http://127.0.0.1:49152") as test_client:

@@ -134,37 +134,24 @@ def test_binary_architectures_reads_windows_dll(tmp_path: Path) -> None:
 
 
 def _write_rulepack(root: Path) -> None:
-    """创建湖南、重庆两个有效规则包及地区索引。
+    """创建重庆单地区有效规则包及地区索引。
 
     Args:
         root: 测试便携发布根目录。
     """
 
-    hashes: dict[str, str] = {}
-    for version in ("1.9.21", "1.9.22"):
-        release = root / f"runtime/resources/rulepacks/releases/{version}"
-        shutil.copytree(ROOT / f"rulepacks/releases/{version}", release)
-        manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
-        hashes[version] = str(manifest["content_hash"])
+    version = "1.9.22"
+    release = root / f"runtime/resources/rulepacks/releases/{version}"
+    shutil.copytree(ROOT / f"rulepacks/releases/{version}", release)
+    manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
     write_file(root / "runtime/resources/regions/index.json", json.dumps({
         "schema_version": "1.0",
         "regions": [
             {
-                "region_code": "hunan",
-                "region_name": "湖南",
-                "rulepack_version": "1.9.21",
-                "rulepack_content_hash": hashes["1.9.21"],
-                "entity_mode": "registry",
-                "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
-                "baseline_root": "baselines/hunan/templates",
-                "config_file": "configs/hunan/audit-config.json",
-                "enabled": True,
-            },
-            {
                 "region_code": "chongqing",
                 "region_name": "重庆",
                 "rulepack_version": "1.9.22",
-                "rulepack_content_hash": hashes["1.9.22"],
+                "rulepack_content_hash": manifest["content_hash"],
                 "entity_mode": "parent_directory",
                 "baseline_root": "baselines/chongqing/templates",
                 "config_file": "configs/chongqing/audit-config.json",

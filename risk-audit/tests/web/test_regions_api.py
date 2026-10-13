@@ -1,4 +1,4 @@
-"""验证地区集合 REST 资源及地区错误码。"""
+"""验证重庆单地区任务资源边界。"""
 
 from __future__ import annotations
 
@@ -15,124 +15,67 @@ def _post_headers(client) -> dict[str, str]:
     }
 
 
-def test_list_regions_exposes_availability(client) -> None:
-    """地区集合必须公开可用状态和不可用原因；client 为测试客户端。"""
+def test_regions_collection_is_not_exposed(client) -> None:
+    """单地区审核器不得暴露可选地区集合。"""
     response = client.get("/api/v1/regions", headers={"X-Local-Token": "secret"})
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert [item["region_code"] for item in payload["regions"]] == ["hunan", "chongqing"]
-    assert payload["regions"][0]["available"] is True
-    assert payload["regions"][1]["available"] is True
-    assert payload["regions"][1]["unavailable_reasons"] == []
+    assert response.status_code == 404
 
 
-def test_create_task_rejects_unknown_region(client, input_root: Path) -> None:
-    """未知地区必须返回稳定错误；参数为客户端和输入目录。"""
-    response = client.post(
-        "/api/v1/tasks",
-        headers=_post_headers(client),
-        json={"input_root": str(input_root), "region_code": "unknown"},
-    )
-
-    assert response.status_code == 422
-    assert response.json()["error_code"] == "UNKNOWN_REGION"
-
-
-def test_create_task_allows_parent_directory_without_entity_file(
+def test_create_task_uses_parent_directory_without_entity_file(
     client,
     web_services,
     input_root: Path,
 ) -> None:
-    """目录识别地区无主体清单也必须可创建任务。"""
+    """重庆目录识别模式无主体清单也必须可创建任务。"""
     response = client.post(
         "/api/v1/tasks",
         headers=_post_headers(client),
-        json={"input_root": str(input_root), "region_code": "chongqing"},
+        json={"input_root": str(input_root)},
     )
 
     assert response.status_code == 201
     request = web_services.repository.read_request(response.json()["task_id"])
+    assert request.region_code == "chongqing"
     assert request.entity_mode == "parent_directory"
     assert request.entity_file is None
 
 
-def test_create_task_rechecks_entity_file_after_startup(
+def test_create_task_allows_fixed_region_without_templates_and_config(
     client,
     web_services,
     input_root: Path,
 ) -> None:
-    """服务启动后主体清单丢失时仍必须拒绝创建任务。
-
-    Args:
-        client: 已注册地区和任务路由的测试客户端。
-        web_services: 启动时已缓存地区目录的应用服务。
-        input_root: 用户选择的审核材料目录。
-    """
-
-    profile = web_services._region_catalog.require("hunan")
-    profile.entity_file.unlink()
-
+    """重庆只缺模板和审核配置时必须允许创建任务。"""
     response = client.post(
         "/api/v1/tasks",
         headers=_post_headers(client),
-        json={"input_root": str(input_root), "region_code": "hunan"},
-    )
-
-    assert response.status_code == 422
-    assert response.json()["error_code"] == "REGION_NOT_READY"
-    assert response.json()["details"]["unavailable_reasons"] == [
-        f"会计主体清单文件缺失：{profile.entity_file}"
-    ]
-
-
-def test_create_task_allows_region_without_templates_and_config(
-    client,
-    web_services,
-    input_root: Path,
-) -> None:
-    """只缺模板和审核配置时必须允许创建任务。
-
-    Args:
-        client: 已注册地区和任务路由的测试客户端。
-        web_services: 使用真实地区加载和任务存储的应用服务。
-        input_root: 用户选择的审核材料目录。
-    """
-
-    from risk_audit_web.region_profiles import load_region_catalog
-
-    # 服务启动时会缓存地区目录，重新加载后仍不依赖可选资源。
-    web_services._region_catalog = load_region_catalog(web_services.paths.resources_root)
-
-    response = client.post(
-        "/api/v1/tasks",
-        headers=_post_headers(client),
-        json={"input_root": str(input_root), "region_code": "chongqing"},
+        json={"input_root": str(input_root)},
     )
 
     assert response.status_code == 201
-    task_id = response.json()["task_id"]
-    request = web_services.repository.read_request(task_id)
+    request = web_services.repository.read_request(response.json()["task_id"])
     assert request.config_file is None
-    assert request.entity_mode == "parent_directory"
-    assert request.entity_file is None
     assert request.baseline_root.endswith("/baselines/chongqing/templates")
 
 
-def test_create_task_rejects_disabled_region(client, web_services, input_root: Path) -> None:
-    """禁用地区必须与资源缺失区分；参数为客户端、服务和输入目录。"""
+def test_create_task_rejects_disabled_fixed_region(
+    client,
+    web_services,
+    input_root: Path,
+) -> None:
+    """重庆地区被禁用时必须返回稳定错误。"""
     from risk_audit_web.region_profiles import RegionCatalog
 
-    hunan = web_services._region_catalog.require("hunan")
+    chongqing = web_services._region_catalog.require("chongqing")
     web_services._region_catalog = RegionCatalog({
-        **web_services._region_catalog.profiles,
-        "hunan": replace(hunan, enabled=False),
+        "chongqing": replace(chongqing, enabled=False),
     })
 
     response = client.post(
         "/api/v1/tasks",
         headers=_post_headers(client),
-        json={"input_root": str(input_root), "region_code": "hunan"},
+        json={"input_root": str(input_root)},
     )
 
     assert response.status_code == 422

@@ -22,9 +22,10 @@ from risk_audit_web.region_profiles import (
     load_region_catalog,
     verify_rulepack_release,
 )
+from risk_audit_web.product import require_product_region
 
 
-RELEASE_NAME = "风控矩阵审核器-v2.2.0"
+RELEASE_NAME = "重庆风控矩阵审核器-v2.2.0"
 PLATFORM_LAUNCHERS = {
     "windows-x64": "启动审核器.bat",
     "macos-arm64": "启动审核器.command",
@@ -99,7 +100,6 @@ def _existing_region_source(
     project_root: Path,
     auditor_root: Path,
     relative_path: str,
-    region_code: str,
 ) -> Path | None:
     """定位地区索引引用的现有仓库资源。
 
@@ -107,18 +107,10 @@ def _existing_region_source(
         project_root: 仓库根目录。
         auditor_root: risk-audit 产品目录。
         relative_path: 相对 runtime/resources 的 POSIX 路径。
-        region_code: 稳定地区代码。
     """
 
     relative = Path(*relative_path.split("/"))
     candidates = [auditor_root / relative, project_root / relative]
-    if region_code == "hunan":
-        if relative_path.startswith("entities/hunan/"):
-            candidates.append(project_root / "reference-data" / relative.name)
-        elif relative_path == "baselines/hunan/templates":
-            candidates.append(project_root / "templates")
-        elif relative_path == "configs/hunan/audit-config.json":
-            candidates.append(project_root / "audit-config.json")
     return next((path for path in candidates if path.exists()), None)
 
 
@@ -172,6 +164,8 @@ def _copy_runtime_resources(project_root: Path, auditor_root: Path, distribution
     try:
         # 复制任何索引资源前先执行严格字段和路径边界校验。
         source_catalog = load_region_catalog(resources_root)
+        # 分支与发布包一一对应，构建时拒绝混入其他地区。
+        require_product_region(source_catalog)
     except RegionProfileError as error:
         raise BuildError(f"发布地区资源索引无效：{error}") from error
 
@@ -198,7 +192,6 @@ def _copy_runtime_resources(project_root: Path, auditor_root: Path, distribution
                 project_root,
                 auditor_root,
                 relative_path,
-                profile.region_code,
             )
             _copy_optional_region_resource(source, destination)
 

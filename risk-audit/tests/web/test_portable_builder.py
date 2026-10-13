@@ -65,24 +65,12 @@ def make_build_inputs(tmp_path: Path):
     write_file(auditor_root / "src/risk_audit_web/static/js/app.js", b"window.app = {};")
     write_file(auditor_root / "packaging/启动审核器.bat", b"@echo off\r\n")
     write_file(auditor_root / "packaging/启动审核器.command", b"#!/bin/zsh\n")
-    hunan_hash = write_rulepack_release(auditor_root, "1.9.21")
     chongqing_hash = write_rulepack_release(auditor_root, "1.9.22")
     write_file(
         auditor_root / "regions/index.json",
         json.dumps({
             "schema_version": "1.0",
             "regions": [
-                {
-                    "region_code": "hunan",
-                    "region_name": "湖南",
-                    "rulepack_version": "1.9.21",
-                    "rulepack_content_hash": hunan_hash,
-                    "entity_mode": "registry",
-                    "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
-                    "baseline_root": "baselines/hunan/templates",
-                    "config_file": "configs/hunan/audit-config.json",
-                    "enabled": True,
-                },
                 {
                     "region_code": "chongqing",
                     "region_name": "重庆",
@@ -157,10 +145,10 @@ def test_assemble_distribution_uses_script_layout_and_single_web_copy(tmp_path: 
     assert list((result / "data").iterdir()) == []
     assert list((result / "outputs").iterdir()) == []
     assert (result / "runtime/resources/regions/index.json").is_file()
-    assert (result / "runtime/resources/rulepacks/releases/1.9.21/manifest.json").is_file()
     assert (result / "runtime/resources/rulepacks/releases/1.9.22/manifest.json").is_file()
-    assert (result / "runtime/resources/entities/hunan/会计主体清单20260907.xlsx").is_file()
-    assert (result / "runtime/resources/baselines/hunan/templates/基准.xlsx").is_file()
+    assert not (result / "runtime/resources/rulepacks/releases/1.9.21").exists()
+    assert not (result / "runtime/resources/entities/hunan").exists()
+    assert not (result / "runtime/resources/baselines/hunan").exists()
     assert not (result / "runtime/resources/entities/chongqing").exists()
 
     payload = json.loads((result / "runtime/manifest.json").read_text(encoding="utf-8"))
@@ -200,10 +188,57 @@ def test_assembly_rejects_region_resource_path_escape_before_copy(tmp_path: Path
     inputs = make_build_inputs(tmp_path)
     index_path = inputs.project_root / "risk-audit/regions/index.json"
     payload = json.loads(index_path.read_text(encoding="utf-8"))
-    payload["regions"][0]["entity_file"] = "../outside.xlsx"
+    payload["regions"][0]["baseline_root"] = "../outside"
     index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     with pytest.raises(portable_release.BuildError, match="越过资源根目录"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
+
+
+def test_assembly_rejects_non_chongqing_region(tmp_path: Path) -> None:
+    """重庆分支组装器必须拒绝混入其他地区。"""
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    index_path = inputs.project_root / "risk-audit/regions/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    hunan_hash = write_rulepack_release(inputs.project_root / "risk-audit", "1.9.21")
+    payload["regions"].append({
+        "region_code": "hunan",
+        "region_name": "湖南",
+        "rulepack_version": "1.9.21",
+        "rulepack_content_hash": hunan_hash,
+        "entity_mode": "registry",
+        "entity_file": "entities/hunan/会计主体清单20260907.xlsx",
+        "baseline_root": "baselines/hunan/templates",
+        "config_file": "configs/hunan/audit-config.json",
+        "enabled": True,
+    })
+    index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(portable_release.BuildError, match="只能包含重庆地区"):
+        portable_release.assemble_distribution(inputs)
+
+    assert not inputs.output_root.exists()
+
+
+def test_assembly_rejects_wrong_chongqing_region_name(tmp_path: Path) -> None:
+    """地区代码为重庆但名称被篡改时必须拒绝组装。"""
+    from tools import portable_release
+
+    inputs = make_build_inputs(tmp_path)
+    index_path = inputs.project_root / "risk-audit/regions/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["regions"][0]["region_name"] = "四川"
+    index_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    manifest_path = inputs.project_root / "risk-audit/rulepacks/releases/1.9.22/manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["region_name"] = "四川"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(portable_release.BuildError, match="地区名称必须为重庆"):
         portable_release.assemble_distribution(inputs)
 
     assert not inputs.output_root.exists()

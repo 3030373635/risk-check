@@ -168,8 +168,8 @@ def test_startup_diagnostics_lists_missing_region_index(tmp_path: Path) -> None:
     assert any(str(paths.region_index) in item.message for item in report.items)
 
 
-def test_startup_diagnostics_allows_one_unavailable_region(tmp_path: Path) -> None:
-    """至少一个地区就绪时允许创建任务；tmp_path 为测试根。"""
+def test_startup_diagnostics_rejects_additional_region(tmp_path: Path) -> None:
+    """重庆分支混入其他地区时必须阻止创建任务。"""
     from risk_audit_web.diagnostics import run_startup_diagnostics
     from risk_audit_web.task_paths import PortablePaths
 
@@ -182,8 +182,8 @@ def test_startup_diagnostics_allows_one_unavailable_region(tmp_path: Path) -> No
 
     report = run_startup_diagnostics(paths)
 
-    assert report.can_start
-    assert any("可用地区 2 个" in item.message for item in report.items)
+    assert not report.can_start
+    assert any(item.code == "invalid_region_catalog" for item in report.items)
 
 
 def test_startup_diagnostics_rejects_catalog_without_available_region(tmp_path: Path) -> None:
@@ -194,8 +194,9 @@ def test_startup_diagnostics_rejects_catalog_without_available_region(tmp_path: 
     paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="win32")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
-    hunan = _write_region(paths.resources_root, "hunan", ready=False)
-    _write_region_index(paths.resources_root, [hunan])
+    chongqing = _write_region(paths.resources_root, "chongqing", ready=False)
+    chongqing["enabled"] = False
+    _write_region_index(paths.resources_root, [chongqing])
 
     report = run_startup_diagnostics(paths)
 
@@ -213,8 +214,8 @@ def test_startup_diagnostics_rejects_structurally_invalid_rulepack(tmp_path: Pat
     paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="win32")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"exe")
-    hunan = _write_region(paths.resources_root, "hunan", ready=True)
-    release = paths.resources_root / "rulepacks/releases/1.9.21"
+    chongqing = _write_region(paths.resources_root, "chongqing", ready=True)
+    release = paths.resources_root / "rulepacks/releases/1.9.22"
     rule_path = next((release / "rules").glob("*.json"))
     rule = json.loads(rule_path.read_text(encoding="utf-8"))
     rule["checks"][0]["operator"] = "capability_does_not_exist"
@@ -224,12 +225,12 @@ def test_startup_diagnostics_rejects_structurally_invalid_rulepack(tmp_path: Pat
         for path in sorted(release.rglob("*.json"))
         if path.name != "manifest.json"
     }
-    hunan["rulepack_content_hash"] = sha256_json(resource_hashes)
+    chongqing["rulepack_content_hash"] = sha256_json(resource_hashes)
     manifest_path = release / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["content_hash"] = hunan["rulepack_content_hash"]
+    manifest["content_hash"] = chongqing["rulepack_content_hash"]
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
-    _write_region_index(paths.resources_root, [hunan])
+    _write_region_index(paths.resources_root, [chongqing])
 
     report = run_startup_diagnostics(paths)
 

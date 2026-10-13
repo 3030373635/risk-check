@@ -18,6 +18,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(auditor_root / "src"))
 
 from risk_audit_web.diagnostics import verify_release_manifest
+from risk_audit_web.product import require_product_region
 from risk_audit_web.region_profiles import RegionProfileError, load_region_catalog
 
 
@@ -134,6 +135,7 @@ def _verify_region_resources(runtime_root: Path) -> list[str]:
     resources_root = runtime_root / "resources"
     try:
         catalog = load_region_catalog(resources_root)
+        require_product_region(catalog)
     except RegionProfileError as error:
         return [f"地区资源索引无效：{error}"]
     errors: list[str] = []

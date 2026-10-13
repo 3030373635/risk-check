@@ -33,8 +33,8 @@ def test_frontend_uses_local_bootstrap_and_semantic_controls() -> None:
     assert "<main" in html and "<nav" in html
 
 
-def test_frontend_displays_auditor_and_available_regions() -> None:
-    """顶部状态必须展示审核器版本和可用地区数量；无参数。"""
+def test_frontend_displays_auditor_and_fixed_region() -> None:
+    """顶部状态必须展示审核器版本和固定地区；无参数。"""
     root = static_root()
     html = (root / "index.html").read_text(encoding="utf-8")
     app_source = (root / "js/app.js").read_text(encoding="utf-8")
@@ -42,49 +42,41 @@ def test_frontend_displays_auditor_and_available_regions() -> None:
 
     assert 'class="version-badges"' in html
     assert 'class="version-badge">审核器版本 <strong id="app-version">—</strong>' in html
-    assert 'class="version-badge">可用地区 <strong id="available-region-count">—</strong>' in html
+    assert 'class="version-badge">审核地区 <strong id="product-region">—</strong>' in html
     assert ".version-badges { margin-left: auto; display: flex;" in theme_source
     assert "@media (max-width: 359.98px)" in theme_source
     assert ".offline-pill { display: none; }" in theme_source
     assert 'getElementById("app-version").textContent = systemStatus.app_version' in app_source
-    assert 'getElementById("available-region-count").textContent = String(systemStatus.available_region_count ?? 0)' in app_source
+    assert 'getElementById("product-region").textContent = systemStatus.region_name' in app_source
 
 
-def test_frontend_requires_region_and_displays_task_traceability() -> None:
-    """新建任务和任务展示必须包含地区及固定规则版本；无参数。"""
+def test_frontend_uses_fixed_region_and_displays_task_traceability() -> None:
+    """新建任务不得选择地区，任务展示仍须包含地区及版本。"""
     root = static_root()
     html = (root / "index.html").read_text(encoding="utf-8")
     app_source = (root / "js/app.js").read_text(encoding="utf-8")
     tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
 
-    assert 'id="region-code"' in html
-    assert '<option value="">请选择审核地区</option>' in html
-    assert '<option value="" selected' not in html
+    assert 'id="region-code"' not in html
+    assert '当前审核器固定使用 <strong id="create-region-name">重庆</strong> 规则' in html
     assert '<th>地区</th>' in html
     assert 'id="detail-region"' in html
     assert 'id="detail-rule-version"' in html
-    assert '/api/v1/regions' in app_source
-    assert 'function renderRegionOptions(regions)' in app_source
-    assert 'async function loadRegions()' in app_source
-    assert 'option.disabled = !region.available;' in app_source
-    assert 'region.unavailable_reasons.join("；")' in app_source
-    assert 'const hasRegion = Boolean(document.getElementById("region-code").value);' in app_source
-    assert "region_code: selectedRegionCode" in app_source
-    assert 'JSON.stringify({ input_root: inputRoot, region_code: regionCode })' in app_source
+    assert '/api/v1/regions' not in app_source
+    assert 'JSON.stringify({ input_root: inputRoot })' in app_source
+    assert "region_code:" not in app_source
     assert 'setText("detail-region", task.region_name)' in tasks_source
     assert 'setText("detail-rule-version", task.rulepack_version)' in tasks_source
 
 
-def test_frontend_rejects_cross_region_task_response() -> None:
-    """创建响应的地区和版本必须与提交时的选择一致。"""
+def test_frontend_rejects_non_chongqing_task_response() -> None:
+    """重庆包必须拒绝后端返回的非重庆任务。"""
 
     app_source = (static_root() / "js/app.js").read_text(encoding="utf-8")
 
-    assert "let regionProfiles = new Map();" in app_source
-    assert "const selectedRegionCode" in app_source
-    assert "task.region_code !== selectedRegionCode" in app_source
-    assert "task.rulepack_version !== selectedRegion.rulepack_version" in app_source
-    assert "任务响应的地区或规则版本与本次选择不一致" in app_source
+    assert 'task.region_code !== systemStatus.region_code' in app_source
+    assert 'task.rulepack_version !== systemStatus.rulepack_version' in app_source
+    assert "任务响应与当前重庆审核器配置不一致" in app_source
 
 
 def test_sidebar_omits_running_count_without_breaking_shutdown_state() -> None:

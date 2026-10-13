@@ -120,11 +120,11 @@ jobs:
             --vc-runtime "$env:VC_RUNTIME_ROOT" `
             --licenses ".\risk-audit\licenses" `
             --usage-guide ".\risk-audit\Windows Web版使用说明.md" `
-            --output ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.2.0"
+            --output ".\$env:RELEASE_ROOT\重庆风控矩阵审核器-v2.2.0"
 
       - name: 验证包内 LibreOffice 启动与 XLS 转换
         run: |
-          $distributionRoot = Resolve-Path ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.2.0"
+          $distributionRoot = Resolve-Path ".\$env:RELEASE_ROOT\重庆风控矩阵审核器-v2.2.0"
           $soffice = Join-Path $distributionRoot "runtime\libreoffice\program\soffice.com"
           if (-not (Test-Path $soffice -PathType Leaf)) {
             throw "包内 LibreOffice 命令行入口缺失：$soffice"
@@ -142,20 +142,20 @@ jobs:
           $profileRoot = Join-Path $smokeRoot "profile"
           New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
           $profileUri = ([System.Uri]::new($profileRoot)).AbsoluteUri
-          $sourcePath = Join-Path $distributionRoot "runtime\resources\baselines\templates\第一批省公司通用版本整合0818\第一批省公司通用版本整合9.4\09 职工福利保障与薪酬管理\09风控矩阵-职工福利保障与薪酬管理-省公司（审定）8.13.xls"
-          $stagedSource = Join-Path $smokeRoot "baseline.xls"
+          $sourcePath = Join-Path $distributionRoot "runtime\resources\baselines\chongqing\templates\2.第二批重庆公司风控矩阵\02 财务管理\02风控矩阵-财务管理.xlsx"
+          $stagedSource = Join-Path $smokeRoot "baseline.xlsx"
           Copy-Item -Path $sourcePath -Destination $stagedSource
-          $conversionOutput = & $soffice "-env:UserInstallation=$profileUri" --headless --convert-to xlsx --outdir $smokeRoot $stagedSource 2>&1
+          $conversionOutput = & $soffice "-env:UserInstallation=$profileUri" --headless --convert-to xls --outdir $smokeRoot $stagedSource 2>&1
           $conversionExitCode = $LASTEXITCODE
           $conversionOutput | Write-Host
-          $convertedPath = Join-Path $smokeRoot "baseline.xlsx"
+          $convertedPath = Join-Path $smokeRoot "baseline.xls"
           if ($conversionExitCode -ne 0 -or -not (Test-Path $convertedPath -PathType Leaf)) {
             throw "包内 LibreOffice XLS 转换失败，退出码：$conversionExitCode"
           }
 
       - name: 验证最终归档
         run: |
-          $archivePath = ".\$env:RELEASE_ROOT\风控矩阵审核器-v2.2.0-Windows-x64.zip"
+          $archivePath = ".\$env:RELEASE_ROOT\重庆风控矩阵审核器-v2.2.0-Windows-x64.zip"
           python ".\risk-audit\tools\verify_portable_distribution.py" $archivePath --platform windows-x64
           $archiveHash = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
           "### Windows 离线 Web 便携版" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
@@ -164,7 +164,7 @@ jobs:
       - name: 上传 Windows 便携版
         uses: actions/upload-artifact@v7
         with:
-          path: "release/风控矩阵审核器-v2.2.0-Windows-x64.zip"
+          path: "release/重庆风控矩阵审核器-v2.2.0-Windows-x64.zip"
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

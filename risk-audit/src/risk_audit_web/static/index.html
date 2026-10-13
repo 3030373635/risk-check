@@ -55,7 +55,7 @@
         </div>
         <div class="version-badges">
           <div class="version-badge">审核器版本 <strong id="app-version">—</strong></div>
-          <div class="version-badge">可用地区 <strong id="available-region-count">—</strong></div>
+          <div class="version-badge">审核地区 <strong id="product-region">—</strong></div>
         </div>
       </header>
 
@@ -123,12 +123,8 @@
           <div class="row g-4">
             <div class="col-12 col-xl-8">
               <form class="panel form-panel" id="create-task-form">
-                <div class="mb-4">
-                  <label class="form-label" for="region-code">审核地区</label>
-                  <select class="form-select form-select-lg" id="region-code" required>
-                    <option value="">请选择审核地区</option>
-                  </select>
-                  <div class="form-text region-availability" id="region-availability">正在读取地区规则。</div>
+                <div class="alert alert-primary mb-4" role="status">
+                  当前审核器固定使用 <strong id="create-region-name">重庆</strong> 规则，无需选择地区。
                 </div>
                 <div class="mb-4">
                   <label class="form-label" for="input-directory">待审核材料目录</label>

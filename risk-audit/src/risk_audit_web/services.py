@@ -31,6 +31,7 @@ from risk_audit_web.region_profiles import (
     load_region_catalog,
     verify_rulepack_release,
 )
+from risk_audit_web.product import require_product_region
 from risk_audit_web.task_contracts import (
     SCHEMA_VERSION,
     TaskEvent,
@@ -148,33 +149,28 @@ class ApplicationServices:
         report = self._startup_report
         with self._creation_lock:
             accepting_tasks = not self._shutting_down
-        available_region_count = sum(
-            profile.available for profile in self._region_catalog.profiles.values()
-        )
+        try:
+            region = require_product_region(self._region_catalog)
+        except RegionProfileError:
+            # 状态接口必须在配置损坏时仍可用，以便页面展示启动诊断。
+            region = None
         return {
             "service_status": "degraded" if self._database_error else "ok",
             "can_create_task": report.can_start and accepting_tasks,
             "app_version": APP_VERSION,
-            "available_region_count": available_region_count,
+            "region_code": region.region_code if region is not None else None,
+            "region_name": region.region_name if region is not None else None,
+            "rulepack_version": region.rulepack_version if region is not None else None,
             "running_count": self.manager.snapshot().running_count,
             "diagnostics": diagnostic_response(report),
         }
 
-    def list_regions(self) -> dict[str, object]:
-        """返回配置顺序中的公开地区集合；无参数。"""
-        return {
-            "regions": [
-                profile.to_public_dict()
-                for profile in self._region_catalog.profiles.values()
-            ]
-        }
-
-    def _resolve_region(self, region_code: str) -> RegionProfile:
-        """解析可创建任务的地区；region_code 为稳定地区代码，返回固定资源。"""
+    def _resolve_region(self) -> RegionProfile:
+        """返回当前分支固定的重庆地区资源；无参数。"""
         try:
-            profile = self._region_catalog.require(region_code)
+            profile = require_product_region(self._region_catalog)
         except RegionProfileError as error:
-            raise ApiProblem(422, "UNKNOWN_REGION", f"未知审核地区：{region_code}") from error
+            raise ApiProblem(422, "REGION_NOT_READY", "重庆审核地区未配置") from error
         if not profile.enabled:
             raise ApiProblem(422, "REGION_DISABLED", f"审核地区已禁用：{profile.region_name}")
         if profile.unavailable_reasons:
@@ -228,9 +224,9 @@ class ApplicationServices:
         }
 
     def preview_output_path(self, request: OutputPathPreviewRequest) -> dict[str, str]:
-        """生成只读输出预览；request 含输入目录和地区代码。"""
+        """生成只读输出预览；request 含输入目录。"""
         input_root = Path(request.input_root).resolve(strict=False)
-        region = self._resolve_region(request.region_code)
+        region = self._resolve_region()
         output_root = self._next_output_path(
             input_root,
             datetime.now().astimezone(),
@@ -288,7 +284,7 @@ class ApplicationServices:
             timestamp = creation_time.isoformat(timespec="seconds")
             task_id = f"{creation_time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
             input_root = Path(request.input_root).resolve(strict=False)
-            region = self._resolve_region(request.region_code)
+            region = self._resolve_region()
             output_root = self._next_output_path(input_root, creation_time, region.region_name)
             self._validate_paths(input_root, output_root)
 

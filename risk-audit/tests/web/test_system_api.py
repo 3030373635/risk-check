@@ -22,12 +22,12 @@ def test_output_preview_sanitizes_windows_names(client, tmp_path: Path, name: st
     response = client.post(
         "/api/v1/output-path-previews",
         headers=post_headers(client),
-        json={"input_root": str(input_path), "region_code": "hunan"},
+        json={"input_root": str(input_path)},
     )
 
     assert response.status_code == 200
     assert Path(response.json()["output_root"]).parent.name == "outputs"
-    assert Path(response.json()["output_root"]).name.startswith("湖南 ")
+    assert Path(response.json()["output_root"]).name.startswith("重庆 ")
 
 
 def test_system_status_reports_diagnostics_and_running_count(client) -> None:
@@ -37,8 +37,10 @@ def test_system_status_reports_diagnostics_and_running_count(client) -> None:
     assert response.status_code == 200
     assert response.json()["service_status"] == "ok"
     assert response.json()["app_version"] == "2.2.0"
-    assert response.json()["available_region_count"] == 2
-    assert "rule_version" not in response.json()
+    assert response.json()["region_code"] == "chongqing"
+    assert response.json()["region_name"] == "重庆"
+    assert response.json()["rulepack_version"] == "1.9.27"
+    assert "available_region_count" not in response.json()
     assert response.json()["diagnostics"][0]["ok"]
 
 
@@ -74,7 +76,7 @@ def test_output_preview_rejects_input_symlink_inside_outputs(client, portable_pa
     response = client.post(
         "/api/v1/output-path-previews",
         headers=post_headers(client),
-        json={"input_root": str(link), "region_code": "hunan"},
+        json={"input_root": str(link)},
     )
 
     assert response.status_code == 422
@@ -89,7 +91,7 @@ def test_output_preview_limits_very_long_directory_name(client, tmp_path: Path) 
     response = client.post(
         "/api/v1/output-path-previews",
         headers=post_headers(client),
-        json={"input_root": str(input_path), "region_code": "hunan"},
+        json={"input_root": str(input_path)},
     )
 
     assert response.status_code == 200

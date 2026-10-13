@@ -1076,17 +1076,17 @@ def test_release_contains_no_hunan_specific_resources(release: Path) -> None:
     assert leaks == {}
 
 
-def test_repository_region_index_pins_both_release_hashes() -> None:
-    """仓库地区索引必须与湖南、重庆发布清单完全一致。"""
+def test_repository_region_index_only_pins_chongqing_release() -> None:
+    """重庆分支地区索引只能固定重庆发布包。"""
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
-    profiles = {item["region_code"]: item for item in index["regions"]}
-    for region_code, version in (("hunan", "1.9.21"), ("chongqing", "1.9.27")):
-        manifest = json.loads(
-            (ROOT / f"rulepacks/releases/{version}/manifest.json").read_text(encoding="utf-8")
-        )
-        assert profiles[region_code]["rulepack_version"] == version
-        assert profiles[region_code]["rulepack_content_hash"] == manifest["content_hash"]
+    assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
+    profile = index["regions"][0]
+    manifest = json.loads(
+        (ROOT / "rulepacks/releases/1.9.27/manifest.json").read_text(encoding="utf-8")
+    )
+    assert profile["rulepack_version"] == "1.9.27"
+    assert profile["rulepack_content_hash"] == manifest["content_hash"]
 
 
 @pytest.mark.parametrize(("rule_id", "rule_number", "record_values"), [
