@@ -17,6 +17,7 @@ import zipfile
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from risk_audit import __version__ as APP_VERSION
 from risk_audit_web.region_profiles import (
     RegionProfileError,
     load_region_catalog,
@@ -25,7 +26,7 @@ from risk_audit_web.region_profiles import (
 from risk_audit_web.product import require_product_region
 
 
-RELEASE_NAME = "重庆风控矩阵审核器-v2.2.0"
+RELEASE_NAME = f"重庆风控矩阵审核器-v{APP_VERSION}"
 PLATFORM_LAUNCHERS = {
     "windows-x64": "启动审核器.bat",
     "macos-arm64": "启动审核器.command",
@@ -360,7 +361,7 @@ def build_release_manifest(distribution_root: Path) -> dict[str, object]:
             "size": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
         })
-    return {"schema_version": "1.0", "app_version": "2.2.0", "resources": resources}
+    return {"schema_version": "1.0", "app_version": APP_VERSION, "resources": resources}
 
 
 def _remove_runtime_caches(python_root: Path) -> None:

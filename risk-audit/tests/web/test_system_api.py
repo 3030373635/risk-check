@@ -36,7 +36,7 @@ def test_system_status_reports_diagnostics_and_running_count(client) -> None:
 
     assert response.status_code == 200
     assert response.json()["service_status"] == "ok"
-    assert response.json()["app_version"] == "2.2.0"
+    assert response.json()["app_version"] == "2.2.1"
     assert response.json()["region_code"] == "chongqing"
     assert response.json()["region_name"] == "重庆"
     assert response.json()["rulepack_version"] == "1.9.28"

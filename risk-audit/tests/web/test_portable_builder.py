@@ -334,10 +334,17 @@ def test_install_runtime_dependencies_uses_hashed_binary_only_lock(
 
 def test_build_release_manifest_is_verified_from_distribution_root(tmp_path: Path) -> None:
     """发布清单必须覆盖不可变载荷，并报告后续篡改。"""
+    from risk_audit import __version__
     from risk_audit_web.diagnostics import verify_release_manifest
-    from tools.portable_release import assemble_distribution
+    from tools import portable_release
 
-    root = assemble_distribution(make_build_inputs(tmp_path))
+    root = portable_release.assemble_distribution(make_build_inputs(tmp_path))
+    manifest = json.loads((root / "runtime/manifest.json").read_text(encoding="utf-8"))
+
+    # 发布名称和清单必须跟随核心版本，避免升级时产生混合版本包。
+    assert portable_release.APP_VERSION == __version__
+    assert portable_release.RELEASE_NAME == f"重庆风控矩阵审核器-v{__version__}"
+    assert manifest["app_version"] == __version__
     assert verify_release_manifest(root).can_start
 
     (root / "runtime/python/python.exe").write_bytes(b"changed")

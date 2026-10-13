@@ -161,7 +161,7 @@ def test_system_status_reports_auditor_and_fixed_region(web_services) -> None:
     """系统状态必须显示审核器版本和固定地区；web_services 为真实服务。"""
     status = web_services.system_status()
 
-    assert status["app_version"] == "2.2.0"
+    assert status["app_version"] == "2.2.1"
     assert status["region_code"] == "chongqing"
     assert status["region_name"] == "重庆"
     assert status["rulepack_version"] == "1.9.28"
