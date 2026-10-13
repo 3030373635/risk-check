@@ -67,7 +67,8 @@ class PortablePaths:
             platform_name=platform_name or sys.platform,
             # 开发模式直接读取仓库中的 regions、rulepacks 和 baselines。
             resources_override=resolved_root,
-            soffice_override=soffice.resolve(),
+            # 外部程序路径已经过绝对路径校验，不得再按宿主系统改写目标平台路径。
+            soffice_override=soffice,
         )
 
     @property

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path, PurePosixPath
+import stat
 from typing import Any
 
 from risk_audit.util import sha256_file, sha256_json
@@ -156,9 +157,25 @@ def _required_path_item(path: Path, *, expect_directory: bool = False) -> Diagno
 
 def _required_executable_item(path: Path, platform_name: str) -> DiagnosticItem:
     """检查运行程序；path 为可执行文件，platform_name 为目标平台。"""
-    if not path.is_file():
+    try:
+        path_status = path.stat()
+    except FileNotFoundError:
         return DiagnosticItem("missing", str(path), f"必需运行资源缺失：{path}")
-    if platform_name != "win32" and not os.access(path, os.X_OK):
+    except OSError as error:
+        return DiagnosticItem(
+            "unreadable",
+            str(path),
+            f"运行资源状态无法读取：{path}；{error}",
+        )
+    if not stat.S_ISREG(path_status.st_mode):
+        return DiagnosticItem("missing", str(path), f"必需运行资源缺失：{path}")
+    executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    has_executable_bits = bool(path_status.st_mode & executable_bits)
+    # Windows 的 X_OK 不表达 POSIX 权限；POSIX 宿主还需验证当前进程的实际权限。
+    executable_by_current_process = os.name != "posix" or os.access(path, os.X_OK)
+    if platform_name != "win32" and (
+        not has_executable_bits or not executable_by_current_process
+    ):
         return DiagnosticItem(
             "not_executable",
             str(path),

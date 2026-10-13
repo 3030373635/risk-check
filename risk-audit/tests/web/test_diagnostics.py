@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -168,14 +169,45 @@ def test_startup_diagnostics_lists_missing_region_index(tmp_path: Path) -> None:
     assert any(str(paths.region_index) in item.message for item in report.items)
 
 
-def test_startup_diagnostics_rejects_non_executable_libreoffice(tmp_path: Path) -> None:
-    """macOS LibreOffice 存在但不可执行时必须禁止创建任务。"""
+def test_startup_diagnostics_rejects_non_executable_libreoffice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """macOS 非执行文件必须被拒绝；参数为补丁工具和临时目录。"""
     from risk_audit_web.diagnostics import run_startup_diagnostics
     from risk_audit_web.task_paths import PortablePaths
 
     paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="darwin")
     paths.soffice.parent.mkdir(parents=True)
     paths.soffice.write_bytes(b"not executable")
+    paths.soffice.chmod(0o644)
+    chongqing = _write_region(paths.resources_root, "chongqing", ready=True)
+    _write_region_index(paths.resources_root, [chongqing])
+    # Windows 的 X_OK 只反映文件存在，不能表达 macOS/POSIX 执行位。
+    monkeypatch.setattr(os, "access", lambda *_args: True)
+
+    report = run_startup_diagnostics(paths)
+
+    assert not report.can_start
+    assert any(item.code == "not_executable" for item in report.items)
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() == 0,
+    reason="仅非特权 POSIX 用户提供稳定的当前用户执行权限语义",
+)
+def test_startup_diagnostics_rejects_libreoffice_not_executable_by_current_user(
+    tmp_path: Path,
+) -> None:
+    """当前用户无执行权限时必须拒绝；tmp_path 为临时发布目录。"""
+    from risk_audit_web.diagnostics import run_startup_diagnostics
+    from risk_audit_web.task_paths import PortablePaths
+
+    paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="darwin")
+    paths.soffice.parent.mkdir(parents=True)
+    paths.soffice.write_bytes(b"not executable by owner")
+    # 文件所有者没有执行位，不能借用 other 执行位误判为当前进程可执行。
+    paths.soffice.chmod(0o001)
     chongqing = _write_region(paths.resources_root, "chongqing", ready=True)
     _write_region_index(paths.resources_root, [chongqing])
 
@@ -183,6 +215,35 @@ def test_startup_diagnostics_rejects_non_executable_libreoffice(tmp_path: Path) 
 
     assert not report.can_start
     assert any(item.code == "not_executable" for item in report.items)
+
+
+def test_startup_diagnostics_reports_unreadable_libreoffice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """程序状态不可读时必须返回诊断；参数为补丁工具和临时目录。"""
+    from risk_audit_web.diagnostics import run_startup_diagnostics
+    from risk_audit_web.task_paths import PortablePaths
+
+    paths = PortablePaths.from_app_root(tmp_path / "app", platform_name="darwin")
+    paths.soffice.parent.mkdir(parents=True)
+    paths.soffice.write_bytes(b"unreadable")
+    chongqing = _write_region(paths.resources_root, "chongqing", ready=True)
+    _write_region_index(paths.resources_root, [chongqing])
+    original_stat = Path.stat
+
+    def stat_with_denied_soffice(path: Path, *args, **kwargs):
+        """模拟程序状态读取失败；path 为目标路径，args/kwargs 为 stat 参数。"""
+        if path == paths.soffice:
+            raise PermissionError("permission denied")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat_with_denied_soffice)
+
+    report = run_startup_diagnostics(paths)
+
+    assert not report.can_start
+    assert any(item.code == "unreadable" for item in report.items)
 
 
 def test_startup_diagnostics_rejects_additional_region(tmp_path: Path) -> None:

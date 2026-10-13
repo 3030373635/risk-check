@@ -168,10 +168,22 @@ def test_source_mode_rejects_relative_libreoffice_override(tmp_path: Path) -> No
         )
 
 
-def test_source_mode_uses_default_macos_libreoffice(tmp_path: Path) -> None:
-    """macOS 源码模式未覆盖路径时必须使用系统应用目录。"""
+def test_source_mode_uses_default_macos_libreoffice(monkeypatch, tmp_path: Path) -> None:
+    """macOS 默认路径不得按宿主重写；参数为补丁工具和临时目录。"""
     from risk_audit_web.app import resolve_application_paths
 
+    default_soffice = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    rewritten_soffice = tmp_path / "Applications/LibreOffice.app/Contents/MacOS/soffice"
+    original_resolve = Path.resolve
+
+    def resolve_for_host(path: Path, strict: bool = False) -> Path:
+        """模拟宿主重写目标路径；path 为原路径，strict 表示是否严格解析。"""
+        if path == default_soffice:
+            return rewritten_soffice
+        return original_resolve(path, strict=strict)
+
+    # Windows 会把无盘符的 macOS 根路径绑定到当前盘符，这里固定复现该行为。
+    monkeypatch.setattr(Path, "resolve", resolve_for_host)
     paths, portable = resolve_application_paths(
         {},
         tmp_path / "source",
@@ -179,7 +191,7 @@ def test_source_mode_uses_default_macos_libreoffice(tmp_path: Path) -> None:
     )
 
     assert not portable
-    assert paths.soffice == Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    assert paths.soffice == default_soffice
 
 
 def test_secondary_instance_reports_conflicting_application_root(
