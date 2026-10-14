@@ -182,7 +182,9 @@ def test_source_mode_uses_default_macos_libreoffice(tmp_path: Path) -> None:
     )
 
     assert not portable
-    assert paths.soffice == Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    assert paths.soffice == Path(
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+    ).resolve()
 
 
 def test_runtime_identity_message_reports_development_versions(tmp_path: Path) -> None:
