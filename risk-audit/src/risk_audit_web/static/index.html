@@ -96,15 +96,27 @@
           </div>
 
           <section class="panel mt-4" aria-labelledby="recent-tasks-title">
-            <div class="panel-header">
-              <div><h2 id="recent-tasks-title">最近任务</h2><p>页面每秒刷新，不影响后台审核。</p></div>
-              <button class="btn btn-light" id="refresh-tasks-button" type="button" aria-label="立即刷新任务">
-                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
-              </button>
+            <div class="tasks-toolbar">
+              <div class="panel-header" id="tasks-default-actions">
+                <div><h2 id="recent-tasks-title">最近任务</h2><p>页面每秒刷新，不影响后台审核。</p></div>
+                <button class="btn btn-light" id="refresh-tasks-button" type="button" aria-label="立即刷新任务">
+                  <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                </button>
+              </div>
+              <div class="tasks-bulk-actions is-hidden" id="tasks-bulk-actions" role="region" aria-label="批量任务操作" aria-live="polite" aria-hidden="true">
+                <div class="tasks-bulk-copy">
+                  <strong id="selected-tasks-count">已选择 0 个任务</strong>
+                  <span>仅可选择已经结束的任务</span>
+                </div>
+                <div class="tasks-bulk-buttons">
+                  <button class="btn btn-light" id="clear-task-selection-button" type="button">取消选择</button>
+                  <button class="btn btn-danger" id="delete-selected-tasks-button" type="button"><i class="bi bi-trash" aria-hidden="true"></i> 删除所选任务</button>
+                </div>
+              </div>
             </div>
             <div class="table-responsive">
               <table class="table align-middle mb-0">
-                <thead><tr><th>任务</th><th>地区</th><th>状态</th><th>创建时间</th><th>当前阶段</th><th>进度</th><th class="text-end">操作</th></tr></thead>
+                <thead><tr><th class="task-selection-cell"><input class="form-check-input" id="select-all-tasks" type="checkbox" aria-label="选择全部可删除任务"></th><th>任务</th><th>地区</th><th>状态</th><th>创建时间</th><th>当前阶段</th><th>进度</th><th class="text-end">操作</th></tr></thead>
                 <tbody id="tasks-table-body"></tbody>
               </table>
               <div class="empty-state d-none" id="tasks-empty-state">
@@ -229,6 +241,19 @@
   </div>
   <div class="modal fade" id="delete-task-modal" tabindex="-1" aria-labelledby="delete-task-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="delete-task-modal-title">删除任务</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><p>确认删除当前任务？任务记录、运行数据以及 outputs 中的全部输出都将永久删除，无法恢复。</p></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-danger" id="confirm-delete-task-button" type="button">确认删除</button></div></div></div>
+  </div>
+  <div class="modal fade" id="batch-delete-tasks-modal" tabindex="-1" aria-labelledby="batch-delete-tasks-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title fs-5" id="batch-delete-tasks-modal-title">批量删除任务</h2><button class="btn-close" id="close-batch-delete-button" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+          <p>确认永久删除已选择的 <strong id="batch-delete-task-count">0</strong> 个任务？</p>
+          <p class="text-secondary mb-0">任务记录、运行数据以及 outputs 中的全部输出都会删除，且无法恢复。</p>
+          <div class="batch-delete-progress d-none" id="batch-delete-progress" role="status" aria-live="polite"></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-light" id="cancel-batch-delete-button" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-danger" id="confirm-batch-delete-button" type="button">确认删除</button></div>
+      </div>
+    </div>
   </div>
   <div class="modal fade" id="shutdown-modal" tabindex="-1" aria-labelledby="shutdown-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="shutdown-modal-title">退出审核器</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><p id="shutdown-message">确认关闭本机服务？</p></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">继续使用</button><button class="btn btn-danger" id="confirm-shutdown-button" type="button">确认退出</button></div></div></div>

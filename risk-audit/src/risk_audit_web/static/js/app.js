@@ -279,6 +279,11 @@ function bindEvents() {
   for (const control of document.querySelectorAll("[data-page]")) control.addEventListener("click", () => showPage(control.dataset.page));
   document.getElementById("menu-button").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("open"));
   document.getElementById("refresh-tasks-button").addEventListener("click", loadTasks);
+  document.getElementById("select-all-tasks").addEventListener("change", toggleAllTaskSelection);
+  document.getElementById("clear-task-selection-button").addEventListener("click", clearTaskSelection);
+  document.getElementById("delete-selected-tasks-button").addEventListener("click", showBatchDeleteModal);
+  document.getElementById("confirm-batch-delete-button").addEventListener("click", deleteSelectedTasks);
+  document.getElementById("batch-delete-tasks-modal").addEventListener("hide.bs.modal", preventBatchDeleteDismiss);
   document.getElementById("input-directory-button").addEventListener("click", selectInputDirectory);
   document.getElementById("create-task-form").addEventListener("submit", createTask);
   document.getElementById("cancel-task-button").addEventListener("click", showCancelTaskModal);

@@ -1,11 +1,75 @@
 """验证前端页面与会话恢复契约。"""
 
+import json
 from pathlib import Path
+import subprocess
+
+import pytest
 
 
 def static_root() -> Path:
     """返回仓库内 Web 静态目录；无参数。"""
     return Path(__file__).resolve().parents[2] / "src/risk_audit_web/static"
+
+
+def run_tasks_javascript(expression: str, tmp_path: Path):
+    """执行任务列表纯 JavaScript 表达式。
+
+    Args:
+        expression: 返回 JSON 可序列化结果的 JavaScript 表达式。
+        tmp_path: pytest 提供的临时目录。
+    """
+    javascript_core = Path(
+        "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc"
+    )
+    if not javascript_core.is_file():
+        pytest.skip("当前平台未提供 JavaScriptCore 行为测试运行时")
+    source = (static_root() / "js/tasks.js").read_text(encoding="utf-8")
+    script = tmp_path / "tasks-behavior-test.js"
+    script.write_text(
+        f"globalThis.window = {{}};\n{source}\nprint(JSON.stringify({expression}));\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [str(javascript_core), str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def run_tasks_async_javascript(expression: str, tmp_path: Path):
+    """执行返回 Promise 的任务列表 JavaScript 表达式。
+
+    Args:
+        expression: 返回 Promise 的 JavaScript 表达式。
+        tmp_path: pytest 提供的临时目录。
+    """
+    javascript_core = Path(
+        "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc"
+    )
+    if not javascript_core.is_file():
+        pytest.skip("当前平台未提供 JavaScriptCore 行为测试运行时")
+    source = (static_root() / "js/tasks.js").read_text(encoding="utf-8")
+    script = tmp_path / "tasks-async-behavior-test.js"
+    script.write_text(
+        "globalThis.window = {};\n"
+        f"{source}\n"
+        f"Promise.resolve({expression})"
+        ".then((value) => print(JSON.stringify(value)))"
+        ".catch((error) => { print(error.stack || error.message); throw error; });\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [str(javascript_core), str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    return json.loads(result.stdout.strip().splitlines()[-1])
 
 
 def test_frontend_contains_session_recovery_and_required_pages() -> None:
@@ -206,6 +270,177 @@ def test_delete_task_flow_requires_confirmation_and_returns_to_list() -> None:
     assert 'showToast("任务及全部相关数据已删除")' in app_source
     assert 'showPage("tasks-page")' in app_source
     assert 'deleteButton.disabled = ["running", "cancelling"].includes(task.status);' in tasks_source
+
+
+def test_task_selection_only_keeps_terminal_tasks_and_reports_header_state(
+    tmp_path: Path,
+) -> None:
+    """批量选择必须排除活动任务并正确计算表头三态。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    result = run_tasks_javascript(
+        "(() => {"
+        "const tasks = ["
+        "{task_id: 'done-1', status: 'completed'},"
+        "{task_id: 'done-2', status: 'failed'},"
+        "{task_id: 'active', status: 'running'}"
+        "];"
+        "const selected = reconcileTaskSelection(new Set(['done-1', 'active', 'missing']), tasks);"
+        "return {"
+        "selected: Array.from(selected).sort(),"
+        "partial: taskSelectionState(selected, tasks),"
+        "all: taskSelectionState(new Set(['done-1', 'done-2']), tasks),"
+        "partialTask: isTaskDeletable({status: 'partial'}),"
+        "cancellingTask: isTaskDeletable({status: 'cancelling'})"
+        "};"
+        "})()",
+        tmp_path,
+    )
+
+    assert result == {
+        "selected": ["done-1"],
+        "partial": {
+            "checked": False,
+            "indeterminate": True,
+            "selectedCount": 1,
+            "deletableCount": 2,
+        },
+        "all": {
+            "checked": True,
+            "indeterminate": False,
+            "selectedCount": 2,
+            "deletableCount": 2,
+        },
+        "partialTask": True,
+        "cancellingTask": False,
+    }
+
+
+def test_batch_delete_continues_after_item_failure_and_stops_on_expired_session(
+    tmp_path: Path,
+) -> None:
+    """批量删除应隔离普通失败，并在会话失效时停止后续请求。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    result = run_tasks_async_javascript(
+        "(async () => {"
+        "const ordinaryCalls = [];"
+        "const ordinary = await deleteTaskBatch(['a', 'b', 'c'], async (taskId) => {"
+        "ordinaryCalls.push(taskId);"
+        "if (taskId === 'b') throw new Error('目录被占用');"
+        "});"
+        "const expiredCalls = [];"
+        "const expired = await deleteTaskBatch(['x', 'y'], async (taskId) => {"
+        "expiredCalls.push(taskId);"
+        "throw new Error('SESSION_EXPIRED');"
+        "});"
+        "return {ordinary, ordinaryCalls, expired, expiredCalls};"
+        "})()",
+        tmp_path,
+    )
+
+    assert result == {
+        "ordinary": {
+            "deletedTaskIds": ["a", "c"],
+            "failedTaskIds": ["b"],
+            "sessionExpired": False,
+        },
+        "ordinaryCalls": ["a", "b", "c"],
+        "expired": {
+            "deletedTaskIds": [],
+            "failedTaskIds": ["x"],
+            "sessionExpired": True,
+        },
+        "expiredCalls": ["x"],
+    }
+
+
+def test_batch_delete_locks_modal_and_resumes_only_the_visible_page(
+    tmp_path: Path,
+) -> None:
+    """批量删除期间必须锁定弹窗，结束后仅恢复当前页面轮询。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    result = run_tasks_javascript(
+        "(() => {"
+        "let prevented = 0;"
+        "batchDeleteInProgress = true;"
+        "preventBatchDeleteDismiss({preventDefault: () => { prevented += 1; }});"
+        "batchDeleteInProgress = false;"
+        "preventBatchDeleteDismiss({preventDefault: () => { prevented += 1; }});"
+        "return {"
+        "prevented,"
+        "tasks: pagePollingMode(true, false),"
+        "detail: pagePollingMode(false, true),"
+        "inactive: pagePollingMode(false, false)"
+        "};"
+        "})()",
+        tmp_path,
+    )
+
+    assert result == {
+        "prevented": 1,
+        "tasks": "tasks",
+        "detail": "detail",
+        "inactive": None,
+    }
+
+
+def test_task_checkbox_focus_descriptor_survives_list_refresh(tmp_path: Path) -> None:
+    """列表轮询前必须识别当前复选框，以便重绘后恢复键盘焦点。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    result = run_tasks_javascript(
+        "(() => {"
+        "const checkbox = {"
+        "classList: {contains: (name) => name === 'task-select-checkbox'},"
+        "dataset: {taskId: 'task-42'}"
+        "};"
+        "const button = {"
+        "classList: {contains: () => false},"
+        "dataset: {taskId: 'task-42'}"
+        "};"
+        "return {checkbox: focusedTaskCheckboxId(checkbox), other: focusedTaskCheckboxId(button)};"
+        "})()",
+        tmp_path,
+    )
+
+    assert result == {"checkbox": "task-42", "other": None}
+
+
+def test_task_list_exposes_accessible_bulk_delete_controls() -> None:
+    """任务列表必须提供可访问的全选、批量操作栏和确认弹窗。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
+    theme_source = (root / "css/theme.css").read_text(encoding="utf-8")
+
+    assert 'id="select-all-tasks"' in html
+    assert 'aria-label="选择全部可删除任务"' in html
+    assert 'id="tasks-bulk-actions"' in html
+    assert 'id="selected-tasks-count"' in html
+    assert 'id="clear-task-selection-button"' in html
+    assert 'id="delete-selected-tasks-button"' in html
+    assert 'id="batch-delete-tasks-modal"' in html
+    assert 'id="batch-delete-task-count"' in html
+    assert 'id="confirm-batch-delete-button"' in html
+    assert 'id="cancel-batch-delete-button"' in html
+    assert 'id="close-batch-delete-button"' in html
+    assert "showBatchDeleteModal" in tasks_source
+    assert "deleteSelectedTasks" in tasks_source
+    assert "failedTaskIds" in tasks_source
+    assert "restoreTaskCheckboxFocus" in tasks_source
+    assert "await loadTasks();" not in tasks_source
+    assert ".tasks-bulk-actions {" in theme_source
+    assert ".task-row-selected" in theme_source
 
 
 def test_markdown_guides_use_cross_platform_script_terms() -> None:
