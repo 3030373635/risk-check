@@ -1,0 +1,12 @@
+{
+  "audit_as_of": "2026-10-14",
+  "content_hash": "0cc8449438e88ba9202ce4ffd7a43b9b2465372818e447d54155bef4b4eeb5ef",
+  "engine_compatibility": ">=1.9.28,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "8a2a5f8a84b46ddf20eef39647292336a1b0fb97fb477c156dd0efc6a79fb081",
+  "status": "released",
+  "title": "重庆岗位内控责任清单人员姓名空白分隔规则包",
+  "version": "1.9.32"
+}
