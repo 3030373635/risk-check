@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from risk_audit import __version__
 from risk_audit.checks.registry import CheckContext
 from risk_audit.configuration.loader import load_pack
 from risk_audit.util import sha256_file
@@ -128,7 +129,7 @@ def test_0917_duplicate_rows_do_not_cross_sheet(boundary: str) -> None:
 def test_active_0917_rulepack_executes_new_boundaries() -> None:
     """激活规则包必须继承0917第5条和第15条新版能力。"""
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.20"
+    assert active["version"] == __version__
     pack = load_pack(ROOT / "rulepacks/releases" / active["version"])
 
     rule_5 = next(rule for rule in pack["rules"] if rule["rule_id"] == "duties.completeness")

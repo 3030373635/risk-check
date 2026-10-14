@@ -21,9 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_active_rulepack_outputs_generic_missing_field_label(tmp_path: Path) -> None:
     """tmp_path 为临时目录；当适用性列缺失时，激活规则必须输出通用名称。"""
-    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.20"
+    assert active["version"] == __version__
     pack = load_pack(ROOT / "rulepacks/releases" / active["version"])
     schema_rule = next(rule for rule in pack["rules"] if rule["rule_id"] == "schema.applicability")
     schema_check = schema_rule["checks"][0]

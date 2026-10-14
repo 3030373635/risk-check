@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from risk_audit import __version__
 from risk_audit.business_identity import identify_business, validate_business_registry
 from risk_audit.checks.registry import build_registry
 from risk_audit.configuration.loader import load_pack
@@ -54,7 +55,7 @@ def test_1919_release_manifest_is_preserved_after_later_activation():
     active = read_json(ROOT / "risk-audit/rulepacks/active.json")
     assert pack["manifest"]["version"] == "1.9.19"
     assert pack["manifest"]["status"] == "released"
-    assert active["version"] == "1.9.20"
+    assert active["version"] == __version__
 
 
 def test_rulepack_rejects_unknown_baseline_registry_schema():

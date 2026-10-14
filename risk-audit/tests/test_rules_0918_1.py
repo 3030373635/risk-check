@@ -25,9 +25,8 @@ def test_active_rule_accepts_metering_work_responsible_position() -> None:
 
 def test_0918_1_release_is_preserved() -> None:
     """0918-1 源文档和历史 1.9.14 发布包必须保持可追溯。"""
-    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.20"
+    assert active["version"] == __version__
     pack = load_pack(ROOT / "rulepacks/releases/1.9.14")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0918-1.docx"

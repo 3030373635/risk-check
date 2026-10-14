@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from risk_audit import __version__
 from risk_audit.configuration.loader import load_pack
 from risk_audit.engine import run_engine
 from risk_audit.models import FieldValue, FileRecord, ParsedSheet, Record
@@ -70,4 +71,4 @@ def test_0917_3_publish_script_rebuilds_release() -> None:
     payload = json.loads(result.stdout)
     assert payload["verified"] is True
     assert payload["activated"] is False
-    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.20"
+    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == __version__

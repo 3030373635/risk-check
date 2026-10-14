@@ -1,4 +1,4 @@
-"""交付启动入口：优先加载包内 v1.9.20 源码并定位转换环境。"""
+"""交付启动入口：优先加载包内当前源码并定位转换环境。"""
 import argparse
 import json
 import os
@@ -40,8 +40,14 @@ def main(argv=None):
     args, rest = opts.parse_known_args(argv)
     try:
         import risk_audit
-        if risk_audit.__version__ != '1.9.20':
-            raise ValueError('当前启动入口要求 risk_audit 1.9.20，请使用本包源码或安装新版 wheel。')
+        active_metadata_path = ROOT / 'risk-audit/rulepacks/active.json'
+        # 启动入口以活动规则包为唯一版本基线，避免发布升级后仍被旧硬编码拦截。
+        expected_version = json.loads(active_metadata_path.read_text(encoding='utf-8'))['version']
+        if risk_audit.__version__ != expected_version:
+            raise ValueError(
+                f'当前启动入口要求 risk_audit {expected_version}，'
+                '请使用本包源码或安装对应版本 wheel。'
+            )
         office = configure_soffice(args.soffice)
         os.chdir(ROOT)
         if args.doctor:
@@ -51,7 +57,7 @@ def main(argv=None):
             store = RulePackStore(ROOT / 'risk-audit/rulepacks', build_registry())
             pack = store.validate(store.active_path())
             baseline_registry = pack['baseline_registry']
-            # 1.9.20 沿用固定到业务及变体的模板目录；旧发布包仅保留诊断读取能力。
+            # 当前正式规则沿用固定到业务及变体的模板目录；旧发布包仅保留诊断读取能力。
             baseline_entries = (
                 [variant['template']
                  for business in baseline_registry.get('businesses', [])

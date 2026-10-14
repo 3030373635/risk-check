@@ -549,9 +549,8 @@ def test_runner_preprocessing_applies_0923_system_type_rules(tmp_path: Path) -> 
 def test_0923_2_release_is_preserved() -> None:
     """0923-2 来源和历史 1.9.18 规则包必须保留，当前程序使用后续版本。"""
 
-    assert __version__ == "1.9.20"
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.20"
+    assert active["version"] == __version__
     pack = load_pack(ROOT / "rulepacks/releases/1.9.18")
     assert pack["manifest"]["source_document_sha256"] == sha256_file(
         ROOT / "规则来源/0923-2.docx"

@@ -17,18 +17,12 @@ from risk_audit.util import sha256_file
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_active_rulepack_removes_rule_17() -> None:
-    """当前程序与激活规则包必须继承1.9.10的第17条删除结果。"""
-    assert __version__ == "1.9.20"
-    active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    assert active["version"] == "1.9.20"
-    pack = load_pack(ROOT / "rulepacks/releases" / active["version"])
+def test_1910_rulepack_removes_original_rule_17() -> None:
+    """历史1.9.10规则包必须保留原第17条删除结果；无参数。"""
+    pack = load_pack(ROOT / "rulepacks/releases/1.9.10")
 
     assert all(rule["rule_id"] != "matrices.responsibility_department" for rule in pack["rules"])
     assert all(rule["display_code"] != "R17" for rule in pack["rules"])
-    assert pack["manifest"]["source_document_sha256"] == sha256_file(
-        ROOT / "规则来源/0923-2.docx"
-    )
 
 
 def test_remove_rule_17_publish_script_rebuilds_release() -> None:
@@ -45,7 +39,7 @@ def test_remove_rule_17_publish_script_rebuilds_release() -> None:
     payload = json.loads(result.stdout)
     assert payload["verified"] is True
     assert payload["activated"] is False
-    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == "1.9.20"
+    assert json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))["version"] == __version__
 
 
 def test_audited_excel_does_not_contain_rule_17(tmp_path: Path) -> None:

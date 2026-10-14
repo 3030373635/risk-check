@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from risk_audit import __version__
 from risk_audit.checks.registry import build_registry
 from risk_audit.configuration.loader import load_pack
 from risk_audit.configuration.validator import ConfigError, validate_pack
@@ -395,7 +396,7 @@ def test_active_duplicate_rule_renders_counterpart_rows_through_engine():
 
 
 def test_delivery_launcher_accepts_current_source_and_rulepack():
-    """交付入口必须接受当前1.9.20源码，并能校验新版业务模板目录。"""
+    """交付入口必须接受当前源码，并能校验活动业务模板目录。"""
     result = subprocess.run(
         [sys.executable, str(ROOT.parent / 'run_audit.py'), '--doctor'],
         cwd=ROOT.parent,
@@ -406,8 +407,26 @@ def test_delivery_launcher_accepts_current_source_and_rulepack():
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload['version'] == '1.9.20'
-    assert payload['rulepack'] == '1.9.20'
+    assert payload['version'] == __version__
+    assert payload['rulepack'] == __version__
+
+
+def test_delivery_launcher_rejects_active_version_mismatch(tmp_path, monkeypatch, capsys):
+    """活动规则版本不一致时必须拒绝启动；参数分别提供隔离目录、替换工具和输出捕获器。"""
+
+    # 测试可从仓库根目录或 risk-audit 项目目录独立执行。
+    monkeypatch.syspath_prepend(str(ROOT.parent))
+    import run_audit
+
+    active_path = tmp_path / 'risk-audit/rulepacks/active.json'
+    active_path.parent.mkdir(parents=True)
+    active_path.write_text(json.dumps({'version': '9.9.9'}), encoding='utf-8')
+    monkeypatch.setattr(run_audit, 'ROOT', tmp_path)
+
+    exit_code = run_audit.main(['--doctor'])
+
+    assert exit_code == 2
+    assert '当前启动入口要求 risk_audit 9.9.9' in capsys.readouterr().err
 
 
 def test_missing_duties_match_numeric_measure_parts():

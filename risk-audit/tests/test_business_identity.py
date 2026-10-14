@@ -1,4 +1,5 @@
 """验证模板业务唯一标识、别名匹配和配置约束。"""
+import shutil
 from pathlib import Path
 
 import pytest
@@ -277,6 +278,55 @@ def test_scan_package_business_identity_always_skips_generic_helper_sheet(
     assert files[0].business_id == "distribution_grid_project_management"
     assert files[0].business_code == "05"
     assert files[0].preservation["template_match"]["status"] == "matched"
+
+
+def test_contract_identity_is_same_in_single_and_full_batch(tmp_path: Path) -> None:
+    """单跑和全量审核必须对同一份03合同管理材料给出相同业务身份；tmp_path 为隔离目录。"""
+
+    project_root = Path(__file__).resolve().parents[2]
+    active = read_json(project_root / "risk-audit/rulepacks/active.json")
+    registry = read_json(
+        project_root
+        / "risk-audit/rulepacks/releases"
+        / active["version"]
+        / "baseline_registry.json"
+    )
+    entity_name = "国网湖南省电力有限公司电力科学研究院本部"
+    source_path = tmp_path / "contract-source.xlsx"
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "岗位职责清单"
+    worksheet.append(["合同管理岗位职责清单"])
+    worksheet.append(["控制措施编号", "岗位职责"])
+    helper_sheet = workbook.create_sheet("Sheet1")
+    helper_sheet.sheet_state = "hidden"
+    # 复现电科院原始辅助表中的跨业务文字，确保其不参与业务模板判断。
+    helper_sheet["A6"] = "供电服务指挥中心（配网调控中心）"
+    workbook.save(source_path)
+
+    single_root = tmp_path / "single"
+    full_root = tmp_path / "full"
+    for input_root in (single_root, full_root):
+        contract_directory = input_root / entity_name / "03合同管理"
+        contract_directory.mkdir(parents=True)
+        shutil.copy2(source_path, contract_directory / "“三清单”-合同管理-电科院.xlsx")
+
+    other_directory = full_root / entity_name / "01供电服务"
+    other_directory.mkdir(parents=True)
+    other_workbook = Workbook()
+    other_workbook.active.title = "供电服务"
+    other_workbook.active.append(["控制措施编号", "控制措施"])
+    other_workbook.save(other_directory / "01风控矩阵-供电服务.xlsx")
+
+    entities = {"205I": Entity("205I", entity_name)}
+    single_files = scan_package_v180(single_root, entities, {}, registry)
+    full_files = scan_package_v180(full_root, entities, {}, registry)
+    single_contract = next(file for file in single_files if "03合同管理" in str(file.relative_path))
+    full_contract = next(file for file in full_files if "03合同管理" in str(file.relative_path))
+
+    assert single_contract.business_id == "contract_management"
+    assert full_contract.business_id == single_contract.business_id
+    assert full_contract.business_code == single_contract.business_code == "03"
 
 
 def test_unknown_nested_child_does_not_inherit_registered_grandparent(
