@@ -40,7 +40,8 @@ def schema_contains_v2(ctx,p):
                     key=unknown_key(expected)
                     if actual[key]:actual[key]-=1
                     else:absent.append('/'.join(key))
-                if absent:emit(absent,'与0818基准相比，未找到以下业务字段：'+'、'.join(absent)+'。请确认是否删除或更名。')
+                # 基准由当前地区规则包决定，意见文案不应绑定历史模板名。
+                if absent:emit(absent,'与对应基准模板相比，未找到以下业务字段：'+'、'.join(absent)+'。请确认是否删除或更名。')
             if missing:
                 field_labels=p.get('field_labels',{})
                 emit(missing,'未能读取必需字段：'+'、'.join(

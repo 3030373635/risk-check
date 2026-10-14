@@ -27,6 +27,47 @@ def test_reordering_and_confirmed_alias_does_not_mean_deleted_column(tmp_path,pa
     assert len(issues)==1 and issues[0]['evidence']['missing_fields']==['业务自定义字段']
 
 
+def test_missing_baseline_field_opinion_uses_generic_baseline_name(tmp_path, pack):
+    """tmp_path 为临时目录，pack 为规则包；结构缺失意见不应显示历史 0818 基准名。"""
+    baseline_file = make(
+        tmp_path,
+        pack,
+        'baseline.xlsx',
+        ['控制措施编号', '控制措施', '责任主体', '业务自定义字段'],
+    )
+    submitted_file = make(
+        tmp_path,
+        pack,
+        'submitted.xlsx',
+        ['控制措施编号', '控制措施', '责任主体'],
+    )
+    baselines = {
+        ('06', 'default'): {
+            'fields': list(baseline_file.sheets[0].columns),
+            'business_header_paths': baseline_file.sheets[0].business_header_paths,
+        }
+    }
+    context = CheckContext(
+        [],
+        [submitted_file],
+        [],
+        {},
+        baselines,
+        {'field_aliases': pack['field_aliases']},
+        ['E'],
+        [],
+    )
+
+    issues = schema_contains_v2(
+        context,
+        {'sheet_types': ['matrix'], 'compare_baseline': True, 'required_fields': []},
+    )
+
+    assert issues[0]['evidence']['unavailable_reason'] == (
+        '与对应基准模板相比，未找到以下业务字段：业务自定义字段。请确认是否删除或更名。'
+    )
+
+
 def test_input_override_is_bound_to_source_hash_and_cannot_read_manual_opinions(tmp_path,pack):
     import pytest
     f=make(tmp_path,pack,'d.xlsx',['控制措施编号','控制措施','责任主体','缺少表头','审核意见'])
