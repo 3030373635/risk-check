@@ -13,6 +13,7 @@ _SEPARATORS = re.compile(r"[\s()（）\[\]【】{}｛｝<>《》·•・,，、:
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _BUSINESS_CODE_PREFIX = re.compile(r"^(\d{1,2})(?:\D|$)")
+_GENERIC_SHEET_NAME = re.compile(r"Sheet\d+", re.IGNORECASE)
 _TABLE_HEADER_MARKERS = (
     "控制措施编号",
     "岗位职责编号",
@@ -38,12 +39,33 @@ class BusinessIdentity:
     matched_variant_alias: str = ""
 
 
-def workbook_business_evidence(path: Path, file_format: str) -> list[str]:
+def _skip_business_evidence_sheet(name: str, hidden: bool, include_hidden: bool) -> bool:
+    """判断工作表是否不得参与业务识别。
+
+    Args:
+        name: 工作表名称。
+        hidden: 工作表是否处于隐藏或深度隐藏状态。
+        include_hidden: 本次审核是否明确要求纳入隐藏工作表。
+    """
+
+    # 正式解析始终排除 Sheet1 等通用辅助表，业务识别必须采用相同边界。
+    if _GENERIC_SHEET_NAME.fullmatch(name.strip()):
+        return True
+    return hidden and not include_hidden
+
+
+def workbook_business_evidence(
+    path: Path,
+    file_format: str,
+    *,
+    include_hidden: bool = False,
+) -> list[str]:
     """读取工作表名和表头区文字。
 
     Args:
         path: 待检查的 Excel 材料路径。
         file_format: 根据文件签名识别的 xlsx 或 xls 格式。
+        include_hidden: 是否明确允许隐藏工作表参与业务识别。
     """
 
     evidence: list[str] = []
@@ -53,6 +75,12 @@ def workbook_business_evidence(path: Path, file_format: str) -> list[str]:
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
             for worksheet in workbook.worksheets:
+                if _skip_business_evidence_sheet(
+                    worksheet.title,
+                    worksheet.sheet_state != "visible",
+                    include_hidden,
+                ):
+                    continue
                 evidence.append(worksheet.title)
                 # 只采集业务表头之前的标题区，防止正文提及其他业务造成伪冲突。
                 for row in worksheet.iter_rows(min_row=1, max_row=12, min_col=1, max_col=12, values_only=True):
@@ -68,6 +96,12 @@ def workbook_business_evidence(path: Path, file_format: str) -> list[str]:
         workbook = xlrd.open_workbook(path, on_demand=True)
         try:
             for worksheet in workbook.sheets():
+                if _skip_business_evidence_sheet(
+                    worksheet.name,
+                    getattr(worksheet, "visibility", 0) != 0,
+                    include_hidden,
+                ):
+                    continue
                 evidence.append(worksheet.name)
                 for row in range(min(worksheet.nrows, 12)):
                     texts = []

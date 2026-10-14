@@ -340,7 +340,13 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     emit_progress(progress_callback, AuditProgressEvent(stage='scan', message='正在扫描报送材料'))
     if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS:
         from risk_audit.inventory_v180 import scan_package_v180
-        files = scan_package_v180(input_resolved, entities, pack['entity_aliases'], pack['baseline_registry'])
+        files = scan_package_v180(
+            input_resolved,
+            entities,
+            pack['entity_aliases'],
+            pack['baseline_registry'],
+            include_hidden=include_hidden,
+        )
     else:
         files = scan_package(input_resolved, entities, pack["entity_aliases"], pack['baseline_registry'])
     logger.debug('扫描完成：文件=%d', len(files))

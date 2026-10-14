@@ -228,6 +228,57 @@ def test_workbook_business_evidence_keeps_title_with_header_keyword(tmp_path) ->
     assert "财务管理岗位职责清单" in evidence
 
 
+def test_scan_package_business_identity_skips_hidden_sheet_evidence_by_default(
+    tmp_path,
+    business_registry: dict,
+) -> None:
+    """默认扫描不得使用隐藏表正文判断业务；tmp_path 为材料目录，business_registry 为业务配置。"""
+    path = tmp_path / "05三清单-配网工程管理.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "清单2-岗位责任清单"
+    workbook.active.append(["控制措施编号", "岗位职责"])
+    hidden_sheet = workbook.create_sheet("历史岗位参考")
+    hidden_sheet.sheet_state = "hidden"
+    # 隐藏辅助表中的岗位名称不得把配网工程材料误判为电网基建。
+    hidden_sheet["G6"] = "电网基建工程项目核算管理专责（配网）"
+    workbook.save(path)
+
+    files = scan_package_v180(tmp_path, {}, {}, business_registry)
+
+    assert len(files) == 1
+    assert files[0].business_id == "distribution_grid_project_management"
+    assert files[0].business_code == "05"
+    assert files[0].preservation["template_match"]["status"] == "matched"
+
+
+def test_scan_package_business_identity_always_skips_generic_helper_sheet(
+    tmp_path,
+    business_registry: dict,
+) -> None:
+    """显式纳入隐藏表时仍忽略通用辅助表；tmp_path 为材料目录，business_registry 为业务配置。"""
+    path = tmp_path / "05三清单-配网工程管理.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "清单2-岗位责任清单"
+    workbook.active.append(["控制措施编号", "岗位职责"])
+    hidden_sheet = workbook.create_sheet("Sheet1")
+    hidden_sheet.sheet_state = "hidden"
+    hidden_sheet["G6"] = "电网基建工程项目核算管理专责（配网）"
+    workbook.save(path)
+
+    files = scan_package_v180(
+        tmp_path,
+        {},
+        {},
+        business_registry,
+        include_hidden=True,
+    )
+
+    assert len(files) == 1
+    assert files[0].business_id == "distribution_grid_project_management"
+    assert files[0].business_code == "05"
+    assert files[0].preservation["template_match"]["status"] == "matched"
+
+
 def test_unknown_nested_child_does_not_inherit_registered_grandparent(
     tmp_path,
     business_registry: dict,

@@ -43,8 +43,23 @@ def explanation_text(path):
     return ''
 
 
-def scan_package_v180(root, entities, aliases, business_registry=None):
-    """扫描确认稿材料；root 为输入目录，entities/aliases 为主体配置，business_registry 为业务目录。"""
+def scan_package_v180(
+    root,
+    entities,
+    aliases,
+    business_registry=None,
+    *,
+    include_hidden=False,
+):
+    """扫描确认稿材料。
+
+    Args:
+        root: 待审核材料目录。
+        entities: 会计主体配置。
+        aliases: 会计主体别名配置。
+        business_registry: 业务模板目录配置。
+        include_hidden: 是否明确允许隐藏工作表参与材料识别。
+    """
     base = Path(root).resolve()
     if not base.is_dir():
         raise ValueError(f'待审核材料目录不存在：{base}')
@@ -83,7 +98,11 @@ def scan_package_v180(root, entities, aliases, business_registry=None):
         elif business_registry and business_registry.get('schema_version') == '2.0':
             evidence_error = ''
             try:
-                workbook_evidence = workbook_business_evidence(path, file_format)
+                workbook_evidence = workbook_business_evidence(
+                    path,
+                    file_format,
+                    include_hidden=include_hidden,
+                )
             except Exception as error:
                 workbook_evidence = []
                 evidence_error = str(error)
