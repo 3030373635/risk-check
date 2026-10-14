@@ -148,6 +148,9 @@ function renderTaskDetail(task) {
   // 停止请求提交后禁止重复点击，并明确展示后端正在安全停止。
   cancelButton.disabled = task.status !== "running";
   document.getElementById("cancel-task-button-label").textContent = cancellationPending ? "正在安全停止" : "安全停止任务";
+  const deleteButton = document.getElementById("delete-task-button");
+  // Worker 仍可能写入任务数据时，页面不提供删除入口。
+  deleteButton.disabled = ["running", "cancelling"].includes(task.status);
   const excelOption = document.querySelector('[data-report-format="excel"]');
   const htmlOption = document.querySelector('[data-report-format="html"]');
   excelOption.disabled = !summary.audit_statistics_report;

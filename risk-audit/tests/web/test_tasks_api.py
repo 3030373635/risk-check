@@ -96,6 +96,65 @@ def test_list_detail_cancel_and_open_output(client, web_services, input_root: Pa
     assert web_services.opened_paths == [Path(created["output_root"]).resolve()]
 
 
+def test_delete_terminal_task_returns_no_content_and_removes_resource(
+    client,
+    web_services,
+    input_root: Path,
+) -> None:
+    """DELETE 必须删除终态任务并返回空的 204 响应。
+
+    Args:
+        client: FastAPI 测试客户端。
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+    """
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    ).json()
+    task_id = created["task_id"]
+    output_root = Path(created["output_root"])
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    web_services.manager._processes.pop(task_id)
+
+    response = client.delete(
+        f"/api/v1/tasks/{task_id}",
+        headers=authorized_post_headers(client),
+    )
+    repeated = client.delete(
+        f"/api/v1/tasks/{task_id}",
+        headers=authorized_post_headers(client),
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert output_root.exists() is False
+    assert web_services.repository.get_task(task_id) is None
+    assert repeated.status_code == 404
+    assert repeated.json()["error_code"] == "TASK_NOT_FOUND"
+
+
+def test_delete_active_task_returns_conflict(client, input_root: Path) -> None:
+    """活动任务的 DELETE 必须返回 409；client/input_root 为测试依赖。"""
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    ).json()
+
+    response = client.delete(
+        f"/api/v1/tasks/{created['task_id']}",
+        headers=authorized_post_headers(client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "TASK_NOT_TERMINAL"
+
+
 def test_output_opening_never_accepts_client_path(client, input_root: Path) -> None:
     """打开结果只能由任务编号解析目标；client/input_root 为测试依赖。"""
     created = client.post(

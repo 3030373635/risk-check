@@ -5,9 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+import ctypes
 import json
+import os
 from pathlib import Path
 import secrets
+import shutil
+import stat
 from threading import Lock
 from typing import Any
 
@@ -46,7 +50,17 @@ from risk_audit_web.task_paths import (
     sanitize_directory_name,
     validate_task_paths,
 )
-from risk_audit_web.task_repository import TaskDatabaseError, TaskRepository
+from risk_audit_web.task_repository import ACTIVE_STATUSES, TaskDatabaseError, TaskRepository
+from risk_audit_web.worker import task_runtime_directory
+
+
+class _WindowsFileAttributeTagInfo(ctypes.Structure):
+    """保存 Windows 句柄对应文件的属性和重解析点标签。"""
+
+    _fields_ = [
+        ("file_attributes", ctypes.c_uint32),
+        ("reparse_tag", ctypes.c_uint32),
+    ]
 
 
 class ApiProblem(Exception):
@@ -395,11 +409,343 @@ class ApplicationServices:
     def terminate_task(self, task_id: str) -> ManagedTask:
         """强制终止任务；task_id 为任务编号。"""
         task = self.get_task(task_id)
+        if task.state.status not in ACTIVE_STATUSES:
+            raise ApiProblem(409, "TASK_NOT_ACTIVE", "任务已结束，不能强制终止")
         if task.state.worker_pid is None:
             raise ApiProblem(409, "WORKER_PID_UNAVAILABLE", "任务进程号不可用，无法强制终止")
         if not self.manager.force_stop(task_id, expected_pid=task.state.worker_pid):
             raise ApiProblem(409, "TASK_TERMINATION_FAILED", "任务状态已变化或进程无法终止")
         return self.get_task(task_id)
+
+    def delete_task(self, task_id: str) -> None:
+        """删除终态任务的全部数据；task_id 为任务编号。"""
+        with self._creation_lock:
+            # 删除与新建共用锁，防止文件清理和输出路径分配交错。
+            self._delete_task(task_id)
+
+    def _delete_task(self, task_id: str) -> None:
+        """在创建锁内执行任务删除；task_id 为任务编号。"""
+        task = self.get_task(task_id)
+        if task.state.status in ACTIVE_STATUSES:
+            raise ApiProblem(409, "TASK_NOT_TERMINAL", "任务正在运行，请先停止任务")
+        output_root = self._validated_task_output_root(task)
+        runtime_root = self._validated_task_runtime_root(task_id)
+        if not self.manager.wait_for_task_exit(task_id):
+            raise ApiProblem(409, "TASK_PROCESS_ACTIVE", "任务进程尚未完全退出，请稍后重试")
+        try:
+            # 先删临时资源，再删用户输出；任一失败时保留数据库记录供重试。
+            self._remove_task_path(
+                runtime_root,
+                task_runtime_directory(""),
+                "TASK_RUNTIME_PATH_INVALID",
+                "任务临时路径不安全，已拒绝删除",
+            )
+            self._remove_task_path(
+                output_root,
+                self.paths.outputs_root,
+                "TASK_OUTPUT_PATH_INVALID",
+                "任务输出路径不属于审核器托管目录，已拒绝删除",
+            )
+        except OSError as error:
+            raise ApiProblem(
+                500,
+                "TASK_DATA_DELETE_FAILED",
+                f"任务文件删除失败，请关闭占用文件后重试：{error}",
+            ) from error
+        try:
+            deleted = self.repository.delete_task(task_id)
+        except TaskDatabaseError as error:
+            raise ApiProblem(500, "TASK_DELETE_FAILED", "任务数据库记录删除失败") from error
+        if not deleted:
+            raise ApiProblem(404, "TASK_NOT_FOUND", "任务不存在")
+        self.manager.forget_task(task_id)
+
+    def _validated_task_output_root(self, task: ManagedTask) -> Path:
+        """验证任务输出目录受应用托管；task 为待删除的终态任务。"""
+        return self._validated_managed_child(
+            self.paths.outputs_root,
+            Path(task.record.output_root),
+            "TASK_OUTPUT_PATH_INVALID",
+            "任务输出路径不属于审核器托管目录，已拒绝删除",
+        )
+
+    def _validated_task_runtime_root(self, task_id: str) -> Path:
+        """验证任务临时目录未逃逸；task_id 为任务编号。"""
+        return self._validated_managed_child(
+            task_runtime_directory(""),
+            task_runtime_directory(task_id),
+            "TASK_RUNTIME_PATH_INVALID",
+            "任务临时路径不安全，已拒绝删除",
+        )
+
+    @staticmethod
+    def _validated_managed_child(
+        managed_root: Path,
+        raw_target: Path,
+        error_code: str,
+        message: str,
+    ) -> Path:
+        """验证目标是无链接托管根的直接子路径。
+
+        Args:
+            managed_root: 应用托管的根目录。
+            raw_target: 数据库或后端生成的目标路径。
+            error_code: 路径非法时返回的稳定错误码。
+            message: 路径非法时返回的用户提示。
+        """
+        managed_absolute = managed_root.absolute()
+        managed_resolved = managed_root.resolve(strict=False)
+        target_absolute = raw_target.absolute()
+        target_resolved = raw_target.resolve(strict=False)
+        # absolute 与 resolve 不一致表明根或目标经过了符号链接/Windows 联接。
+        if (
+            managed_absolute != managed_resolved
+            or target_absolute.parent != managed_absolute
+            or target_absolute != target_resolved
+        ):
+            raise ApiProblem(
+                409,
+                error_code,
+                message,
+            )
+        return target_absolute
+
+    def _remove_task_path(
+        self,
+        path: Path,
+        managed_root: Path,
+        error_code: str,
+        message: str,
+    ) -> None:
+        """重新验证并删除任务路径。
+
+        Args:
+            path: 输出目录或临时目录。
+            managed_root: 目标必须直接属于的托管根目录。
+            error_code: 二次校验失败时返回的错误码。
+            message: 二次校验失败时返回的用户提示。
+        """
+        if os.name == "posix":
+            self._remove_posix_task_path(
+                path,
+                managed_root,
+                error_code,
+                message,
+            )
+            return
+        self._remove_windows_task_path(
+            path,
+            managed_root,
+            error_code,
+            message,
+        )
+
+    def _remove_posix_task_path(
+        self,
+        path: Path,
+        managed_root: Path,
+        error_code: str,
+        message: str,
+    ) -> None:
+        """基于目录句柄删除 POSIX 托管子路径，避免根目录替换竞态。
+
+        Args:
+            path: 输出目录或临时目录。
+            managed_root: 目标必须直接属于的托管根目录。
+            error_code: 路径不安全时返回的错误码。
+            message: 路径不安全时返回的用户提示。
+        """
+        root_path = managed_root.absolute()
+        open_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        try:
+            root_fd = os.open(root_path, open_flags)
+        except FileNotFoundError:
+            # 托管根不存在时，目标目录也已不存在，视为清理完成。
+            return
+        except OSError:
+            # 重新校验可把符号链接等安全问题转换成稳定的 API 错误。
+            self._validated_managed_child(managed_root, path, error_code, message)
+            raise
+
+        try:
+            validated_path = self._validated_managed_child(
+                managed_root,
+                path,
+                error_code,
+                message,
+            )
+            opened_root = os.fstat(root_fd)
+            current_root = os.stat(root_path, follow_symlinks=False)
+            # 路径当前指向的目录必须仍是已经打开并将用于删除的目录。
+            if (
+                stat.S_ISLNK(current_root.st_mode)
+                or opened_root.st_dev != current_root.st_dev
+                or opened_root.st_ino != current_root.st_ino
+            ):
+                raise ApiProblem(409, error_code, message)
+            child_name = validated_path.name
+            try:
+                child_state = os.stat(
+                    child_name,
+                    dir_fd=root_fd,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                return
+            if stat.S_ISLNK(child_state.st_mode):
+                raise ApiProblem(409, error_code, message)
+            if stat.S_ISDIR(child_state.st_mode):
+                # 相对路径和 dir_fd 把整个递归删除固定在已打开的托管根内。
+                shutil.rmtree(child_name, dir_fd=root_fd)
+            else:
+                os.unlink(child_name, dir_fd=root_fd)
+        except FileNotFoundError:
+            # 路径被其他清理流程先删除时，等价于目标已达成。
+            return
+        finally:
+            os.close(root_fd)
+
+    def _remove_windows_task_path(
+        self,
+        path: Path,
+        managed_root: Path,
+        error_code: str,
+        message: str,
+    ) -> None:
+        """持有 Windows 根目录句柄并删除托管子路径。
+
+        Args:
+            path: 输出目录或临时目录。
+            managed_root: 目标必须直接属于的托管根目录。
+            error_code: 路径不安全时返回的错误码。
+            message: 路径不安全时返回的用户提示。
+        """
+        if os.name != "nt":
+            raise OSError("当前平台不支持 Windows 目录句柄")
+
+        file_attribute_reparse_point = 0x0400
+        root_path = managed_root.absolute()
+        try:
+            kernel32, root_handle, attributes = self._open_windows_path(root_path)
+        except FileNotFoundError:
+            return
+        try:
+            if attributes & file_attribute_reparse_point:
+                raise ApiProblem(409, error_code, message)
+            validated_path = self._validated_managed_child(
+                managed_root,
+                path,
+                error_code,
+                message,
+            )
+            # 递归过程会为每一级目录持有同样的锁定句柄，拒绝子目录替换竞态。
+            self._remove_windows_entry(validated_path)
+        finally:
+            kernel32.CloseHandle(root_handle)
+
+    @staticmethod
+    def _open_windows_path(path: Path) -> tuple[Any, int, int]:
+        """打开并锁定 Windows 路径，返回 API、句柄和句柄属性。
+
+        Args:
+            path: 需要在操作期间禁止重命名和替换的路径。
+        """
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+        ]
+        create_file.restype = ctypes.c_void_p
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [ctypes.c_void_p]
+        close_handle.restype = ctypes.c_int
+        get_information = kernel32.GetFileInformationByHandleEx
+        get_information.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        get_information.restype = ctypes.c_int
+
+        file_read_attributes = 0x0080
+        file_share_read = 0x0001
+        file_share_write = 0x0002
+        open_existing = 3
+        file_flag_open_reparse_point = 0x00200000
+        file_flag_backup_semantics = 0x02000000
+        file_attribute_tag_info = 9
+        invalid_handle_value = ctypes.c_void_p(-1).value
+        # 不共享删除权限，句柄存续期间该路径不能被删除、重命名或替换。
+        handle = create_file(
+            str(path),
+            file_read_attributes,
+            file_share_read | file_share_write,
+            None,
+            open_existing,
+            file_flag_open_reparse_point | file_flag_backup_semantics,
+            None,
+        )
+        if handle == invalid_handle_value:
+            raise ctypes.WinError(ctypes.get_last_error())
+
+        information = _WindowsFileAttributeTagInfo()
+        if not get_information(
+            handle,
+            file_attribute_tag_info,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+        ):
+            error = ctypes.get_last_error()
+            close_handle(handle)
+            raise ctypes.WinError(error)
+        return kernel32, handle, int(information.file_attributes)
+
+    def _remove_windows_entry(self, path: Path) -> None:
+        """在逐级句柄保护下删除一个 Windows 文件系统项。
+
+        Args:
+            path: 托管根内当前需要删除的文件、目录或重解析点。
+        """
+        file_attribute_directory = 0x0010
+        file_attribute_reparse_point = 0x0400
+        try:
+            kernel32, handle, attributes = self._open_windows_path(path)
+        except FileNotFoundError:
+            return
+
+        is_directory = bool(attributes & file_attribute_directory)
+        is_reparse_point = bool(attributes & file_attribute_reparse_point)
+        if not is_directory or is_reparse_point:
+            kernel32.CloseHandle(handle)
+            try:
+                # 删除链接本身或普通文件，不沿重解析点进入外部目录。
+                if is_directory:
+                    path.rmdir()
+                else:
+                    path.unlink()
+            except FileNotFoundError:
+                return
+            return
+
+        try:
+            # 当前目录句柄不共享删除权限，scandir 期间目录本身无法被替换。
+            with os.scandir(path) as entries:
+                for entry in entries:
+                    self._remove_windows_entry(Path(entry.path))
+        finally:
+            kernel32.CloseHandle(handle)
+        try:
+            # 关闭句柄后只删除已清空目录；若被替换为非空目录则安全失败。
+            path.rmdir()
+        except FileNotFoundError:
+            return
 
     def _safe_task_target(self, task_id: str, target: Path) -> Path:
         """验证任务输出内目标；task_id 为任务编号，target 为后端解析路径。"""

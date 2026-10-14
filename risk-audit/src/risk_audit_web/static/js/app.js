@@ -229,6 +229,36 @@ async function requestTaskCancellation() {
   }
 }
 
+/** 显示当前任务的删除确认框；无参数。 */
+function showDeleteTaskModal() {
+  if (!currentTaskIdValue()) return;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById("delete-task-modal")).show();
+}
+
+/** 删除当前终态任务及全部相关数据；无参数。 */
+async function deleteCurrentTask() {
+  const taskId = currentTaskIdValue();
+  if (!taskId) return;
+  const confirmButton = document.getElementById("confirm-delete-task-button");
+  confirmButton.disabled = true;
+  confirmButton.textContent = "正在删除…";
+  stopPolling();
+  try {
+    await apiRequest(`/api/v1/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("delete-task-modal")).hide();
+    showToast("任务及全部相关数据已删除");
+    showPage("tasks-page");
+  } catch (error) {
+    if (error.message !== "SESSION_EXPIRED") {
+      showToast(error.message);
+      startDetailPolling();
+    }
+  } finally {
+    confirmButton.disabled = false;
+    confirmButton.textContent = "确认删除";
+  }
+}
+
 /** 请求立即退出或安全停止后退出；无参数。 */
 async function requestShutdown() {
   const running = runningTaskCount;
@@ -253,6 +283,8 @@ function bindEvents() {
   document.getElementById("create-task-form").addEventListener("submit", createTask);
   document.getElementById("cancel-task-button").addEventListener("click", showCancelTaskModal);
   document.getElementById("confirm-cancel-task-button").addEventListener("click", requestTaskCancellation);
+  document.getElementById("delete-task-button").addEventListener("click", showDeleteTaskModal);
+  document.getElementById("confirm-delete-task-button").addEventListener("click", deleteCurrentTask);
   document.getElementById("open-output-button").addEventListener("click", () => postTaskAction("output-openings"));
   for (const option of document.querySelectorAll("[data-report-format]")) {
     option.addEventListener("click", () => openStatisticsReport(option.dataset.reportFormat));

@@ -188,6 +188,26 @@ def test_cancel_task_flow_confirms_and_reports_request_state() -> None:
     assert 'cancellationPending ? "正在安全停止" : "安全停止任务"' in tasks_source
 
 
+def test_delete_task_flow_requires_confirmation_and_returns_to_list() -> None:
+    """删除任务必须确认全部数据不可恢复，成功后返回列表。"""
+    root = static_root()
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app_source = (root / "js/app.js").read_text(encoding="utf-8")
+    tasks_source = (root / "js/tasks.js").read_text(encoding="utf-8")
+
+    assert 'id="delete-task-button" type="button" disabled' in html
+    assert 'id="delete-task-modal"' in html
+    assert 'id="confirm-delete-task-button"' in html
+    assert "outputs 中的全部输出" in html
+    assert "永久删除，无法恢复" in html
+    assert "showDeleteTaskModal" in app_source
+    assert "deleteCurrentTask" in app_source
+    assert 'method: "DELETE"' in app_source
+    assert 'showToast("任务及全部相关数据已删除")' in app_source
+    assert 'showPage("tasks-page")' in app_source
+    assert 'deleteButton.disabled = ["running", "cancelling"].includes(task.status);' in tasks_source
+
+
 def test_markdown_guides_use_cross_platform_script_terms() -> None:
     """Markdown 说明必须去除 EXE/PyInstaller 口径并覆盖双平台启动。"""
     project_root = static_root().parents[2]

@@ -61,6 +61,105 @@ def test_start_task_uses_database_and_task_id_without_shell(tmp_path: Path) -> N
     assert calls[0][1]["shell"] is False
 
 
+def test_forget_task_cannot_mutate_processes_during_shutdown_iteration(tmp_path: Path) -> None:
+    """删除任务不得破坏退出流程对进程表的遍历；tmp_path 为隔离目录。"""
+    from risk_audit_web.task_manager import TaskManager
+
+    repository, _record = create_task(tmp_path)
+    manager = TaskManager(
+        repository,
+        Path("python"),
+        process_tree_terminator=lambda _pid, _timeout: True,
+    )
+
+    def forget_other_task() -> None:
+        """模拟退出遍历期间另一请求删除任务；无参数。"""
+        manager.forget_task("task-2")
+
+    manager._processes = {
+        "task-1": SimpleNamespace(pid=1, poll=lambda: forget_other_task()),
+        "task-2": SimpleNamespace(pid=2, poll=lambda: None),
+    }
+
+    assert manager.stop_all_workers() == []
+
+
+def test_wait_for_task_exit_checks_persisted_worker_without_process_handle(
+    tmp_path: Path,
+) -> None:
+    """主服务重启后仍必须核实终态任务的持久化 Worker PID。
+
+    Args:
+        tmp_path: 测试隔离目录。
+    """
+    from risk_audit_web.task_manager import TaskManager
+
+    repository, _record = create_task(tmp_path, status="completed")
+    manager = TaskManager(
+        repository,
+        Path("python"),
+        process_alive=lambda pid: pid == 321,
+    )
+
+    assert manager.wait_for_task_exit("task-1", timeout_seconds=0.01) is False
+
+
+def test_wait_for_task_exit_fails_closed_when_initial_state_read_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """首次状态读取失败时不得假定 Worker 已退出。
+
+    Args:
+        tmp_path: 测试隔离目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    from risk_audit_web.task_manager import TaskManager
+    from risk_audit_web.task_repository import TaskDatabaseError
+
+    repository, _record = create_task(tmp_path, status="completed")
+    manager = TaskManager(repository, Path("python"), process_alive=lambda _pid: True)
+
+    def fail_read_state(_task_id: str):
+        """模拟数据库读取失败；_task_id 为任务编号。"""
+        raise TaskDatabaseError("状态读取失败")
+
+    monkeypatch.setattr(repository, "read_state", fail_read_state)
+
+    assert manager.wait_for_task_exit("task-1", timeout_seconds=0.01) is False
+
+
+def test_wait_for_task_exit_fails_closed_when_polling_state_read_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """轮询期间状态读取失败时不得假定 Worker 已退出。
+
+    Args:
+        tmp_path: 测试隔离目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    from risk_audit_web.task_manager import TaskManager
+    from risk_audit_web.task_repository import TaskDatabaseError
+
+    repository, _record = create_task(tmp_path, status="completed")
+    manager = TaskManager(repository, Path("python"), process_alive=lambda _pid: True)
+    real_read_state = repository.read_state
+    calls = 0
+
+    def read_state_once(task_id: str):
+        """首次返回状态，后续模拟失败；task_id 为任务编号。"""
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise TaskDatabaseError("轮询读取失败")
+        return real_read_state(task_id)
+
+    monkeypatch.setattr(repository, "read_state", read_state_once)
+
+    assert manager.wait_for_task_exit("task-1", timeout_seconds=0.01) is False
+
+
 def test_exited_worker_is_marked_interrupted(tmp_path: Path) -> None:
     """退出且未发布终态的 Worker 必须变为中断；tmp_path 为隔离根。"""
     from risk_audit_web.task_manager import TaskManager

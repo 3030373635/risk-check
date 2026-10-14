@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from risk_audit_web.api.system import get_services
 from risk_audit_web.api_models import EmptyRequest, ReportOpeningRequest, TaskCreateRequest
@@ -34,6 +34,16 @@ def read_task(
 ) -> dict[str, object]:
     """读取任务详情；task_id 为任务编号，services 为应用服务。"""
     return task_response(services.get_task(task_id))
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: str,
+    services: ApplicationServices = Depends(get_services),
+) -> Response:
+    """删除终态任务及全部相关数据；task_id 为任务编号，services 为应用服务。"""
+    services.delete_task(task_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{task_id}/cancellations", status_code=status.HTTP_201_CREATED)

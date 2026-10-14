@@ -307,6 +307,19 @@ class TaskRepository:
         except (TypeError, ValueError, json.JSONDecodeError) as error:
             raise TaskDatabaseError(f"任务 {task_id} 数据损坏：{error}") from error
 
+    def delete_task(self, task_id: str) -> bool:
+        """删除任务及其级联事件；task_id 为任务编号，返回是否删除了记录。"""
+        try:
+            with self._connection() as connection:
+                # 连接已启用外键，task_events 会与任务记录在同一事务中删除。
+                cursor = connection.execute(
+                    "DELETE FROM tasks WHERE task_id = ?",
+                    (task_id,),
+                )
+        except sqlite3.Error as error:
+            raise TaskDatabaseError(f"任务 {task_id} 删除失败：{error}") from error
+        return cursor.rowcount > 0
+
     def list_tasks(self) -> TaskQueryResult:
         """按创建时间倒序读取全部有效记录；无参数。"""
         try:

@@ -123,6 +123,23 @@ def test_create_task_is_immediately_visible_with_request_and_state(tmp_path: Pat
     assert [task.task_id for task in repository.list_tasks().tasks] == ["task-1"]
 
 
+def test_delete_task_removes_record_and_cascades_events(tmp_path: Path) -> None:
+    """删除任务必须在同一事务中级联删除事件；tmp_path 为隔离目录。"""
+    from risk_audit_web.task_repository import TaskRepository
+
+    repository = TaskRepository(tmp_path / "data/tasks.sqlite3")
+    repository.initialize()
+    request = make_request(tmp_path)
+    repository.create_task(request, make_state(), make_event())
+
+    assert repository.delete_task(request.task_id) is True
+
+    assert repository.get_task(request.task_id) is None
+    assert repository.list_events(request.task_id) == []
+    assert repository.output_root_exists(Path(request.output_root)) is False
+    assert repository.delete_task(request.task_id) is False
+
+
 def test_initialize_rejects_unknown_database_version(tmp_path: Path) -> None:
     """未知数据库版本必须显式失败；tmp_path 为隔离目录。"""
     from risk_audit_web.task_repository import TaskDatabaseError, TaskRepository

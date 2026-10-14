@@ -267,7 +267,6 @@ def run_worker(
             "total_units": total_units,
             "progress_percent": 100,
             "message": terminal_message,
-            "worker_pid": None,
             "result_summary": summary,
         })
         repository.append_event(TaskEvent(
@@ -278,7 +277,6 @@ def run_worker(
             "status": "cancelled",
             "stage": "cancelled",
             "message": str(error),
-            "worker_pid": None,
             "error_code": None,
         })
         repository.append_event(TaskEvent(
@@ -298,7 +296,6 @@ def run_worker(
                 "status": "failed",
                 "stage": "failed",
                 "message": str(error),
-                "worker_pid": None,
                 "error_code": error_code,
             })
             repository.append_event(TaskEvent(
@@ -323,6 +320,11 @@ def run_worker(
                 os.environ[name] = previous_value
         try:
             cleanup_task_runtime(repository, runtime_dir, task_id)
+        except Exception:
+            exit_code = 1
+        try:
+            # PID 只在临时资源清理完成后清空，供重启后的主服务判断是否可安全删除。
+            repository.update_task_state(task_id, {"worker_pid": None, "heartbeat_at": _now()})
         except Exception:
             exit_code = 1
     return exit_code

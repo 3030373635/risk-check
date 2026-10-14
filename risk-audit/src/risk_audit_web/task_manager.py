@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import subprocess
 import sys
+from threading import Lock
 import time
 from typing import Any
 
@@ -72,6 +73,7 @@ class TaskManager:
             ]
         )
         self._processes: dict[str, Any] = {}
+        self._process_lock = Lock()
 
     def _records(self) -> dict[str, TaskRecord]:
         """返回按任务编号索引的有效记录；无参数。"""
@@ -79,7 +81,8 @@ class TaskManager:
 
     def _process_has_exited(self, record: TaskRecord, state: TaskState) -> bool:
         """判断 Worker 是否已退出；record/state 为任务记录和最新状态。"""
-        process = self._processes.get(record.task_id)
+        with self._process_lock:
+            process = self._processes.get(record.task_id)
         if process is not None:
             return process.poll() is not None
         if state.worker_pid is not None:
@@ -158,7 +161,8 @@ class TaskManager:
         process = self.popen_factory(arguments, **options)
         if self.process_supervisor is not None:
             self.process_supervisor.register(process)
-        self._processes[record.task_id] = process
+        with self._process_lock:
+            self._processes[record.task_id] = process
         return int(process.pid)
 
     def request_cancel(self, task_id: str) -> bool:
@@ -181,6 +185,51 @@ class TaskManager:
         """请求停止全部运行任务；无参数，返回已发出请求的任务编号。"""
         return [task_id for task_id in self._records() if self.request_cancel(task_id)]
 
+    def wait_for_task_exit(self, task_id: str, timeout_seconds: float = 5.0) -> bool:
+        """等待已登记的任务进程退出。
+
+        Args:
+            task_id: 任务编号。
+            timeout_seconds: 最长等待秒数。
+        """
+        with self._process_lock:
+            process = self._processes.get(task_id)
+        if process is not None:
+            try:
+                process.wait(timeout=max(0.0, timeout_seconds))
+            except subprocess.TimeoutExpired:
+                return False
+            return True
+        try:
+            worker_pid = self.repository.read_state(task_id).worker_pid
+        except KeyError:
+            return True
+        except TaskDatabaseError:
+            # 无法读取持久化 PID 时必须保守拒绝删除，避免误删仍在使用的文件。
+            return False
+        if worker_pid is None:
+            return True
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while self.process_alive(worker_pid):
+            try:
+                # Worker 只在完成全部收尾后清空 PID，此字段就是持久化完成标记。
+                if self.repository.read_state(task_id).worker_pid is None:
+                    return True
+            except KeyError:
+                return True
+            except TaskDatabaseError:
+                return False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.05, remaining))
+        return True
+
+    def forget_task(self, task_id: str) -> None:
+        """移除已删除任务的进程引用；task_id 为任务编号。"""
+        with self._process_lock:
+            self._processes.pop(task_id, None)
+
     def _wait_for_process_exit(
         self,
         task_id: str,
@@ -188,7 +237,8 @@ class TaskManager:
         timeout_seconds: float = 5.0,
     ) -> bool:
         """等待 Worker 退出；task_id/pid 为任务及进程号，timeout_seconds 为最长秒数。"""
-        process = self._processes.get(task_id)
+        with self._process_lock:
+            process = self._processes.get(task_id)
         if process is not None:
             try:
                 process.wait(timeout=max(0.0, timeout_seconds))
@@ -261,7 +311,10 @@ class TaskManager:
     def stop_all_workers(self, timeout_seconds: float = 5.0) -> list[int]:
         """有界停止全部已登记 Worker 树；参数为单进程最长等待秒数。"""
         failed: list[int] = []
-        active_processes = [process for process in self._processes.values() if process.poll() is None]
+        with self._process_lock:
+            processes = list(self._processes.values())
+        # 不在锁内调用进程对象，避免退出等待阻塞新的状态读取。
+        active_processes = [process for process in processes if process.poll() is None]
         for process in active_processes:
             pid = int(process.pid)
             if not self.process_tree_terminator(pid, timeout_seconds):

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -79,6 +80,366 @@ def test_shutdown_rejects_new_tasks_while_waiting(web_services, input_root: Path
         raise AssertionError("退出期间不应创建新任务")
 
     assert len(callbacks) == 1
+
+
+def test_delete_task_rejects_active_task_without_removing_data(
+    web_services,
+    input_root: Path,
+) -> None:
+    """运行中任务不得删除任何数据。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+    """
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    output_root = Path(task.record.output_root)
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.delete_task(task.record.task_id)
+
+    assert raised.value.status_code == 409
+    assert raised.value.error_code == "TASK_NOT_TERMINAL"
+    assert output_root.is_dir()
+    assert web_services.repository.get_task(task.record.task_id) is not None
+
+
+def test_delete_task_rejects_output_path_outside_managed_root(
+    web_services,
+    input_root: Path,
+    tmp_path: Path,
+) -> None:
+    """任务输出路径越界时必须拒绝删除。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        tmp_path: 测试隔离目录。
+    """
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    external_root = tmp_path / "external-output"
+    external_root.mkdir()
+    (external_root / "keep.txt").write_text("keep", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    with sqlite3.connect(web_services.repository.database_path) as connection:
+        connection.execute(
+            "UPDATE tasks SET output_root = ? WHERE task_id = ?",
+            (str(external_root.resolve()), task_id),
+        )
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.delete_task(task_id)
+
+    assert raised.value.status_code == 409
+    assert raised.value.error_code == "TASK_OUTPUT_PATH_INVALID"
+    assert (external_root / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert web_services.repository.get_task(task_id) is not None
+
+
+def test_delete_task_rejects_symlinked_outputs_root(
+    web_services,
+    input_root: Path,
+    tmp_path: Path,
+) -> None:
+    """outputs 根目录被替换为链接时必须拒绝删除外部数据。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        tmp_path: 测试隔离目录。
+    """
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    outputs_root = web_services.paths.outputs_root
+    external_root = tmp_path / "external-outputs"
+    outputs_root.rename(external_root)
+    try:
+        outputs_root.symlink_to(external_root, target_is_directory=True)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"当前平台无法创建目录符号链接：{error}")
+    external_task_root = external_root / Path(task.record.output_root).name
+    (external_task_root / "keep.txt").write_text("keep", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.delete_task(task_id)
+
+    assert raised.value.error_code == "TASK_OUTPUT_PATH_INVALID"
+    assert (external_task_root / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert web_services.repository.get_task(task_id) is not None
+
+
+def test_delete_task_anchors_cleanup_when_outputs_root_is_swapped(
+    web_services,
+    input_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """删除期间根目录被替换时不得触碰外部同名目录。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        tmp_path: 测试隔离目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    import os
+
+    if os.name != "posix":
+        pytest.skip("目录句柄锚定竞态测试仅适用于 POSIX")
+
+    from risk_audit_web import services
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    output_root = Path(task.record.output_root)
+    outputs_root = web_services.paths.outputs_root
+    original_outputs_root = tmp_path / "original-outputs"
+    external_root = tmp_path / "external-outputs"
+    external_task_root = external_root / output_root.name
+    external_task_root.mkdir(parents=True)
+    (external_task_root / "keep.txt").write_text("keep", encoding="utf-8")
+    (output_root / "remove.txt").write_text("remove", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    web_services.manager._processes.pop(task_id)
+    real_rmtree = services.shutil.rmtree
+    swapped = False
+
+    def swap_root_then_remove(path, *args, **kwargs) -> None:
+        """替换 outputs 根后继续删除；path/args/kwargs 为 rmtree 参数。"""
+        nonlocal swapped
+        if not swapped:
+            outputs_root.rename(original_outputs_root)
+            outputs_root.symlink_to(external_root, target_is_directory=True)
+            swapped = True
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(services.shutil, "rmtree", swap_root_then_remove)
+
+    web_services.delete_task(task_id)
+
+    assert swapped is True
+    assert not (original_outputs_root / output_root.name).exists()
+    assert (external_task_root / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert web_services.repository.get_task(task_id) is None
+
+
+def test_delete_task_locks_windows_target_during_recursive_cleanup(
+    web_services,
+    input_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Windows 递归枚举期间目标目录必须无法被替换。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        tmp_path: 测试隔离目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    import os
+
+    if os.name != "nt":
+        pytest.skip("Windows 目录句柄竞态测试仅适用于 NTFS")
+
+    from risk_audit_web import services
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    output_root = Path(task.record.output_root)
+    moved_root = tmp_path / "moved-task-output"
+    (output_root / "remove.txt").write_text("remove", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    web_services.manager._processes.pop(task_id)
+    real_scandir = services.os.scandir
+    replacement_blocked = False
+
+    def try_replace_locked_target(path):
+        """在递归枚举边界尝试替换目标；path 为当前枚举目录。"""
+        nonlocal replacement_blocked
+        if Path(path) == output_root:
+            try:
+                output_root.rename(moved_root)
+            except OSError:
+                replacement_blocked = True
+        return real_scandir(path)
+
+    monkeypatch.setattr(services.os, "scandir", try_replace_locked_target)
+
+    web_services.delete_task(task_id)
+
+    assert replacement_blocked is True
+    assert output_root.exists() is False
+    assert moved_root.exists() is False
+    assert web_services.repository.get_task(task_id) is None
+
+
+def test_delete_terminal_task_removes_all_related_data(
+    web_services,
+    input_root: Path,
+) -> None:
+    """删除终态任务必须清理输出、临时数据、数据库和进程引用。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+    """
+    from risk_audit_web.worker import task_runtime_directory
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    output_root = Path(task.record.output_root)
+    (output_root / "report.xlsx").write_bytes(b"report")
+    runtime_root = task_runtime_directory(task_id)
+    runtime_root.mkdir(parents=True)
+    (runtime_root / "work.tmp").write_bytes(b"temporary")
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    web_services.manager._processes[task_id] = SimpleNamespace(
+        poll=lambda: 0,
+        wait=lambda timeout: 0,
+    )
+
+    web_services.delete_task(task_id)
+
+    assert output_root.exists() is False
+    assert runtime_root.exists() is False
+    assert web_services.repository.get_task(task_id) is None
+    assert web_services.repository.list_events(task_id) == []
+    assert task_id not in web_services.manager._processes
+
+
+def test_delete_task_waits_for_terminal_process_to_exit(
+    web_services,
+    input_root: Path,
+) -> None:
+    """终态 Worker 尚未退出时不得提前删除文件。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+    """
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    output_root = Path(task.record.output_root)
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed"},
+    )
+    web_services.manager._processes[task_id] = SimpleNamespace(
+        poll=lambda: None,
+        wait=lambda timeout: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired("worker", timeout)
+        ),
+    )
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.delete_task(task_id)
+
+    assert raised.value.status_code == 409
+    assert raised.value.error_code == "TASK_PROCESS_ACTIVE"
+    assert output_root.is_dir()
+    assert web_services.repository.get_task(task_id) is not None
+
+
+def test_delete_task_keeps_record_when_output_cleanup_fails(
+    web_services,
+    input_root: Path,
+    monkeypatch,
+) -> None:
+    """输出目录被占用时必须保留任务记录以便重试。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    from risk_audit_web import services
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    output_root = Path(task.record.output_root)
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "failed", "stage": "failed"},
+    )
+    web_services.manager._processes.pop(task_id)
+
+    def fail_output_cleanup(path, *args, **kwargs) -> None:
+        """模拟输出目录被占用；path/args/kwargs 为 rmtree 参数。"""
+        raise PermissionError(13, "目录被占用", str(path))
+
+    monkeypatch.setattr(services.shutil, "rmtree", fail_output_cleanup)
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.delete_task(task_id)
+
+    assert raised.value.status_code == 500
+    assert raised.value.error_code == "TASK_DATA_DELETE_FAILED"
+    assert output_root.is_dir()
+    assert web_services.repository.get_task(task_id) is not None
+
+
+def test_terminate_task_rejects_terminal_task_with_worker_pid(
+    web_services,
+    input_root: Path,
+    monkeypatch,
+) -> None:
+    """终态任务即使残留 PID 也不得再次强制终止。
+
+    Args:
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        monkeypatch: pytest 补丁工具。
+    """
+    from risk_audit_web.services import ApiProblem
+
+    task = web_services.create_task(create_request(input_root))
+    task_id = task.record.task_id
+    web_services.repository.update_task_state(
+        task_id,
+        {"status": "completed", "stage": "completed", "worker_pid": 700},
+    )
+    calls: list[tuple[str, int]] = []
+
+    def force_stop(target_task_id: str, *, expected_pid: int) -> bool:
+        """记录意外强停调用；target_task_id/expected_pid 为任务和进程号。"""
+        calls.append((target_task_id, expected_pid))
+        return True
+
+    monkeypatch.setattr(web_services.manager, "force_stop", force_stop)
+
+    with pytest.raises(ApiProblem) as raised:
+        web_services.terminate_task(task_id)
+
+    assert raised.value.status_code == 409
+    assert raised.value.error_code == "TASK_NOT_ACTIVE"
+    assert calls == []
 
 
 def test_system_status_reuses_startup_diagnostics(
