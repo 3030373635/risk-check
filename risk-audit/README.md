@@ -32,10 +32,18 @@
 ```bash
 uv sync --no-install-project --extra web --extra test
 PYTHONPATH=src .venv/bin/python -m pytest tests/web -q
-PYTHONPATH=src .venv/bin/python -m risk_audit_web.app
+./tools/start_dev.command
 ```
 
-Web 前端使用普通 HTML、CSS、JavaScript 和本地 Bootstrap，不需要 Node.js 构建步骤。
+`start_dev.command` 固定使用项目 `.venv` 和当前 `src`，启动前会清除可能遗留的 `RISK_AUDIT_APP_ROOT`。开发模式直接读取仓库中的规则包、模板、审核配置和会计主体清单，任务数据及结果分别写入项目的 `data` 和 `outputs`，不需要先构建便携包。终端启动时会显示实际应用版本、规则版本和资源根目录。
+
+macOS 默认使用 `/Applications/LibreOffice.app/Contents/MacOS/soffice`。如果 LibreOffice 安装在其他位置，可在启动前指定绝对路径：
+
+```bash
+RISK_AUDIT_DEV_SOFFICE="/absolute/path/to/soffice" ./tools/start_dev.command
+```
+
+如果终端提示另一个审核器实例正在运行，请先在原页面点击“退出审核器”，再执行开发启动器。Web 前端使用普通 HTML、CSS、JavaScript 和本地 Bootstrap，不需要 Node.js 构建步骤。
 
 ```bash
 .venv/bin/python tools/vendor_web_assets.py --verify

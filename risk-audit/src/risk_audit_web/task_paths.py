@@ -22,13 +22,15 @@ class PathValidationError(ValueError):
 
 @dataclass(frozen=True)
 class PortablePaths:
-    """保存便携程序的固定目录；所有路径均锚定在主程序目录。"""
+    """保存应用运行目录；便携模式默认使用发布包内的资源。"""
 
     app_root: Path
     runtime_root: Path
     data_root: Path
     outputs_root: Path
     platform_name: str
+    repository_root: Path | None = None
+    soffice_override: Path | None = None
 
     @classmethod
     def from_app_root(
@@ -47,9 +49,45 @@ class PortablePaths:
             platform_name=platform_name or sys.platform,
         )
 
+    @classmethod
+    def from_development_root(
+        cls,
+        application_root: Path,
+        repository_root: Path,
+        soffice: Path,
+        *,
+        platform_name: str | None = None,
+    ) -> "PortablePaths":
+        """生成源码开发路径。
+
+        Args:
+            application_root: Web 应用目录，即仓库中的 risk-audit 目录。
+            repository_root: 包含模板、配置和主体名册的仓库根目录。
+            soffice: 开发环境使用的 LibreOffice 可执行文件绝对路径。
+            platform_name: 可选运行平台名称。
+        """
+
+        resolved_application_root = application_root.resolve()
+        return cls(
+            app_root=resolved_application_root,
+            runtime_root=resolved_application_root / "runtime",
+            data_root=resolved_application_root / "data",
+            outputs_root=resolved_application_root / "outputs",
+            platform_name=platform_name or sys.platform,
+            repository_root=repository_root.resolve(),
+            soffice_override=soffice.resolve(),
+        )
+
+    @property
+    def resources_root(self) -> Path:
+        """返回当前模式的统一资源根；无参数。"""
+        return self.repository_root or self.runtime_root / "resources"
+
     @property
     def soffice(self) -> Path:
-        """返回目标平台包内 LibreOffice 可执行文件路径；无参数。"""
+        """返回当前模式使用的 LibreOffice 可执行文件路径；无参数。"""
+        if self.soffice_override is not None:
+            return self.soffice_override
         if self.platform_name == "win32":
             # Windows 命令行转换必须使用会等待任务结束的控制台入口。
             return self.runtime_root / "libreoffice/program/soffice.com"
@@ -59,22 +97,28 @@ class PortablePaths:
 
     @property
     def rulepacks(self) -> Path:
-        """返回发布规则包根目录；无参数。"""
-        return self.runtime_root / "resources/rulepacks"
+        """返回当前模式使用的规则包根目录；无参数。"""
+        if self.repository_root is not None:
+            return self.app_root / "rulepacks"
+        return self.resources_root / "rulepacks"
 
     @property
     def baseline_root(self) -> Path:
-        """返回冻结基准根目录；无参数。"""
-        return self.runtime_root / "resources/baselines"
+        """返回当前模式使用的基准根目录；无参数。"""
+        return self.repository_root or self.resources_root / "baselines"
 
     @property
     def entity_file(self) -> Path:
-        """返回会计主体名册路径；无参数。"""
-        return self.runtime_root / "resources/entities/会计主体清单20260907.xlsx"
+        """返回当前模式使用的会计主体名册路径；无参数。"""
+        if self.repository_root is not None:
+            return self.repository_root / "reference-data/会计主体清单20260907.xlsx"
+        return self.resources_root / "entities/会计主体清单20260907.xlsx"
 
     @property
     def config_file(self) -> Path:
-        """返回Web 审核运行配置路径；无参数。"""
+        """返回 Web 审核运行配置路径；无参数。"""
+        if self.repository_root is not None:
+            return self.repository_root / "audit-config.json"
         return self.rulepacks / "audit-config.json"
 
     @property

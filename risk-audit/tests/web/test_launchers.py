@@ -1,6 +1,7 @@
 """验证双平台启动器的前台运行契约。"""
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PACKAGING_ROOT = PROJECT_ROOT / "packaging"
+TOOLS_ROOT = PROJECT_ROOT / "tools"
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="需要 macOS 的 /bin/zsh 和执行权限")
@@ -94,3 +96,38 @@ def test_windows_launcher_switches_to_utf8_before_chinese_output() -> None:
     )
 
     assert code_page_index < first_chinese_output_index
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="需要 macOS 的 /bin/zsh 和执行权限")
+def test_development_launcher_uses_source_environment(tmp_path: Path) -> None:
+    """开发启动器必须清除便携根并用当前仓库源码启动；tmp_path 为隔离项目根。"""
+    project_root = tmp_path / "中文 开发项目"
+    launcher = project_root / "tools/start_dev.command"
+    launcher.parent.mkdir(parents=True)
+    shutil.copy2(TOOLS_ROOT / "start_dev.command", launcher)
+    fake_python = project_root / ".venv/bin/python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text(
+        "#!/bin/zsh\n"
+        "print -r -- \"ROOT=${RISK_AUDIT_APP_ROOT-unset}\"\n"
+        "print -r -- \"PATH=$PYTHONPATH\"\n"
+        "print -r -- \"ARGS=$*\"\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    environment = os.environ.copy()
+    environment["RISK_AUDIT_APP_ROOT"] = "/tmp/old-portable-package"
+
+    completed = subprocess.run(
+        ["/bin/zsh", str(launcher)],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0
+    assert "ROOT=unset" in completed.stdout
+    assert f"PATH={project_root / 'src'}" in completed.stdout
+    assert "ARGS=-m risk_audit_web.app" in completed.stdout

@@ -3,6 +3,7 @@
 import builtins
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -132,3 +133,111 @@ def test_application_paths_keep_source_mode_without_environment(tmp_path: Path) 
 
     assert not portable
     assert paths.app_root == (tmp_path / "source").resolve()
+
+
+def test_source_mode_reads_repository_resources_and_external_libreoffice(tmp_path: Path) -> None:
+    """源码模式必须读取仓库资源；tmp_path 为仓库父目录。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    application_root = tmp_path / "repository/risk-audit"
+    repository_root = application_root.parent
+    soffice = tmp_path / "LibreOffice.app/Contents/MacOS/soffice"
+
+    paths, portable = resolve_application_paths(
+        {"RISK_AUDIT_DEV_SOFFICE": str(soffice)},
+        application_root,
+        platform_name="darwin",
+    )
+
+    assert not portable
+    assert paths.rulepacks == application_root.resolve() / "rulepacks"
+    assert paths.baseline_root == repository_root.resolve()
+    assert paths.entity_file == repository_root.resolve() / "reference-data/会计主体清单20260907.xlsx"
+    assert paths.config_file == repository_root.resolve() / "audit-config.json"
+    assert paths.soffice == soffice.resolve()
+    assert paths.data_root == application_root.resolve() / "data"
+    assert paths.outputs_root == application_root.resolve() / "outputs"
+
+
+def test_source_mode_rejects_relative_libreoffice_override(tmp_path: Path) -> None:
+    """开发模式不得接受 LibreOffice 相对路径；tmp_path 为源码目录。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    with pytest.raises(ValueError, match="RISK_AUDIT_DEV_SOFFICE"):
+        resolve_application_paths(
+            {"RISK_AUDIT_DEV_SOFFICE": "relative/soffice"},
+            tmp_path / "source",
+            platform_name="darwin",
+        )
+
+
+def test_source_mode_uses_default_macos_libreoffice(tmp_path: Path) -> None:
+    """macOS 源码模式必须默认使用系统 LibreOffice；tmp_path 为源码目录。"""
+    from risk_audit_web.app import resolve_application_paths
+
+    paths, portable = resolve_application_paths(
+        {},
+        tmp_path / "source",
+        platform_name="darwin",
+    )
+
+    assert not portable
+    assert paths.soffice == Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+
+
+def test_runtime_identity_message_reports_development_versions(tmp_path: Path) -> None:
+    """开发启动提示必须显示模式、版本和资源根；tmp_path 为源码目录。"""
+    from risk_audit_web.app import runtime_identity_message
+    from risk_audit_web.task_paths import PortablePaths
+
+    application_root = tmp_path / "repository/risk-audit"
+    paths = PortablePaths.from_development_root(
+        application_root,
+        application_root.parent,
+        Path("/Applications/LibreOffice.app/Contents/MacOS/soffice"),
+        platform_name="darwin",
+    )
+
+    message = runtime_identity_message(
+        paths,
+        portable=False,
+        status={"app_version": "2.1.3", "rule_version": "1.9.21"},
+    )
+
+    assert message == (
+        "开发模式；应用版本=2.1.3；规则版本=1.9.21；"
+        f"资源根={application_root.parent.resolve()}"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows 虚拟环境入口不使用 POSIX 符号链接")
+def test_main_instance_preserves_virtualenv_executable_for_workers(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Worker 必须使用虚拟环境入口；monkeypatch/tmp_path 隔离主实例依赖。"""
+    from risk_audit_web.app import run_web_application
+    from risk_audit_web.task_paths import PortablePaths
+
+    virtualenv_python = tmp_path / ".venv/bin/python"
+    virtualenv_python.parent.mkdir(parents=True)
+    virtualenv_python.symlink_to(Path(os.sys.executable).resolve())
+    paths = PortablePaths.from_app_root(tmp_path / "source")
+    available_lock = SimpleNamespace(acquire=lambda: True)
+    captured_executables: list[Path] = []
+    monkeypatch.setattr("risk_audit_web.app.sys.executable", str(virtualenv_python))
+    monkeypatch.setattr(
+        "risk_audit_web.app.resolve_application_paths",
+        lambda *_args, **_kwargs: (paths, False),
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.single_instance.SingleInstanceLock",
+        lambda: available_lock,
+    )
+    monkeypatch.setattr(
+        "risk_audit_web.app.run_primary_instance",
+        lambda _paths, executable, _lock, **_kwargs: captured_executables.append(executable) or 0,
+    )
+
+    assert run_web_application([]) == 0
+    assert captured_executables == [virtualenv_python.absolute()]
