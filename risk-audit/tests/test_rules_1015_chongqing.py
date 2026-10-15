@@ -707,6 +707,74 @@ def test_reaudit_removes_deleted_rule_but_keeps_manual_opinion(tmp_path: Path) -
     assert output["岗位内控责任清单"]["G2"].value == "人工复核：请保留"
 
 
+def test_reaudit_streams_opinions_without_random_read_only_access(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """复审应顺序读取意见列，避免只读工作簿逐行随机访问。
+
+    Args:
+        tmp_path: pytest 提供的隔离输入和输出目录。
+        monkeypatch: pytest 提供的运行时替换工具。
+    """
+
+    source = tmp_path / "02财务管理三清单.xlsx"
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "岗位内控责任清单"
+    worksheet.append(["控制措施编号", "部门", "岗位名称", "人员姓名", "岗位职责", "角色", "审核意见"])
+    worksheet.append([
+        "财务管理-12-控制措施05",
+        "财务部",
+        "核算专责",
+        "张三",
+        "对资料完整性负主体责任",
+        "经办",
+        "人工复核：请保留\n【第17条】旧版已删除规则意见",
+    ])
+    workbook.save(source)
+    pack = load_pack(RELEASE)
+    file = FileRecord(
+        source,
+        Path(source.name),
+        sha256_file(source),
+        "xlsx",
+        ENTITY_CODE,
+        [],
+        False,
+        BUSINESS_CODE,
+        "default",
+        "three_lists",
+        business_id=BUSINESS_ID,
+    )
+    file.sheets = parse_workbook(file, source, pack["field_aliases"])
+
+    from openpyxl.worksheet._read_only import ReadOnlyWorksheet
+
+    def reject_random_cell_access(self, row: int, column: int) -> None:
+        """拒绝只读工作表的随机单元格访问。
+
+        Args:
+            self: openpyxl 只读工作表实例。
+            row: 待读取的行号。
+            column: 待读取的列号。
+        """
+
+        raise AssertionError(f"不得随机读取只读工作表：{row}, {column}")
+
+    monkeypatch.setattr(ReadOnlyWorksheet, "cell", reject_random_cell_access)
+
+    write_outputs(
+        [file],
+        [],
+        tmp_path / "output",
+        metadata_dir=tmp_path / "metadata",
+    )
+
+    output = load_workbook(tmp_path / "output" / source.name)
+    assert output["岗位内控责任清单"]["G2"].value == "人工复核：请保留"
+
+
 def test_reaudit_keeps_untouched_manual_rich_text(tmp_path: Path) -> None:
     """没有旧程序意见和本轮问题时，人工富文本单元格必须原样保留。
 

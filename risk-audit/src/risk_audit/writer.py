@@ -517,10 +517,17 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
                 if fp == str(file.relative_path) and st == sheet.title: values[row] = _join_opinions(messages, message_order)
             # 重新审核只替换可识别的程序意见，未带程序标识的人工意见必须保留。
             first_header_row = min(opinion_header_rows)
-            for row_number in range(first_header_row + 1, source_sheet.max_row + 1):
+            # 只读工作表的 cell() 随机访问会从 XML 开头重新扫描，意见列必须单次顺序读取。
+            opinion_rows = source_sheet.iter_rows(
+                min_row=first_header_row + 1,
+                max_row=source_sheet.max_row,
+                min_col=sheet.output_column,
+                max_col=sheet.output_column,
+            )
+            for row_number, (opinion_cell,) in enumerate(opinion_rows, start=first_header_row + 1):
                 if row_number in opinion_header_rows:
                     continue
-                source_value = source_sheet.cell(row_number, sheet.output_column).value
+                source_value = opinion_cell.value
                 source_lines = str(source_value or '').splitlines()
                 has_old_program_opinion = any(
                     _PROGRAM_OPINION_LINE_PATTERN.match(line.lstrip())
