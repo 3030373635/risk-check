@@ -1,0 +1,11 @@
+{
+  "audit_as_of": "2026-10-16",
+  "engine_compatibility": ">=1.9.28,<2.0.0",
+  "region_code": "chongqing",
+  "region_name": "重庆",
+  "schema_version": "1.0",
+  "source_document_sha256": "7e28ef968b6bbe73640ab8b59e9cb6bf38fd7c296791aa62edff74cf694b6239",
+  "status": "draft",
+  "title": "重庆风控矩阵及三清单 1016 审核确认稿规则包",
+  "version": "1.9.34"
+}

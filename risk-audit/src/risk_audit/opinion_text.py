@@ -328,6 +328,9 @@ def advice(check_id: str, kind: str, evidence: dict[str, Any]) -> str:
         if e.get("missing_fields"):
             return "矩阵缺少省公司0818模板要求保留的栏目，请对照模板补齐。"
         return pending + "矩阵栏目与省公司0818模板的对应关系尚未核清，请对照模板检查有无缺列，以及“是否适用及原因”是否保留。"
+    if check_id == "matrix_schema_1016":
+        # 1016 确认稿要求直接指出具体差异字段，不再输出泛化模板提示。
+        return str(e.get("unavailable_reason", "矩阵字段与基准模板存在差异"))
     if check_id == "applicability_content":
         category = e.get("issue_type")
         if category == "applicability_empty": return "本行未填写是否适用，请补充。"

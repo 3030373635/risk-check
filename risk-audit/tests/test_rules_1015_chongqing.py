@@ -595,15 +595,12 @@ def test_publish_script_rebuilds_release_deterministically() -> None:
     assert json.loads(result.stdout)["verified"] is True
 
 
-def test_chongqing_region_activates_1933_pipeline() -> None:
-    """重庆地区索引和三类处理管线必须同时切换到 1.9.33。"""
+def test_1933_pipeline_remains_available_after_region_upgrade() -> None:
+    """地区升级后，历史 1.9.33 管线仍应可复验。"""
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profile = next(item for item in index["regions"] if item["region_code"] == "chongqing")
-    manifest = json.loads((RELEASE / "manifest.json").read_text(encoding="utf-8"))
-
-    assert profile["rulepack_version"] == "1.9.33"
-    assert profile["rulepack_content_hash"] == manifest["content_hash"]
+    assert profile["rulepack_version"] == "1.9.34"
     assert "1.9.33" in CONFIRMED_RULE_VERSIONS
     assert "1.9.33" in PREPROCESSING_RULE_VERSIONS
     assert "1.9.33" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS

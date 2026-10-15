@@ -1,0 +1,43 @@
+{
+  "checks": [
+    {
+      "check_id": "person_name_single",
+      "location_policy": "row",
+      "message": {
+        "review": "每行岗位名称中只能有一个对应人员，若有多人，则应分多行填写。",
+        "violation": "每行岗位名称中只能有一个对应人员，若有多人，则应分多行填写。"
+      },
+      "on_unavailable": "review",
+      "operator": "text_pattern",
+      "operator_version": 1,
+      "params": {
+        "field": "person_names",
+        "patterns": [
+          "^[^\\s、，,]{1,4}$"
+        ]
+      }
+    }
+  ],
+  "display_code": "R05",
+  "enabled": true,
+  "revision": 3,
+  "rule_id": "chongqing.person_name_single",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "风控矩阵1016-重庆.docx 接受修订后的有效正文",
+  "title": "岗位清单中人员姓名规范性审核"
+}

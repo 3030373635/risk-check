@@ -22,6 +22,7 @@ ROLE_RESPONSIBILITIES = {
 }
 QUALITY_TERMS = ("一致性", "准确性", "真实性", "完整性", "有效性", "及时性", "合规性")
 RESPONSIBILITY_TYPES = tuple(ROLE_RESPONSIBILITIES.values())
+INCOMPATIBLE_EMPTY_VALUES = {"", "无", "不涉及", "-", "/"}
 RESPONSIBILITY_ITEM_SEPARATOR = re.compile(r"[、，,;；\n]+")
 SYSTEM_NAME_SEPARATOR = re.compile(r"[、，,;；/\n]+")
 RESPONSIBILITY_SEGMENT_SEPARATOR = re.compile(r"[-—－]", re.UNICODE)
@@ -94,11 +95,12 @@ def _separation_measure_key(record: Record) -> tuple[Any, ...]:
     return ()
 
 
-def _role(record: Record) -> str:
-    """读取明确角色，并在缺列或空值时从责任类型作窄范围推定。
+def _role(record: Record, infer_from_duty: bool = True) -> str:
+    """读取明确角色，并按规则版本决定是否从责任类型推定。
 
     Args:
         record: 岗位内控责任清单记录。
+        infer_from_duty: 明确角色为空时，是否允许根据职责中的责任类型推定。
 
     Returns:
         经办、审核、审批或监督；无法唯一确认时返回空字符串。
@@ -107,16 +109,19 @@ def _role(record: Record) -> str:
     explicit = norm_text(record.value("role"))
     if explicit:
         return explicit if explicit in VALID_ROLES else ""
+    if not infer_from_duty:
+        return ""
     duty = norm_text(record.value("duty"))
     matched = [role for role, responsibility in ROLE_RESPONSIBILITIES.items() if responsibility in duty]
     return matched[0] if len(matched) == 1 else ""
 
 
-def _person_names(record: Record) -> set[str]:
+def _person_names(record: Record, placeholder_terms: tuple[str, ...] = ()) -> set[str]:
     """返回岗位行中可核对的人员姓名集合。
 
     Args:
         record: 岗位内控责任清单记录。
+        placeholder_terms: 规则版本新增的人员占位关键词。
 
     Returns:
         已归一化且去除占位值的姓名集合。
@@ -131,7 +136,13 @@ def _person_names(record: Record) -> set[str]:
             norm_text(name)
             for name in RESPONSIBILITY_ITEM_SEPARATOR.split(record.value("person_names"))
         }
-    return {name for name in names if name and name not in {"无", "-", "/", "待定"}}
+    return {
+        name
+        for name in names
+        if name
+        and name not in {"无", "-", "/", "待定"}
+        and not any(term and term in name for term in placeholder_terms)
+    }
 
 
 def _duty_signature(value: str) -> str:
@@ -152,13 +163,16 @@ def duty_separation(ctx: CheckContext, params: dict[str, Any]) -> list[dict[str,
 
     Args:
         ctx: 当前主体业务内的岗位清单审核上下文。
-        params: 保留的规则参数，本版本不需要额外配置。
+        params: 可控制是否从职责反推角色，并配置人员占位关键词。
 
     Returns:
         角色缺失、角色非法、人员缺失及同人冲突问题。
     """
 
-    del params
+    infer_role_from_duty = bool(params.get("infer_role_from_duty", True))
+    person_placeholder_terms = tuple(
+        norm_text(value) for value in params.get("person_placeholders", [])
+    )
     issues: list[dict[str, Any]] = []
     groups: dict[tuple[str, str, str, tuple[Any, ...]], list[Record]] = defaultdict(list)
     for record in ctx.all_records:
@@ -169,18 +183,25 @@ def duty_separation(ctx: CheckContext, params: dict[str, Any]) -> list[dict[str,
             issues.append(_issue(record, "explicit_role_missing", "请补充明确角色"))
         elif explicit not in VALID_ROLES:
             issues.append(_issue(record, "invalid_role", "请核实角色。", actual_role=record.value("role")))
-        if not _person_names(record):
+        if not _person_names(record, person_placeholder_terms):
             issues.append(_issue(record, "person_missing", "请补充具体人员后核实岗位分离"))
         key = _separation_measure_key(record)
-        if key and _role(record):
+        if key and _role(record, infer_role_from_duty):
             groups[(*_scope_key(record), key)].append(record)
 
     for rows in groups.values():
-        handlers = [record for record in rows if _role(record) == "经办"]
+        handlers = [record for record in rows if _role(record, infer_role_from_duty) == "经办"]
         for counterpart_role, conflict_type in (("审核", "经办审核"), ("监督", "经办监督")):
-            counterparts = [record for record in rows if _role(record) == counterpart_role]
+            counterparts = [
+                record
+                for record in rows
+                if _role(record, infer_role_from_duty) == counterpart_role
+            ]
             for handler, counterpart in product(handlers, counterparts):
-                shared_people = _person_names(handler) & _person_names(counterpart)
+                shared_people = (
+                    _person_names(handler, person_placeholder_terms)
+                    & _person_names(counterpart, person_placeholder_terms)
+                )
                 if not shared_people:
                     continue
                 # 确认稿要求部门、完整人员和除责任类型外的职责正文均一致。
@@ -249,7 +270,7 @@ def responsibility_phrase(ctx: CheckContext, params: dict[str, Any]) -> list[dic
 
     Args:
         ctx: 岗位内控责任清单审核上下文。
-        params: 可覆盖责任属性和责任类型的规则参数。
+        params: 可覆盖责任属性、责任类型，并控制是否分别输出缺项意见。
 
     Returns:
         不满足确认稿双条件的岗位职责问题。
@@ -257,15 +278,181 @@ def responsibility_phrase(ctx: CheckContext, params: dict[str, Any]) -> list[dic
 
     qualities = tuple(params.get("qualities", QUALITY_TERMS))
     responsibility_types = tuple(params.get("responsibility_types", RESPONSIBILITY_TYPES))
-    opinion = (
+    combined_opinion = (
         "岗位职责请按照国网标准句式编制，‘对……的一致性/准确性/真实性/完整性/有效性/"
         "及时性/合规性负主体/审核/审批/监督责任。’"
     )
-    issues = []
+    split_opinions = bool(params.get("split_opinions", False))
+    issues: list[dict[str, Any]] = []
     for record in ctx.records:
         duty = norm_text(record.value("duty"))
-        if duty and not (any(value in duty for value in qualities) and any(value in duty for value in responsibility_types)):
-            issues.append(_issue(record, "responsibility_phrase_missing", opinion))
+        if not duty:
+            continue
+        quality_missing = not any(value in duty for value in qualities)
+        responsibility_type_missing = not any(value in duty for value in responsibility_types)
+        if not split_opinions and (quality_missing or responsibility_type_missing):
+            issues.append(_issue(record, "responsibility_phrase_missing", combined_opinion))
+            continue
+        if quality_missing:
+            issues.append(_issue(
+                record,
+                "responsibility_quality_missing",
+                "对……的一致性/准确性/真实性/完整性/有效性/及时性/合规性……",
+            ))
+        if responsibility_type_missing:
+            issues.append(_issue(
+                record,
+                "responsibility_type_missing",
+                "……负主体/审核/审批/监督责任。",
+            ))
+    return issues
+
+
+def _incompatible_position(value: str) -> tuple[str, str] | None:
+    """解析“部门-岗位”形式的不相容岗位。
+
+    Args:
+        value: 岗位 A 或岗位 B 的原始文字。
+
+    Returns:
+        规范化后的部门和岗位；格式不完整时返回 ``None``。
+    """
+
+    parts = [norm_text(part) for part in RESPONSIBILITY_SEGMENT_SEPARATOR.split(value, maxsplit=1)]
+    if len(parts) != 2 or not all(parts):
+        return None
+    return parts[0], parts[1]
+
+
+def _has_incompatible_content(record: Record) -> bool:
+    """判断不相容岗位清单行是否包含需要审核的有效内容。
+
+    Args:
+        record: 不相容岗位清单记录。
+
+    Returns:
+        编号或岗位字段包含非占位内容时返回 ``True``。
+    """
+
+    values = (
+        norm_text(record.value("measure_id")),
+        norm_text(record.value("position_a")),
+        norm_text(record.value("position_b")),
+        norm_text(record.value("position_c")),
+    )
+    return any(value not in INCOMPATIBLE_EMPTY_VALUES for value in values)
+
+
+def incompatible_position_alignment(ctx: CheckContext, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """核对矩阵不相容标记、清单编号及岗位 A、B 的填写内容。
+
+    Args:
+        ctx: 包含矩阵和不相容岗位清单记录的审核上下文。
+        params: 保留的规则参数，本版本不需要额外配置。
+
+    Returns:
+        双向缺失、格式错误、跨部门或岗位相同问题。
+    """
+
+    del params
+    matrices: dict[tuple[str, str, str, tuple[Any, ...]], list[Record]] = defaultdict(list)
+    incompatible_rows: dict[tuple[str, str, str, tuple[Any, ...]], list[Record]] = defaultdict(list)
+    unkeyed_incompatible_rows: list[Record] = []
+    issues: list[dict[str, Any]] = []
+    for record in ctx.all_records:
+        key = _measure_key(record)
+        if (
+            record.record_type == "incompatible_position"
+            and _has_incompatible_content(record)
+            and not key
+        ):
+            issues.append(_issue(record, "incompatible_measure_id_missing", "请补充控制措施编号"))
+            # 缺编号只阻断矩阵关联，岗位内容仍需继续执行格式和冲突检查。
+            unkeyed_incompatible_rows.append(record)
+            continue
+        if not key:
+            continue
+        full_key = (*_scope_key(record), key)
+        if record.record_type == "matrix":
+            matrices[full_key].append(record)
+        elif record.record_type == "incompatible_position" and _has_incompatible_content(record):
+            incompatible_rows[full_key].append(record)
+
+    for key, matrix_rows in matrices.items():
+        matching_rows = incompatible_rows.get(key, [])
+        complete_rows = [
+            record
+            for record in matching_rows
+            if norm_text(record.value("position_a")) not in INCOMPATIBLE_EMPTY_VALUES
+            and norm_text(record.value("position_b")) not in INCOMPATIBLE_EMPTY_VALUES
+        ]
+        for matrix in matrix_rows:
+            marked = norm_text(matrix.value("incompatible_control")) == "√"
+            if marked and not complete_rows:
+                issues.append(_issue(matrix, "incompatible_list_missing", "请补充不相容岗位清单"))
+            elif not marked and matching_rows:
+                issues.append(_issue(matrix, "incompatible_matrix_unmarked", "请核实是否存在不相容岗位"))
+
+    for key, rows in incompatible_rows.items():
+        if key in matrices:
+            continue
+        for record in rows:
+            issues.append(_issue(
+                record,
+                "incompatible_matrix_missing",
+                "矩阵中没有该条控制措施，请核实是否需要保留不相容岗位清单记录",
+            ))
+
+    position_groups = [*incompatible_rows.values(), *([record] for record in unkeyed_incompatible_rows)]
+    for rows in position_groups:
+        positions_by_record: list[tuple[Record, list[tuple[str, str]]]] = []
+        for record in rows:
+            raw_position_a = norm_text(record.value("position_a"))
+            raw_position_b = norm_text(record.value("position_b"))
+            # 岗位为空时，确认稿指定在对应矩阵行统一提示补充清单。
+            if (
+                raw_position_a in INCOMPATIBLE_EMPTY_VALUES
+                or raw_position_b in INCOMPATIBLE_EMPTY_VALUES
+            ):
+                continue
+            position_values = [raw_position_a, raw_position_b]
+            raw_position_c = norm_text(record.value("position_c"))
+            if raw_position_c not in INCOMPATIBLE_EMPTY_VALUES:
+                position_values.append(raw_position_c)
+            parsed_positions = [_incompatible_position(value) for value in position_values]
+            if any(position is None for position in parsed_positions):
+                issues.append(_issue(
+                    record,
+                    "incompatible_position_format_invalid",
+                    "不相容岗位请按‘部门-岗位’的形式填写",
+                ))
+                continue
+            # 前面已排除 None，此处只保留可比较的“部门-岗位”二元组。
+            valid_positions = [position for position in parsed_positions if position is not None]
+            positions_by_record.append((record, valid_positions))
+
+        all_positions = [
+            position
+            for _, record_positions in positions_by_record
+            for position in record_positions
+        ]
+        departments = {department for department, _ in all_positions}
+        job_counts: dict[str, int] = defaultdict(int)
+        for _, job in all_positions:
+            job_counts[job] += 1
+        for record, record_positions in positions_by_record:
+            if len(departments) > 1:
+                issues.append(_issue(
+                    record,
+                    "incompatible_cross_department",
+                    "跨部门岗位天然不相容无需填写，请核实矩阵不相容岗位标记是否准确",
+                ))
+            if any(job_counts[job] > 1 for _, job in record_positions):
+                issues.append(_issue(
+                    record,
+                    "incompatible_same_position",
+                    "岗位名称相同，请确认是否为不相容岗位",
+                ))
     return issues
 
 
@@ -309,13 +496,15 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
 
     Args:
         ctx: 包含矩阵和系统规则清单记录的审核上下文。
-        params: 保留的规则参数，本版本不需要额外配置。
+        params: 可控制系统名称、建设状态校验，并指定矩阵缺失时的意见。
 
     Returns:
         确认稿第11条规定的五类一致性问题。
     """
 
-    del params
+    compare_system_names = bool(params.get("compare_system_names", True))
+    validate_build_status = bool(params.get("validate_build_status", False))
+    matrix_missing_opinion = params.get("matrix_missing_opinion", "需核实矩阵中控制方式是否正确")
     matrices: dict[tuple[str, str, str, tuple[Any, ...]], list[Record]] = defaultdict(list)
     systems: dict[tuple[str, str, str, tuple[Any, ...]], list[Record]] = defaultdict(list)
     for record in ctx.all_records:
@@ -341,11 +530,15 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
         for system in system_rows:
             build_status = norm_text(system.value("build_status"))
             if build_status in SYSTEM_MODES and not matrix_rows:
-                issues.append(_issue(system, "matrix_measure_missing", "需核实矩阵中控制方式是否正确"))
+                issues.append(_issue(system, "matrix_measure_missing", matrix_missing_opinion))
                 continue
             for matrix in matrix_rows:
                 matrix_mode = norm_text(matrix.value("control_mode"))
-                if build_status in SYSTEM_MODES and matrix_mode in SYSTEM_MODES and build_status != matrix_mode:
+                if (
+                    matrix_mode in SYSTEM_MODES
+                    and build_status != matrix_mode
+                    and (validate_build_status or build_status in SYSTEM_MODES)
+                ):
                     issues.append(_issue(system, "build_status_mismatch", "需核实建设状态是否正确"))
                 elif matrix_mode not in SYSTEM_MODES:
                     issues.append(_issue(
@@ -356,7 +549,7 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
 
         matrix_names = set().union(*(_system_names(row.value("control_system")) for row in matrix_rows)) if matrix_rows else set()
         system_names = set().union(*(_system_names(row.value("system_name")) for row in system_rows))
-        if matrix_rows and matrix_names != system_names:
+        if compare_system_names and matrix_rows and matrix_names != system_names:
             # 系统名称问题落在系统规则行，便于直接修改清单。
             for system in system_rows:
                 issues.append(_issue(

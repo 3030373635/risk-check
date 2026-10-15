@@ -755,6 +755,7 @@ def build_registry() -> CapabilityRegistry:
     )
     from risk_audit.checks.rules_1015_chongqing import (
         duty_separation,
+        incompatible_position_alignment,
         matrix_duty_alignment,
         person_multiple_positions,
         responsibility_format,
@@ -807,5 +808,37 @@ def build_registry() -> CapabilityRegistry:
         chongqing_evidence,
         ['row'],
         responsibility_name_alignment,
+    )
+    duty_separation_capability = r.get('chongqing_duty_separation', 1)
+    r.register(replace(
+        duty_separation_capability,
+        version=2,
+        optional_params=duty_separation_capability.optional_params | {
+            'infer_role_from_duty', 'person_placeholders',
+        },
+    ))
+    responsibility_phrase_capability = r.get('chongqing_responsibility_phrase', 1)
+    r.register(replace(
+        responsibility_phrase_capability,
+        version=2,
+        optional_params=responsibility_phrase_capability.optional_params | {'split_opinions'},
+    ))
+    system_control_capability = r.get('chongqing_system_control_consistency', 1)
+    r.register(replace(
+        system_control_capability,
+        version=2,
+        optional_params=system_control_capability.optional_params | {
+            'compare_system_names', 'matrix_missing_opinion', 'validate_build_status',
+        },
+    ))
+    reg(
+        'chongqing_incompatible_position_alignment',
+        ['package'],
+        [],
+        [],
+        [],
+        chongqing_evidence,
+        ['row'],
+        incompatible_position_alignment,
     )
     return r
