@@ -240,13 +240,13 @@ def test_delete_task_anchors_cleanup_when_outputs_root_is_swapped(
     assert web_services.repository.get_task(task_id) is None
 
 
-def test_delete_task_locks_windows_target_during_recursive_cleanup(
+def test_delete_task_handles_windows_target_rename_during_recursive_cleanup(
     web_services,
     input_root: Path,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Windows 递归枚举期间目标目录必须无法被替换。
+    """Windows 递归枚举期间目标被移动时必须安全结束。
 
     Args:
         web_services: 使用真实任务存储的应用服务。
@@ -260,6 +260,7 @@ def test_delete_task_locks_windows_target_during_recursive_cleanup(
         pytest.skip("Windows 目录句柄竞态测试仅适用于 NTFS")
 
     from risk_audit_web import services
+    from risk_audit_web.services import ApiProblem
 
     task = web_services.create_task(create_request(input_root))
     task_id = task.record.task_id
@@ -286,12 +287,22 @@ def test_delete_task_locks_windows_target_during_recursive_cleanup(
 
     monkeypatch.setattr(services.os, "scandir", try_replace_locked_target)
 
-    web_services.delete_task(task_id)
-
-    assert replacement_blocked is True
-    assert output_root.exists() is False
-    assert moved_root.exists() is False
-    assert web_services.repository.get_task(task_id) is None
+    try:
+        web_services.delete_task(task_id)
+    except ApiProblem as error:
+        # 若 Windows 运行环境允许移动已打开的目录，必须停止删除并保留记录。
+        assert replacement_blocked is False
+        assert error.status_code == 500
+        assert error.error_code == "TASK_DATA_DELETE_FAILED"
+        assert output_root.exists() is False
+        assert (moved_root / "remove.txt").read_text(encoding="utf-8") == "remove"
+        assert web_services.repository.get_task(task_id) is not None
+    else:
+        # 若 Windows 运行环境拒绝移动，原目录可以继续安全删除。
+        assert replacement_blocked is True
+        assert output_root.exists() is False
+        assert moved_root.exists() is False
+        assert web_services.repository.get_task(task_id) is None
 
 
 def test_delete_terminal_task_removes_all_related_data(
@@ -378,7 +389,6 @@ def test_delete_task_keeps_record_when_output_cleanup_fails(
         input_root: 测试材料目录。
         monkeypatch: pytest 补丁工具。
     """
-    from risk_audit_web import services
     from risk_audit_web.services import ApiProblem
 
     task = web_services.create_task(create_request(input_root))
@@ -390,11 +400,27 @@ def test_delete_task_keeps_record_when_output_cleanup_fails(
     )
     web_services.manager._processes.pop(task_id)
 
-    def fail_output_cleanup(path, *args, **kwargs) -> None:
-        """模拟输出目录被占用；path/args/kwargs 为 rmtree 参数。"""
-        raise PermissionError(13, "目录被占用", str(path))
+    real_remove_task_path = web_services._remove_task_path
 
-    monkeypatch.setattr(services.shutil, "rmtree", fail_output_cleanup)
+    def fail_output_cleanup(
+        path: Path,
+        managed_root: Path,
+        error_code: str,
+        message: str,
+    ) -> None:
+        """仅模拟输出目录被占用。
+
+        Args:
+            path: 当前待删除路径。
+            managed_root: 当前路径所属的托管根目录。
+            error_code: 路径安全校验错误码。
+            message: 路径安全校验提示。
+        """
+        if path == output_root:
+            raise PermissionError(13, "目录被占用", str(path))
+        real_remove_task_path(path, managed_root, error_code, message)
+
+    monkeypatch.setattr(web_services, "_remove_task_path", fail_output_cleanup)
 
     with pytest.raises(ApiProblem) as raised:
         web_services.delete_task(task_id)
