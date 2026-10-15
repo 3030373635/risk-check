@@ -10,6 +10,8 @@ import re
 import sys
 from threading import Lock
 
+from risk_audit_web.product import PRODUCT_REGION_CODE
+
 
 _INVALID_WINDOWS_CHARACTERS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _OUTPUT_RESERVATION_LOCK = Lock()
@@ -101,7 +103,8 @@ class PortablePaths:
     @property
     def task_database(self) -> Path:
         """返回任务 SQLite 数据库路径；无参数。"""
-        return self.data_root / "tasks.sqlite3"
+        # 湖南与重庆分支共用 data 目录时，必须按产品地区隔离数据库。
+        return self.data_root / f"tasks-{PRODUCT_REGION_CODE}.sqlite3"
 
 
 def sanitize_directory_name(raw_name: str) -> str:
