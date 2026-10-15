@@ -187,6 +187,43 @@ def test_first_five_rows_use_coherent_fuzzy_header_fallback(tmp_path):
     }
 
 
+def test_exact_department_header_wins_over_fuzzy_instruction_column(tmp_path):
+    """精确部门表头优先于说明文字中的模糊命中；tmp_path 为临时目录。"""
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "岗位内控责任清单"
+    sheet.append(["岗位内控责任清单"])
+    sheet.append([
+        "部门",
+        "岗位名称",
+        "人员姓名",
+        "岗位职责编号",
+        "角色",
+        "岗位职责",
+        "控制措施编号",
+        "注意：对应组织部erp现有人员的部门（分公司）、岗位和人员",
+    ])
+    sheet.append([
+        "综合服务中心",
+        "综合服务班班长",
+        "张三",
+        1,
+        "审核",
+        "对检查记录的真实性负审核责任。",
+        "物业后勤业务-8.岗位设置-控制措施02",
+        None,
+    ])
+    path = tmp_path / "物业后勤岗位清单.xlsx"
+    book.save(path)
+    file = FileRecord(path, Path(path.name), "digest", "xlsx", "E1", [], False, "30", "default", "three_lists")
+
+    parsed = parse_workbook_v180(file, path, ALIASES)
+
+    position_sheet = next(item for item in parsed if item.sheet_type == "position_duty")
+    assert position_sheet.columns["department"] == 1
+    assert position_sheet.records[0].value("department") == "综合服务中心"
+
+
 @pytest.mark.parametrize("header_row,complete", [(3, False), (6, True)])
 def test_fuzzy_header_requires_complete_core_fields_within_first_five_rows(tmp_path, header_row, complete):
     """模糊回退受完整字段集和前五行限制；参数指定表头行与字段完整性。"""

@@ -210,7 +210,12 @@ def header_row_matches(values: list[str], sheet_type: str, reverse: dict[str, st
     exact = [header_spec(value, sheet_type, reverse, extended=extended) for value in values]
     if not allow_fuzzy:
         return exact
-    combined = [matched if matched[0] else fuzzy_header_spec(value, reverse) for value, matched in zip(values, exact)]
+    exact_fields = {field for field, _ in exact if field}
+    combined = []
+    for value, matched in zip(values, exact):
+        fuzzy = fuzzy_header_spec(value, reverse) if not matched[0] else (None, "")
+        # 精确表头已确定字段时，说明文字中的同字段关键词不再形成第二候选列。
+        combined.append(matched if matched[0] or fuzzy[0] in exact_fields else fuzzy)
     fields = {field for field, _ in combined if field}
     # 模糊命中只在同一行形成完整核心字段集时生效，零散相似文字仍按精确结果处理。
     return combined if HEADER_REQUIREMENTS.get(sheet_type, set()) <= fields else exact
