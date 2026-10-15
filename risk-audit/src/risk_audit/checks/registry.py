@@ -753,4 +753,59 @@ def build_registry() -> CapabilityRegistry:
         ['row'],
         control_measure_completeness,
     )
+    from risk_audit.checks.rules_1015_chongqing import (
+        duty_separation,
+        matrix_duty_alignment,
+        person_multiple_positions,
+        responsibility_format,
+        responsibility_name_alignment,
+        responsibility_phrase as chongqing_responsibility_phrase,
+        role_responsibility_mapping,
+        system_control_consistency as chongqing_system_control_consistency,
+    )
+    chongqing_evidence = [
+        'issue_type', 'opinion', 'actual_role', 'conflict_type', 'conflict_people',
+        'related_file', 'related_sheet', 'related_row', 'measure_id', 'role',
+        'expected', 'expected_system_names', 'actual_system_names', 'department',
+        'position', 'positions',
+    ]
+    # 1015 确认稿使用独立能力名，避免旧重庆发布包的冻结判断被原地改写。
+    for name, runner in (
+        ('chongqing_duty_separation', duty_separation),
+        ('chongqing_matrix_duty_alignment', matrix_duty_alignment),
+        ('chongqing_system_control_consistency', chongqing_system_control_consistency),
+        ('chongqing_responsibility_format', responsibility_format),
+        ('chongqing_person_multiple_positions', person_multiple_positions),
+    ):
+        reg(name, ['package'], [], [], [], chongqing_evidence, ['row'], runner)
+    reg(
+        'chongqing_responsibility_phrase',
+        ['position_duty'],
+        [],
+        ['qualities', 'responsibility_types'],
+        [],
+        chongqing_evidence,
+        ['row'],
+        chongqing_responsibility_phrase,
+    )
+    reg(
+        'chongqing_role_responsibility_mapping',
+        ['position_duty'],
+        [],
+        ['mapping'],
+        [],
+        chongqing_evidence,
+        ['row'],
+        role_responsibility_mapping,
+    )
+    reg(
+        'chongqing_responsibility_name_alignment',
+        ['package'],
+        [],
+        ['department_exceptions', 'position_exceptions'],
+        [],
+        chongqing_evidence,
+        ['row'],
+        responsibility_name_alignment,
+    )
     return r

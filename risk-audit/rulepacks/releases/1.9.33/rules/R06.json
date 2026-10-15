@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "handler_reviewer_supervisor_overlap",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_duty_separation",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R06",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.duty_separation_1015",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1015-重庆.docx 接受修订后的有效正文",
+  "title": "经办与审核、监督人员分离"
+}

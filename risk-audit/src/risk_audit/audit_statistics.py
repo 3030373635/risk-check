@@ -19,6 +19,7 @@ from risk_audit.writer import _output_path
 
 RULE_LABEL_PATTERN = re.compile(r'【第(\d+)条】')
 PREPROCESSING_LABEL = '【预处理】'
+MATERIAL_LABEL = '【资料级】'
 COUNT_SUFFIX_PATTERN = re.compile(r'\s+\d+\s*条[.。]?\s*$')
 BRANCH_KEY_POINT_SUMMARIES = {
     'missing_key_points': '【第17条】缺少供电分公司适用清单要求的关键控制点',
@@ -46,7 +47,8 @@ def _unit_and_business(
 
     business_directory = file.business_directory or file.relative_path.parent
     if business_directory == Path('.'):
-        return root_subject_name or '未识别主题', package_name
+        business_name = str(file.preservation.get('business_name') or package_name)
+        return root_subject_name or '未识别主题', business_name
     # 扫描阶段已排除“三清单”等附件子目录，统计不再自行猜测目录层级。
     business_name = business_directory.name
     unit_directories = business_directory.parts[:-1]
@@ -62,10 +64,43 @@ def _business_group_key(file: FileRecord, business_name: str) -> tuple[str, str]
         business_name: 当前文件解析出的业务显示名称。
     """
 
-    # 有业务目录时以目录为唯一分组身份，文件上的识别结果不得拆分它。
-    business_directory = file.business_directory or file.relative_path.parent
-    identity = f'directory:{business_directory.as_posix()}'
+    del business_name
+    # 统计与审核运行器共用标准业务身份，物理目录只用于展示。
+    business_identity = file.business_id or file.business_code or ''
+    identity = f'business:{file.entity_code}:{business_identity}'
     return identity, file.variant_id or 'default'
+
+
+def _register_unit_group(
+    grouped: dict,
+    file: FileRecord,
+    package_name: str,
+    root_subject_name: str,
+) -> tuple[str, dict] | None:
+    """按稳定主体身份登记统计外层分组。
+
+    Args:
+        grouped: 按主体和业务归集的统计容器。
+        file: 当前业务文件。
+        package_name: 审核包名称。
+        root_subject_name: 输入根本身是业务目录时的外层主体名。
+
+    Returns:
+        稳定主体键及其统计容器；无法定位时返回 None。
+    """
+
+    location = _unit_and_business(file, package_name, root_subject_name)
+    if location is None:
+        return None
+    unit_name, _ = location
+    unit_identity = f'entity:{file.entity_code}' if file.entity_code else f'path:{unit_name}'
+    unit = grouped.setdefault(
+        unit_identity,
+        {'name': unit_name, 'source_names': set(), 'businesses': {}},
+    )
+    unit['source_names'].add(unit_name)
+    unit['name'] = '、'.join(sorted(unit['source_names'], key=natural_key))
+    return unit_identity, unit
 
 
 def _register_grouped_business(
@@ -83,16 +118,22 @@ def _register_grouped_business(
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
     """
 
-    location = _unit_and_business(file, package_name, root_subject_name) if file is not None else None
-    if location is None:
+    if file is None:
         return None
-    unit_name, business_name = location
+    location = _unit_and_business(file, package_name, root_subject_name)
+    unit_registration = _register_unit_group(grouped, file, package_name, root_subject_name)
+    if location is None or unit_registration is None:
+        return None
+    _, business_name = location
+    unit_key, unit = unit_registration
     business_key = _business_group_key(file, business_name)
-    business = grouped[unit_name].setdefault(
+    business = unit['businesses'].setdefault(
         business_key,
-        {'name': business_name, 'items': {}},
+        {'name': business_name, 'source_names': set(), 'items': {}},
     )
-    return unit_name, business
+    business['source_names'].add(business_name)
+    business['name'] = '、'.join(sorted(business['source_names'], key=natural_key))
+    return unit_key, business
 
 
 def _register_material_finding_business(
@@ -138,17 +179,22 @@ def _register_material_finding_business(
             root_subject_name,
         )
 
-    location = _unit_and_business(host_file, package_name, root_subject_name)
-    if location is None:
+    unit_registration = _register_unit_group(
+        grouped,
+        host_file,
+        package_name,
+        root_subject_name,
+    )
+    if unit_registration is None:
         return None
-    unit_name, _ = location
+    unit_key, unit = unit_registration
     business_name = str(finding.evidence.get('business_name') or finding.business_id)
     business_key = (f'finding:{finding.business_id}', finding.variant_id or 'default')
-    business = grouped[unit_name].setdefault(
+    business = unit['businesses'].setdefault(
         business_key,
         {'name': business_name, 'items': {}},
     )
-    return unit_name, business
+    return unit_key, business
 
 
 def _finding_for_occurrence(
@@ -250,13 +296,15 @@ def _normalized_message(
     """
 
     category, rules = group
+    is_material = message.startswith(MATERIAL_LABEL)
     body = RULE_LABEL_PATTERN.sub('', message).strip()
+    body = body.removeprefix(MATERIAL_LABEL).strip()
     body = body.removeprefix(PREPROCESSING_LABEL).strip()
     body = COUNT_SUFFIX_PATTERN.sub('', body).strip()
     prefix = (
         PREPROCESSING_LABEL
         if category == "preprocessing"
-        else ''.join(f'【第{number}条】' for number in rules)
+        else f'{MATERIAL_LABEL if is_material else ""}{"".join(f"【第{number}条】" for number in rules)}'
     )
     return f'{prefix}{body}'
 
@@ -268,7 +316,7 @@ def _program_opinions(program_text: str) -> list[str]:
         return []
     starts = [
         match.start()
-        for match in re.finditer(r'(?m)^(?:【第\d+条】|【预处理】)', text)
+        for match in re.finditer(r'(?m)^(?:【资料级】【第\d+条】|【第\d+条】|【预处理】)', text)
     ]
     if not starts:
         return [text]
@@ -423,18 +471,18 @@ def _business_records(items: dict) -> list[str]:
 def _statistics_source_data(grouped: dict) -> dict[str, list[dict[str, object]]]:
     """转换为两种报告共用的数据结构；grouped 为按主体和业务归集的数据。"""
     units: list[dict[str, object]] = []
-    for unit_name in sorted(grouped, key=natural_key):
+    for unit in sorted(grouped.values(), key=lambda item: natural_key(item['name'])):
         businesses = [
             {
                 'name': business['name'],
                 'records': _business_records(business['items']),
             }
             for business in sorted(
-                grouped[unit_name].values(),
+                unit['businesses'].values(),
                 key=lambda item: natural_key(item['name']),
             )
         ]
-        units.append({'path': unit_name, 'businesses': businesses})
+        units.append({'path': unit['name'], 'businesses': businesses})
     return {'units': units}
 
 

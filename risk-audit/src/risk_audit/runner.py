@@ -48,6 +48,7 @@ from risk_audit.pipeline_versions import (
 
 
 ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
+ENTITY_LEVEL_RULE_IDS = frozenset({"chongqing.person_multiple_positions_1015"})
 
 
 def material_naming_keywords(pack: dict[str, Any]) -> dict[str, list[str]] | None:
@@ -241,6 +242,32 @@ def _has_failures(files: list[FileRecord], statuses: list[CheckStatus], warnings
     return bool(collect_incomplete_items(files, statuses, warnings))
 
 
+def _remove_resolved_pending_warnings(
+    warnings: list[dict[str, Any]],
+    resolved_finding_keys: set[str],
+) -> list[dict[str, Any]]:
+    """移除已在后续写回中解决的资料级待回填告警。
+
+    Args:
+        warnings: 当前主体或整批已累计的输出告警。
+        resolved_finding_keys: 本轮后续写回已成功承载的 finding 标识。
+
+    Returns:
+        仅保留仍然有未解决 finding 的告警列表。
+    """
+
+    remaining_warnings: list[dict[str, Any]] = []
+    for warning in warnings:
+        finding_keys = set(warning.get('finding_keys') or [])
+        if warning.get('type') != 'no_writable_sheet' or not finding_keys:
+            remaining_warnings.append(warning)
+            continue
+        remaining_keys = sorted(finding_keys - resolved_finding_keys)
+        if remaining_keys:
+            remaining_warnings.append({**warning, 'finding_keys': remaining_keys})
+    return remaining_warnings
+
+
 def _remove_legacy_opinion_outputs(output_root: Path) -> None:
     """清理输出目录中的旧辅助资料；output_root 为本次审核副本根目录。"""
     audit_directory = output_root / "_risk_audit"
@@ -325,23 +352,33 @@ def _file_business_directory(file: FileRecord) -> Path:
 
 
 def _business_keys(scope: dict[str, Any], files: list[FileRecord]) -> list[tuple[str, str, str, str]]:
-    """确定按目录隔离的审核业务单元。
+    """确定按主体、标准业务和变体归并的审核单元。
 
     Args:
         scope: 当前主体的应报业务范围。
         files: 当前主体的扫描文件。
     """
 
-    # 目录身份与标准规则身份分开保存，两个目录映射到同一规则时仍须独立审核。
-    file_keys = {
-        (
-            _file_business_directory(file).as_posix(),
+    directories_by_identity: dict[tuple[str, str, str], set[str]] = {}
+    for file in files:
+        if file.material_type == 'explanation':
+            continue
+        identity = (
             file.business_id or file.business_code or '',
             file.business_code or '',
             file.variant_id,
         )
-        for file in files
-        if file.material_type != 'explanation'
+        directories_by_identity.setdefault(identity, set()).add(
+            _file_business_directory(file).as_posix()
+        )
+    file_keys = {
+        (
+            next(iter(directories)) if len(directories) == 1 else '',
+            business_id,
+            business_code,
+            variant_id,
+        )
+        for (business_id, business_code, variant_id), directories in directories_by_identity.items()
     }
     keys = set(file_keys)
     submitted_identities = {(key[1], key[3]) for key in file_keys}
@@ -633,6 +670,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         group_limitations: list[dict[str, Any]] = []
         group_warnings: list[dict[str, Any]] = []
         group_business_results: list[dict[str, Any]] = []
+        entity_rule_files: list[FileRecord] = []
         entity_result = {'entity_key': entity_key, 'entity_code': entity_key if entity_key in entities else '',
                          'entity_name': entity_name, 'input_files': len(group_files), 'run_dir': str(entity_dir),
                          'entity_registry_status': identity['entity_registry_status'],
@@ -726,6 +764,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                     for submitted_business_id in local['_entity_business_ids']
                 }
                 local['_current_business_id'] = business_id
+                # 一人多岗必须在同一主体的全部业务解析完成后统一运行。
+                local['rules'] = [
+                    rule for rule in local['rules']
+                    if rule['rule_id'] not in ENTITY_LEVEL_RULE_IDS
+                ]
                 local['submission_scope'] = {**deepcopy(scopes[entity_key]), 'businesses': [
                     business for business in scopes[entity_key]['businesses']
                     if (business.get('business_id') or business['business_code'], business.get('variant_id', 'default'))
@@ -814,6 +857,9 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             else:
                 for warning in unit_warnings:
                     logger.warning('业务%s输出告警：%s', unit_label, warning)
+            if unit_failure is None and not _has_failures(unit_files, unit_statuses, unit_warnings):
+                # 主体级规则不得重新纳入预处理、审核或写回失败的业务文件。
+                entity_rule_files.extend(unit_files)
             unit_completed = (
                 write
                 and unit_failure is None
@@ -878,6 +924,100 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 message='业务处理失败，已跳过' if unit_failure is not None else '业务审核已完成',
             ))
             raise_if_cancelled(cancel_check)
+        entity_level_rules = [
+            rule for rule in pack['rules']
+            if rule['rule_id'] in ENTITY_LEVEL_RULE_IDS
+        ]
+        parsed_entity_files = [
+            file for file in entity_rule_files
+            if file.material_type != 'explanation' and file.sheets and not file.parse_errors
+        ]
+        if entity_level_rules and parsed_entity_files:
+            # 主体级规则只在所有业务解析完成后执行一次，确保跨业务事实不被切断。
+            entity_pack = deepcopy(pack)
+            entity_pack['rules'] = deepcopy(entity_level_rules)
+            entity_pack['submission_scope'] = deepcopy(scopes[entity_key])
+            entity_pack['submission_scope']['entity_codes'] = [entity_key]
+            entity_pack['_submitted_entity_codes'] = [entity_key]
+            entity_limitations: list[dict[str, Any]] = []
+            entity_findings, entity_statuses = run_engine(
+                entity_pack,
+                registry,
+                parsed_entity_files + explanation_files,
+                entities,
+                baselines,
+                run_id,
+                entity_limitations,
+            )
+            group_findings.extend(entity_findings)
+            findings.extend(entity_findings)
+            group_statuses.extend(entity_statuses)
+            statuses.extend(entity_statuses)
+            group_limitations.extend(entity_limitations)
+            limitations.extend(entity_limitations)
+
+            if write:
+                # 以主体完整 findings 重建各意见列，保留人工意见并避免业务级结果丢失。
+                pending_before = {
+                    item.get('finding_key') for item in output_state.pending
+                    if item.get('finding_key')
+                }
+                entity_warnings, _ = write_outputs(
+                    parsed_entity_files,
+                    group_findings,
+                    output_resolved,
+                    entities=entities if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS else None,
+                    output_state=output_state,
+                    baselines=(baselines
+                               if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
+                    include_existing_measure_column=include_existing_measure_column,
+                    metadata_dir=audit_directory,
+                )
+                pending_after = {
+                    item.get('finding_key') for item in output_state.pending
+                    if item.get('finding_key')
+                }
+                resolved_pending_keys = pending_before - pending_after
+                group_warnings = _remove_resolved_pending_warnings(
+                    group_warnings,
+                    resolved_pending_keys,
+                )
+                warnings = _remove_resolved_pending_warnings(
+                    warnings,
+                    resolved_pending_keys,
+                )
+                resolved_business_keys = {
+                    (finding.business_id, finding.variant_id)
+                    for finding in group_findings
+                    if finding.finding_key in resolved_pending_keys
+                }
+                for business_result in group_business_results:
+                    if (
+                        business_result['business_id'],
+                        business_result['variant_id'],
+                    ) in resolved_business_keys:
+                        business_result['warnings'] = 0
+                        business_result['write_completed'] = True
+                        _write_audit_result(Path(business_result['run_dir']), business_result)
+                group_warnings.extend(entity_warnings)
+                warnings.extend(entity_warnings)
+
+            for business_result in group_business_results:
+                added_findings = sum(
+                    finding.business_id == business_result['business_id']
+                    and finding.variant_id == business_result['variant_id']
+                    for finding in entity_findings
+                )
+                if added_findings:
+                    business_result['findings'] += added_findings
+                    _write_audit_result(Path(business_result['run_dir']), business_result)
+
+            _write_audit_progress_details(progress_details_path, {
+                'findings': [finding.to_dict() for finding in entity_findings],
+                'statuses': [asdict(status) for status in entity_statuses],
+                'limitations': entity_limitations,
+                'warnings': [],
+            })
         if write and explanation_files:
             # 主体说明原样复制一次，不重复写入每个业务的输出及程序归属记录。
             explanation_warnings, _ = write_outputs(explanation_files, [], output_resolved,

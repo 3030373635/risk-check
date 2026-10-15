@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "person_multiple_positions_1015",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_person_multiple_positions",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R14",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.person_multiple_positions_1015",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1015-重庆.docx 接受修订后的有效正文",
+  "title": "岗位责任清单中一人多岗审核"
+}

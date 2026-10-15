@@ -325,6 +325,28 @@ def _join_opinions(messages: list[str], order: dict[str, tuple[int, int]]) -> st
     return '\n'.join(dict.fromkeys(sorted(messages, key=lambda message: order.get(message, (0, 0)))))
 
 
+_PROGRAM_OPINION_LINE_PATTERN = re.compile(
+    r'^(?:【资料级】)?【第\d+条】|^【预处理】'
+)
+
+
+def _preserve_manual_opinion(value: Any) -> str:
+    """从原审核意见中保留人工文字并移除可识别的程序意见。
+
+    Args:
+        value: 原工作表审核意见单元格的值，可以是普通文本或富文本。
+
+    Returns:
+        按原顺序保留的人工意见；没有人工内容时返回空字符串。
+    """
+
+    lines = str(value or '').splitlines()
+    return '\n'.join(
+        line for line in lines
+        if line.strip() and not _PROGRAM_OPINION_LINE_PATTERN.match(line.lstrip())
+    )
+
+
 def _output_path(file: FileRecord) -> Path:
     """确定副本相对路径；file 为已解析或原样保留的输入文件，只有解析成功的旧格式转为 XLSX。"""
     if file.sheets and (file.true_format == 'xls' or file.relative_path.suffix.lower() == '.et'):
@@ -390,6 +412,7 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
     writable = [(f, s) for f in files for s in f.sheets if s.first_data_row]
     fallback = writable[0] if writable else None
     pending_material = []
+    resolved_material_keys: set[str] = set()
     for finding in findings:
         if finding.location_policy != "material" and finding.file_path and finding.row:
             by_location[(finding.file_path, finding.sheet, finding.row)].append(finding.message)
@@ -416,13 +439,34 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
             text = finding.message
             message_order[text] = message_order[finding.message]
             by_location[(str(ff.relative_path), ss.title, ss.first_data_row)].append(text)
+            resolved_material_keys.add(finding.finding_key)
         else:
             pending_material.append(finding.to_dict())
     warnings = [] ; ownership: dict[str, list[dict[str, Any]]] = {}
     # 整个包没有可承载意见的表格时保留待回填事项，runner 据此禁止标记完成。
-    output_state.pending.extend(pending_material)
+    output_state.pending = [
+        item for item in output_state.pending
+        if item.get('finding_key') not in resolved_material_keys
+    ]
+    pending_without_key = [
+        item for item in output_state.pending
+        if not item.get('finding_key')
+    ]
+    pending_by_key = {
+        item.get('finding_key'): item
+        for item in output_state.pending
+        if item.get('finding_key')
+    }
+    for item in pending_material:
+        pending_by_key[item['finding_key']] = item
+    output_state.pending = pending_without_key + list(pending_by_key.values())
     write_compact_json(metadata_dir / '待回填资料级意见.json', output_state.pending)
-    if pending_material: warnings.append({"type": "no_writable_sheet", "message": "缺件主体及所属报送单位无可承载意见的正式业务表，仍有待回填事项，流程未完成", "report": str(metadata_dir / '待回填资料级意见.json')})
+    if pending_material: warnings.append({
+        "type": "no_writable_sheet",
+        "message": "缺件主体及所属报送单位无可承载意见的正式业务表，仍有待回填事项，流程未完成",
+        "report": str(metadata_dir / '待回填资料级意见.json'),
+        "finding_keys": [item['finding_key'] for item in pending_material],
+    })
     for file in files:
         if not file.sheets:
             # 未识别文件也必须保留原样副本；不能因无业务表而从交付目录消失。
@@ -471,11 +515,26 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
             values: dict[int, str] = {}
             for (fp, st, row), messages in by_location.items():
                 if fp == str(file.relative_path) and st == sheet.title: values[row] = _join_opinions(messages, message_order)
-            # 重新审核必须重建整列结果：旧审核意见无论来源和归属都不得进入本轮输出。
+            # 重新审核只替换可识别的程序意见，未带程序标识的人工意见必须保留。
             first_header_row = min(opinion_header_rows)
             for row_number in range(first_header_row + 1, source_sheet.max_row + 1):
-                if row_number not in opinion_header_rows:
-                    values.setdefault(row_number, '')
+                if row_number in opinion_header_rows:
+                    continue
+                source_value = source_sheet.cell(row_number, sheet.output_column).value
+                source_lines = str(source_value or '').splitlines()
+                has_old_program_opinion = any(
+                    _PROGRAM_OPINION_LINE_PATTERN.match(line.lstrip())
+                    for line in source_lines
+                )
+                manual_opinion = _preserve_manual_opinion(source_value)
+                program_opinion = values.get(row_number, '')
+                if program_opinion:
+                    values[row_number] = '\n'.join(
+                        text for text in (manual_opinion, program_opinion) if text
+                    )
+                elif has_old_program_opinion:
+                    values[row_number] = manual_opinion
+                # 无旧程序意见且本轮无问题时不写该单元格，保留原富文本和格式。
             ops[sheet.title] = {"column": sheet.output_column, "header_row": opinion_header_rows[0], "header_rows": opinion_header_rows, "values": values}
             if baselines is not None:
                 ops[sheet.title]['program_values'] = {row: _join_opinions(by_location.get((str(file.relative_path), sheet.title, row), []), message_order) for row in values}

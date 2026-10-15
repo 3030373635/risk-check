@@ -1166,14 +1166,14 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
     profile = index["regions"][0]
     manifest = json.loads(
-        (ROOT / "rulepacks/releases/1.9.32/manifest.json").read_text(encoding="utf-8")
+        (ROOT / "rulepacks/releases/1.9.33/manifest.json").read_text(encoding="utf-8")
     )
-    assert profile["rulepack_version"] == "1.9.32"
+    assert profile["rulepack_version"] == "1.9.33"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
 
 
-def test_current_release_maps_maintenance_directory_to_full_business_name() -> None:
-    """目录名“检修运维”应统一匹配完整的模板业务名。"""
+def test_current_release_keeps_business_mapping_and_removes_deleted_keypoint_rule() -> None:
+    """当前包保留业务识别，但不得继续执行确认稿已删除的关键控制点规则。"""
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profile = index["regions"][0]
@@ -1184,27 +1184,23 @@ def test_current_release_maps_maintenance_directory_to_full_business_name() -> N
         Path("14风控矩阵-检修运维/14风控矩阵-检修运维-完整版.xlsx"),
         pack["baseline_registry"],
     )
-    rule = next(
-        item
-        for item in pack["rules"]
-        if item["rule_id"] == "chongqing.power_supply_branch_key_points"
-    )
-    aliases = rule["checks"][0]["params"]["business_aliases"]
-
     assert identity.business_id == "maintenance_cost_project_management"
-    assert "检修运维" in aliases["maintenance_cost_project_management"]
-    assert "1.9.32" in CONFIRMED_RULE_VERSIONS
-    assert "1.9.32" in PREPROCESSING_RULE_VERSIONS
-    assert "1.9.32" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+    assert all(
+        item["rule_id"] != "chongqing.power_supply_branch_key_points"
+        for item in pack["rules"]
+    )
+    assert "1.9.33" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.33" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.33" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 
 
 def test_current_release_is_deterministically_rebuildable() -> None:
-    """重庆 1.9.32 规则包应可由发布脚本确定性重建。"""
+    """重庆 1.9.33 规则包应可由发布脚本确定性重建。"""
 
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "tools/publish_rules_1014_chongqing_1932.py"),
+            str(ROOT / "tools/publish_rules_1015_chongqing_1933.py"),
             "--verify-only",
         ],
         cwd=ROOT,
@@ -1215,115 +1211,6 @@ def test_current_release_is_deterministically_rebuildable() -> None:
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["verified"] is True
-
-
-@pytest.mark.parametrize(("rule_id", "rule_number", "record_values"), [
-    (
-        "chongqing.system_control_consistency",
-        16,
-        {"measure_id": "29.1", "control_mode": "系统已建"},
-    ),
-    (
-        "chongqing.power_supply_branch_key_points",
-        17,
-        {"measure_id": "29.1"},
-    ),
-    (
-        "chongqing.responsibility_alignment",
-        18,
-        {
-            "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
-            "responsibility": "各级单位-财务资产部-总账报表管理",
-        },
-    ),
-    (
-        "chongqing.control_measure_completeness",
-        19,
-        {
-            "measure_id": "财务管理-1.会计主体完整性管控-控制措施01",
-            "key_control_point": "1.会计主体完整性管控",
-        },
-    ),
-])
-def test_current_chongqing_special_opinion_includes_rule_number(
-    rule_id: str,
-    rule_number: int,
-    record_values: dict[str, str],
-) -> None:
-    """当前重庆专项规则命中时，最终审核意见必须显示规则编号。
-
-    Args:
-        rule_id: 单独执行的重庆专项规则标识。
-        rule_number: 意见前必须显示的规则条款编号。
-        record_values: 用于稳定触发当前规则的矩阵字段。
-    """
-
-    index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
-    chongqing = next(
-        item for item in index["regions"] if item["region_code"] == "chongqing"
-    )
-    release = ROOT / "rulepacks/releases" / chongqing["rulepack_version"]
-    pack = copy.deepcopy(load_pack(release))
-    pack["rules"] = [
-        rule
-        for rule in pack["rules"]
-        if rule["rule_id"] == rule_id
-    ]
-    pack["submission_scope"] = {
-        "batch": "second",
-        "entity_codes": ["CQ001"],
-        "businesses": [{
-            "business_id": "financial_management",
-            "business_code": "02",
-            "variant_id": "default",
-            "required": True,
-        }],
-    }
-    record = make_record("matrix", 3, **record_values)
-    sheet = ParsedSheet("风控矩阵", "matrix", [2], {}, {}, 8, 3, [record])
-    file = FileRecord(
-        Path("财务管理.xlsx"),
-        Path("财务管理.xlsx"),
-        "hash",
-        "xlsx",
-        "CQ001",
-        [],
-        False,
-        "02",
-        "default",
-        "matrix",
-        [sheet],
-        business_id="financial_management",
-    )
-
-    baselines = {}
-    if rule_id == "chongqing.control_measure_completeness":
-        baselines = {
-            ("financial_management", "default"): {
-                "available": True,
-                "matrix_rows": [
-                    {
-                        "measure_id": f"财务管理-1.会计主体完整性管控-控制措施0{index}",
-                        "key_control_point": "1.会计主体完整性管控",
-                        "responsibility": "各级单位-财务资产部-总账报表管理",
-                    }
-                    for index in (1, 2)
-                ],
-            },
-        }
-
-    findings, _ = run_engine(
-        pack,
-        build_registry(),
-        [file],
-        {"CQ001": Entity("CQ001", "国网重庆市电力公司某供电分公司")},
-        baselines,
-        run_id="chongqing-rule-17-number-test",
-    )
-
-    assert findings
-    expected_prefix = f"【第{rule_number}条】"
-    assert all(finding.message.startswith(expected_prefix) for finding in findings)
 
 
 def test_verify_only_is_deterministic_and_does_not_activate_release() -> None:

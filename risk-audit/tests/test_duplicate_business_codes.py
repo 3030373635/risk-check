@@ -48,8 +48,12 @@ def test_duplicate_business_codes_create_two_scope_entries_and_execution_units(t
     }
 
 
-def test_same_rule_identity_in_two_directories_creates_two_execution_units(tmp_path):
-    """同一标准规则身份出现在两个业务目录时，必须建立两个独立审核单元。"""
+def test_same_rule_identity_in_two_directories_creates_one_execution_unit(tmp_path):
+    """同一主体和业务分散在多个目录时必须合并为一个审核单元。
+
+    Args:
+        tmp_path: pytest 提供的隔离输入目录。
+    """
     files = [
         _file(tmp_path, "financial_management", "11.财务管理矩阵及“三清单”"),
         _file(tmp_path, "financial_management", "财务管理补充报送"),
@@ -63,7 +67,9 @@ def test_same_rule_identity_in_two_directories_creates_two_execution_units(tmp_p
         }],
     }
 
-    assert len(_business_keys(scope, files)) == 2
+    assert _business_keys(scope, files) == [
+        ("", "financial_management", "01", "default"),
+    ]
 
 
 def test_business_display_name_uses_business_directory(tmp_path):

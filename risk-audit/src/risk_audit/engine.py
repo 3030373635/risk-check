@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -18,6 +19,39 @@ from risk_audit.issue_routing import route_issue
 class SafeFormat(dict):
     def __missing__(self, key: str) -> str:
         return f"{{{key}}}"
+
+
+_NUMBERED_RULE_PATTERN = re.compile(r"^R0*(\d+)[a-z]*$", re.IGNORECASE)
+_LEADING_RULE_LABEL_PATTERN = re.compile(r"^(?:【资料级】)?(?:【第\d+条】)+")
+
+
+def _render_opinion(
+    template: str,
+    values: SafeFormat,
+    display_code: str,
+    location_policy: str,
+) -> str:
+    """渲染审核意见，并以规则展示编号作为唯一序号来源。
+
+    Args:
+        template: 规则包中的审核意见模板。
+        values: 模板变量及结构化证据。
+        display_code: 当前规则的展示编号，例如 ``R07`` 或 ``P01``。
+        location_policy: 意见的资料级或行级定位策略。
+
+    Returns:
+        已渲染且编号与 ``display_code`` 一致的审核意见。
+    """
+
+    message = template.format_map(values)
+    match = _NUMBERED_RULE_PATTERN.fullmatch(display_code)
+    if match is None:
+        return message
+
+    # 模板中的历史编号只作为正文噪声移除，最终编号始终取当前规则展示编号。
+    body = _LEADING_RULE_LABEL_PATTERN.sub("", message).lstrip()
+    material_label = "【资料级】" if location_policy == "material" else ""
+    return f"{material_label}【第{int(match.group(1))}条】{body}"
 
 
 def _scope_records(rule: dict[str, Any], records: list[Record]) -> list[Record]:
@@ -139,7 +173,13 @@ def run_engine(pack: dict[str, Any], registry: CapabilityRegistry, files: list[F
                 values["advice"] = advice(rendering_check["check_id"], kind, ev)
                 if '{advice_v2}' in rendering_check['message'][kind]:
                     values['advice_v2'] = advice_v2(rendering_check['check_id'], kind, ev)
-                message = rendering_check["message"][kind].format_map(values)
+                location_policy = issue.get('location_policy', rendering_check["location_policy"])
+                message = _render_opinion(
+                    rendering_check["message"][kind],
+                    values,
+                    rendering_rule["display_code"],
+                    location_policy,
+                )
                 identity = record.record_id if record else f"{ec}|{business_id or bc}|{variant}|{file_path}|{sheet}|material"
                 issue_identity = {k: ev[k] for k in ("field", "missing_material", "missing_sheet", "reference", "measure_id", "reason", "role", "issue_type") if k in ev}
                 if ev.get('missing_fields'):
@@ -158,7 +198,7 @@ def run_engine(pack: dict[str, Any], registry: CapabilityRegistry, files: list[F
                 seen.add(finding_key); emitted += 1
                 finding_id = str(uuid.uuid5(uuid.UUID(run_id), finding_key)) if _is_uuid(run_id) else hashlib.sha256(f"{run_id}|{finding_key}".encode()).hexdigest()
                 # 明确整表缺列由发布口径标记资料级，避免把问题归责于首条措施。
-                findings.append(Finding(finding_key, finding_id, rendering_rule["rule_id"], rendering_check["check_id"], rendering_rule["display_code"], rendering_rule["revision"], kind, ec, entity_names.get(ec, ec), bc, variant, file_path, sheet, row, message, ev, issue.get('location_policy', rendering_check["location_policy"]), business_id=business_id or bc))
+                findings.append(Finding(finding_key, finding_id, rendering_rule["rule_id"], rendering_check["check_id"], rendering_rule["display_code"], rendering_rule["revision"], kind, ec, entity_names.get(ec, ec), bc, variant, file_path, sheet, row, message, ev, location_policy, business_id=business_id or bc))
             status = "scope_excluded" if (rule["scope"]["record_type"] == "package" and not package_in_scope) or (rule["scope"]["record_type"] != "package" and not scoped_records) else "executed"
             reason = "配置范围内无记录" if status == "scope_excluded" else ""
             if incomplete:
@@ -169,7 +209,12 @@ def run_engine(pack: dict[str, Any], registry: CapabilityRegistry, files: list[F
         values = SafeFormat(finding.evidence)
         values["advice"] = advice(finding.check_id, finding.severity, finding.evidence)
         values["advice_v2"] = advice_v2(finding.check_id, finding.severity, finding.evidence)
-        return rendering_templates[finding.finding_key].format_map(values)
+        return _render_opinion(
+            rendering_templates[finding.finding_key],
+            values,
+            finding.display_code,
+            finding.location_policy,
+        )
     findings = reconcile_deleted_carriers(findings, statuses, render_reconciled)
     findings.sort(key=lambda x: (x.entity_code, x.business_id or x.business_code, x.variant_id,
                                  x.file_path, x.sheet, x.row or 0, x.display_code, x.check_id))

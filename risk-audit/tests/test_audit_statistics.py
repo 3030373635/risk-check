@@ -330,8 +330,8 @@ def test_html_statistics_uses_same_grouped_content_as_excel(tmp_path: Path) -> N
     assert '<script>unsafe()</script>' not in target.read_text(encoding='utf-8')
 
 
-def test_statistics_groups_and_displays_business_by_directory(tmp_path: Path) -> None:
-    """统计必须使用业务目录归组和显示，不受文件上的业务身份影响。
+def test_statistics_keeps_different_business_identities_in_one_directory_separate(tmp_path: Path) -> None:
+    """同一物理目录中的不同标准业务必须分开统计。
 
     Args:
         tmp_path: pytest 提供的隔离目录。
@@ -373,13 +373,16 @@ def test_statistics_groups_and_displays_business_by_directory(tmp_path: Path) ->
     assert json.loads(source) == {
         'units': [{
             'path': '新建文件',
-            'businesses': [{
-                'name': '8.数字化与研发矩阵及“三清单”',
-                'records': [
-                    '【第3条】请核实矩阵字段。 1条。',
-                    '【第5条】请补充人员姓名。 1条。',
+                'businesses': [
+                    {
+                        'name': '8.数字化与研发矩阵及“三清单”',
+                        'records': ['【第3条】请核实矩阵字段。 1条。'],
+                    },
+                    {
+                        'name': '8.数字化与研发矩阵及“三清单”',
+                        'records': ['【第5条】请补充人员姓名。 1条。'],
+                    },
                 ],
-            }],
         }],
     }
 
@@ -531,8 +534,53 @@ def test_statistics_uses_selected_business_root_and_its_parent_subject(tmp_path)
     sheet = load_workbook(target)['审核统计表']
     assert list(sheet.values) == [
         ('单位', '备注'),
-        ('重庆报送主题', '11.财务管理矩阵及“三清单”：\n无'),
+        ('重庆报送主题', '股权（产权）管理：\n无'),
+        ('重庆报送主题', '营销售电：\n无'),
     ]
+
+
+def test_statistics_merges_same_business_across_directories(tmp_path: Path) -> None:
+    """同一主体、业务和变体分散在多个目录时必须合并统计。
+
+    Args:
+        tmp_path: pytest 提供的隔离输出目录。
+    """
+
+    matrix = _file(tmp_path, '测试主体/首次报送/02 财务管理/矩阵.xlsx', 'matrix', '02')
+    duties = _file(tmp_path, '测试主体/补充报送/财务管理补充/岗位清单.xlsx', 'three_lists', '02')
+    for file in (matrix, duties):
+        file.entity_code = 'CQ001'
+        file.business_id = 'financial_management'
+    ownership = {
+        str(matrix.relative_path): [{
+            'sheet': '风控矩阵',
+            'cell': 'H2',
+            'program_text': '【第7条】请核实岗位清单。',
+        }],
+        str(duties.relative_path): [{
+            'sheet': '岗位内控责任清单',
+            'cell': 'I2',
+            'program_text': '【第14条】请核实是否为一人多岗。',
+        }],
+    }
+    target = tmp_path / '审核统计表.html'
+
+    write_audit_statistics_html(target, [matrix, duties], ownership, '报送包')
+
+    document = html.fromstring(target.read_text(encoding='utf-8'))
+    source = json.loads(document.get_element_by_id('audit-source-data').text)
+    assert source == {
+        'units': [{
+            'path': '报送包/测试主体/补充报送、报送包/测试主体/首次报送',
+            'businesses': [{
+                'name': '02 财务管理、财务管理补充',
+                'records': [
+                    '【第7条】请核实岗位清单。 1条。',
+                    '【第14条】请核实是否为一人多岗。 1条。',
+                ],
+            }],
+        }],
+    }
 
 
 def test_statistics_formats_header_and_protects_excel_text(tmp_path):
