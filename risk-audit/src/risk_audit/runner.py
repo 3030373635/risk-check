@@ -933,91 +933,142 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             if file.material_type != 'explanation' and file.sheets and not file.parse_errors
         ]
         if entity_level_rules and parsed_entity_files:
-            # 主体级规则只在所有业务解析完成后执行一次，确保跨业务事实不被切断。
-            entity_pack = deepcopy(pack)
-            entity_pack['rules'] = deepcopy(entity_level_rules)
-            entity_pack['submission_scope'] = deepcopy(scopes[entity_key])
-            entity_pack['submission_scope']['entity_codes'] = [entity_key]
-            entity_pack['_submitted_entity_codes'] = [entity_key]
+            entity_failure_stage = '主体级规则审核'
+            entity_findings: list[Finding] = []
+            entity_statuses: list[CheckStatus] = []
             entity_limitations: list[dict[str, Any]] = []
-            entity_findings, entity_statuses = run_engine(
-                entity_pack,
-                registry,
-                parsed_entity_files + explanation_files,
-                entities,
-                baselines,
-                run_id,
-                entity_limitations,
-            )
-            group_findings.extend(entity_findings)
-            findings.extend(entity_findings)
-            group_statuses.extend(entity_statuses)
-            statuses.extend(entity_statuses)
-            group_limitations.extend(entity_limitations)
-            limitations.extend(entity_limitations)
+            try:
+                # 主体级规则只在所有业务解析完成后执行一次，确保跨业务事实不被切断。
+                entity_pack = deepcopy(pack)
+                entity_pack['rules'] = deepcopy(entity_level_rules)
+                entity_pack['submission_scope'] = deepcopy(scopes[entity_key])
+                entity_pack['submission_scope']['entity_codes'] = [entity_key]
+                entity_pack['_submitted_entity_codes'] = [entity_key]
+                entity_findings, entity_statuses = run_engine(
+                    entity_pack,
+                    registry,
+                    parsed_entity_files + explanation_files,
+                    entities,
+                    baselines,
+                    run_id,
+                    entity_limitations,
+                )
+                if write:
+                    entity_failure_stage = '主体级结果写回'
+                    # 以主体完整 findings 重建各意见列，保留人工意见并避免业务级结果丢失。
+                    pending_before = {
+                        item.get('finding_key') for item in output_state.pending
+                        if item.get('finding_key')
+                    }
+                    entity_warnings, _ = write_outputs(
+                        parsed_entity_files,
+                        group_findings + entity_findings,
+                        output_resolved,
+                        entities=entities if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS else None,
+                        output_state=output_state,
+                        baselines=(baselines
+                                   if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
+                        include_existing_measure_column=include_existing_measure_column,
+                        metadata_dir=audit_directory,
+                    )
+                    pending_after = {
+                        item.get('finding_key') for item in output_state.pending
+                        if item.get('finding_key')
+                    }
+                    resolved_pending_keys = pending_before - pending_after
+                    group_warnings = _remove_resolved_pending_warnings(
+                        group_warnings,
+                        resolved_pending_keys,
+                    )
+                    warnings = _remove_resolved_pending_warnings(
+                        warnings,
+                        resolved_pending_keys,
+                    )
+                    resolved_business_keys = {
+                        (finding.business_id, finding.variant_id)
+                        for finding in group_findings + entity_findings
+                        if finding.finding_key in resolved_pending_keys
+                    }
+                    for business_result in group_business_results:
+                        if (
+                            business_result['business_id'],
+                            business_result['variant_id'],
+                        ) in resolved_business_keys:
+                            business_result['warnings'] = 0
+                            business_result['write_completed'] = True
+                            _write_audit_result(Path(business_result['run_dir']), business_result)
+                    group_warnings.extend(entity_warnings)
+                    warnings.extend(entity_warnings)
+            except AuditCancelled:
+                raise
+            except Exception as error:
+                # 主体级审核是增量补充；单个主体失败不得终止后续主体。
+                entity_failure = {
+                    'entity_key': entity_key,
+                    'entity_name': entity_name,
+                    'business_id': ENTITY_COMPLETENESS_BUSINESS_ID,
+                    'business_code': '',
+                    'business_name': '主体级审核',
+                    'business_directory': '',
+                    'variant_id': 'default',
+                    'stage': entity_failure_stage,
+                    'files': [str(file.relative_path) for file in parsed_entity_files],
+                    'error_type': type(error).__name__,
+                    'reason': str(error) or type(error).__name__,
+                    'log_reference': log_reference,
+                }
+                business_failures.append(entity_failure)
+                entity_failure_warning = {
+                    'type': 'business_processing_failed',
+                    **entity_failure,
+                }
+                group_warnings.append(entity_failure_warning)
+                warnings.append(entity_failure_warning)
+                if write:
+                    record_business_failure(
+                        output_state,
+                        audit_directory,
+                        parsed_entity_files,
+                        entity_failure,
+                    )
+                logger.error(
+                    '%s失败，已跳过当前主体的增量处理：主体=%s，文件=%s，原因=%s',
+                    entity_failure_stage,
+                    entity_name,
+                    entity_failure['files'],
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+                _write_audit_progress_details(progress_details_path, {
+                    'findings': [],
+                    'statuses': [],
+                    'limitations': [],
+                    'warnings': [entity_failure_warning],
+                })
+            else:
+                group_findings.extend(entity_findings)
+                findings.extend(entity_findings)
+                group_statuses.extend(entity_statuses)
+                statuses.extend(entity_statuses)
+                group_limitations.extend(entity_limitations)
+                limitations.extend(entity_limitations)
 
-            if write:
-                # 以主体完整 findings 重建各意见列，保留人工意见并避免业务级结果丢失。
-                pending_before = {
-                    item.get('finding_key') for item in output_state.pending
-                    if item.get('finding_key')
-                }
-                entity_warnings, _ = write_outputs(
-                    parsed_entity_files,
-                    group_findings,
-                    output_resolved,
-                    entities=entities if pack['manifest']['version'] in CONFIRMED_RULE_VERSIONS else None,
-                    output_state=output_state,
-                    baselines=(baselines
-                               if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
-                    include_existing_measure_column=include_existing_measure_column,
-                    metadata_dir=audit_directory,
-                )
-                pending_after = {
-                    item.get('finding_key') for item in output_state.pending
-                    if item.get('finding_key')
-                }
-                resolved_pending_keys = pending_before - pending_after
-                group_warnings = _remove_resolved_pending_warnings(
-                    group_warnings,
-                    resolved_pending_keys,
-                )
-                warnings = _remove_resolved_pending_warnings(
-                    warnings,
-                    resolved_pending_keys,
-                )
-                resolved_business_keys = {
-                    (finding.business_id, finding.variant_id)
-                    for finding in group_findings
-                    if finding.finding_key in resolved_pending_keys
-                }
                 for business_result in group_business_results:
-                    if (
-                        business_result['business_id'],
-                        business_result['variant_id'],
-                    ) in resolved_business_keys:
-                        business_result['warnings'] = 0
-                        business_result['write_completed'] = True
+                    added_findings = sum(
+                        finding.business_id == business_result['business_id']
+                        and finding.variant_id == business_result['variant_id']
+                        for finding in entity_findings
+                    )
+                    if added_findings:
+                        business_result['findings'] += added_findings
                         _write_audit_result(Path(business_result['run_dir']), business_result)
-                group_warnings.extend(entity_warnings)
-                warnings.extend(entity_warnings)
 
-            for business_result in group_business_results:
-                added_findings = sum(
-                    finding.business_id == business_result['business_id']
-                    and finding.variant_id == business_result['variant_id']
-                    for finding in entity_findings
-                )
-                if added_findings:
-                    business_result['findings'] += added_findings
-                    _write_audit_result(Path(business_result['run_dir']), business_result)
-
-            _write_audit_progress_details(progress_details_path, {
-                'findings': [finding.to_dict() for finding in entity_findings],
-                'statuses': [asdict(status) for status in entity_statuses],
-                'limitations': entity_limitations,
-                'warnings': [],
-            })
+                _write_audit_progress_details(progress_details_path, {
+                    'findings': [finding.to_dict() for finding in entity_findings],
+                    'statuses': [asdict(status) for status in entity_statuses],
+                    'limitations': entity_limitations,
+                    'warnings': [],
+                })
         if write and explanation_files:
             # 主体说明原样复制一次，不重复写入每个业务的输出及程序归属记录。
             explanation_warnings, _ = write_outputs(explanation_files, [], output_resolved,

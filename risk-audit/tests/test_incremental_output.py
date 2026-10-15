@@ -134,6 +134,121 @@ def test_later_failure_keeps_first_output_and_logs_traceback(tmp_path, monkeypat
     assert logger.handlers == previous_handlers
 
 
+def test_entity_level_write_failure_is_skipped_and_next_entity_continues(
+    tmp_path,
+    monkeypatch,
+):
+    """主体级二次写回失败时必须记录未完成项并继续下一主体。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的替换工具。
+    """
+
+    input_root, entities_path = create_batch(tmp_path)
+    entity_directories = {
+        'A001': '测试主体甲有限公司',
+        'B001': '测试主体乙有限公司',
+    }
+    for entity_code, entity_name in entity_directories.items():
+        source_directory = input_root / entity_code
+        source = next(source_directory.glob('*.xlsx'))
+        business_directory = input_root / entity_name / '06 设备资产管理'
+        business_directory.mkdir(parents=True)
+        source.replace(business_directory / source.name)
+        source_directory.rmdir()
+    baseline_source = next(input_root.rglob('*.xlsx'))
+    baseline_registry = {
+        'entries': [{
+            'path': str(baseline_source.relative_to(input_root)),
+            'business_code': '06',
+            'sha256': runner.sha256_file(baseline_source),
+        }],
+    }
+    original_load_baselines = runner.load_baselines
+
+    def load_test_baseline(project_root, registry, aliases, work_dir, **options):
+        """仅加载本用例构造的单份基准。
+
+        Args:
+            project_root: 生产代码传入的项目根目录。
+            registry: 生产代码传入的基准注册表。
+            aliases: 字段别名配置。
+            work_dir: 基准解析工作目录。
+            options: 基准加载的其余选项。
+        """
+
+        del project_root, registry
+        return original_load_baselines(
+            input_root,
+            baseline_registry,
+            aliases,
+            work_dir,
+            **options,
+        )
+
+    monkeypatch.setattr(runner, 'load_baselines', load_test_baseline)
+    entity_rule_id = 'matrices.forbidden_platform'
+    monkeypatch.setattr(runner, 'ENTITY_LEVEL_RULE_IDS', frozenset({entity_rule_id}))
+    original_engine = runner.run_engine
+    original_write_outputs = runner.write_outputs
+    entity_level_context = {'entity_code': ''}
+    audited_entities = []
+
+    def observe_engine(pack, *args):
+        """记录实际进入引擎的主体。
+
+        Args:
+            pack: 当前业务或主体级规则包。
+            args: 引擎其余参数。
+        """
+
+        entity_code = pack['submission_scope']['entity_codes'][0]
+        audited_entities.append(entity_code)
+        rule_ids = {rule['rule_id'] for rule in pack['rules']}
+        entity_level_context['entity_code'] = (
+            entity_code if rule_ids == {entity_rule_id} else ''
+        )
+        return original_engine(pack, *args)
+
+    def fail_first_entity_level_write(files, *args, **kwargs):
+        """模拟第一主体在主体级二次写回时被 Windows 拒绝访问。
+
+        Args:
+            files: 当前待写回的文件。
+            args: 写回函数的位置参数。
+            kwargs: 写回函数的关键字参数。
+        """
+
+        entity_code = entity_level_context['entity_code']
+        entity_level_context['entity_code'] = ''
+        if entity_code == 'A001':
+            raise PermissionError(5, '拒绝访问', str(files[0].relative_path))
+        return original_write_outputs(files, *args, **kwargs)
+
+    monkeypatch.setattr(runner, 'run_engine', observe_engine)
+    monkeypatch.setattr(runner, 'write_outputs', fail_first_entity_level_write)
+
+    result = execute_batch(tmp_path, input_root, entities_path)
+
+    assert audited_entities.count('B001') == 2
+    assert len(result['entity_results']) == 2
+    assert result['entity_results'][0]['write_completed'] is False
+    assert result['entity_results'][1]['write_completed'] is True
+    assert result['write_completed'] is False
+    assert result['skipped_businesses'] == 1
+    failure = result['business_failures'][0]
+    assert failure['stage'] == '主体级结果写回'
+    assert failure['error_type'] == 'PermissionError'
+    assert '拒绝访问' in failure['reason']
+    assert list((tmp_path / 'output' / entity_directories['B001']).rglob('*.xlsx'))
+    incomplete_items = json.loads(Path(result['incomplete_items_report']).read_text())
+    assert any(item['entity_code'] == 'A001' for item in incomplete_items)
+    log_text = (tmp_path / 'runs/incremental/audit.log').read_text()
+    assert '主体级结果写回失败，已跳过' in log_text
+    assert '审核异常终止' not in log_text
+
+
 def use_small_baseline(input_root, monkeypatch):
     """input_root 为真实测试材料目录，monkeypatch 为替换工具；使用单份真实矩阵避免无关基准转换。"""
     from risk_audit.util import sha256_file
