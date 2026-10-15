@@ -46,10 +46,16 @@ def _now() -> str:
 
 
 def _progress_percent(completed_units: int, total_units: int | None) -> int | None:
-    """计算真实工作单元进度；参数为已完成数和可选总数。"""
+    """计算运行中的工作单元进度。
+
+    Args:
+        completed_units: 已完成的审核工作单元数。
+        total_units: 可选的审核工作单元总数。
+    """
     if total_units is None or total_units <= 0:
         return None
-    return max(0, min(100, completed_units * 100 // total_units))
+    # 100% 仅由 Worker 发布最终任务状态时写入，避免汇总阶段被误认为已完成。
+    return max(0, min(99, completed_units * 100 // total_units))
 
 
 def _result_summary(result: dict[str, Any]) -> dict[str, Any]:

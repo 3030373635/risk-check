@@ -156,6 +156,7 @@ def test_worker_maps_result_to_sqlite_terminal_state(
 
     repository, request = create_worker_task(tmp_path)
     monkeypatch.setattr(worker, "configure_conversion_runtime", lambda *args: None)
+    progress_during_finalization = []
 
     def audit_func(*args, **kwargs):
         """模拟核心审核；args/kwargs 为审核入口参数。"""
@@ -181,6 +182,16 @@ def test_worker_maps_result_to_sqlite_terminal_state(
         html_report = Path(request.output_root) / "审核统计表.html"
         excel_report.write_bytes(b"excel")
         html_report.write_text("<main>html</main>", encoding="utf-8")
+        # 业务单元已全部处理，但 Worker 尚未发布最终任务状态。
+        kwargs["progress_callback"](AuditProgressEvent(
+            stage="output",
+            completed_units=2,
+            total_units=2,
+            message="正在生成汇总结果",
+        ))
+        progress_during_finalization.append(
+            repository.read_state(request.task_id).progress_percent
+        )
         return {
             "write_completed": write_completed,
             "input_files": 2,
@@ -209,6 +220,7 @@ def test_worker_maps_result_to_sqlite_terminal_state(
         if write_completed
         else "审核已结束，存在 1 个未完成项"
     )
+    assert progress_during_finalization == [99]
     assert state.progress_percent == 100
     assert state.worker_pid is None
     task_dir = Path(request.output_root) / ".task"
