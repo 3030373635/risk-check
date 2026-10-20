@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
 import re
 import tempfile
+from types import MappingProxyType
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -25,6 +28,29 @@ BRANCH_KEY_POINT_SUMMARIES = {
     'missing_key_points': '【第17条】缺少供电分公司适用清单要求的关键控制点',
     'extra_key_point': '【第17条】存在供电分公司适用清单外的关键控制点',
 }
+
+
+@dataclass(frozen=True)
+class AuditStatisticsBusiness:
+    """表示一个业务及其稳定排序后的统计记录。"""
+
+    name: str
+    records: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AuditStatisticsUnit:
+    """表示一个主体及其业务统计。"""
+
+    path: str
+    businesses: tuple[AuditStatisticsBusiness, ...]
+
+
+@dataclass(frozen=True)
+class AuditStatisticsData:
+    """表示可供多个渲染器复用的不可变统计数据。"""
+
+    units: tuple[AuditStatisticsUnit, ...]
 
 
 def _safe_excel_text(value: str) -> str:
@@ -197,37 +223,112 @@ def _register_material_finding_business(
     return unit_key, business
 
 
-def _finding_for_occurrence(
-    message: str,
-    state: dict,
-    file: FileRecord,
-    findings_by_message: dict[str, list[Finding]],
-) -> Finding | None:
-    """查找与统计表单元格意见对应的结构化审核结果。
+@dataclass(frozen=True)
+class _FindingOccurrenceIndex:
+    """保存意见精确位置和资料级回退索引。"""
+
+    exact: Mapping[tuple[str, str, str, int | None], Finding]
+    material: Mapping[tuple[str, str], Finding]
+
+
+def _statistics_route_key(finding: Finding) -> tuple[object, ...]:
+    """生成影响统计业务路由的稳定键。
 
     Args:
+        finding: 需要参与统计路由的审核结果。
+    """
+    return (
+        finding.entity_code,
+        finding.business_id,
+        finding.business_code,
+        finding.variant_id,
+        finding.location_policy,
+        finding.check_id,
+        str(finding.evidence.get('business_file_path') or ''),
+        str(finding.evidence.get('business_name') or ''),
+    )
+
+
+def _store_occurrence(
+    target: dict[tuple, Finding],
+    key: tuple,
+    finding: Finding,
+    location: str,
+) -> None:
+    """登记 Finding 并拒绝同位置的冲突统计路由。
+
+    Args:
+        target: 正在构建的索引字典。
+        key: 精确位置键或资料级回退键。
+        finding: 当前结构化审核结果。
+        location: 面向错误消息的定位文本。
+    """
+    existing = target.get(key)
+    if existing is None:
+        target[key] = finding
+        return
+    if _statistics_route_key(existing) != _statistics_route_key(finding):
+        raise ValueError(f'同一审核意见位置存在冲突统计路由：{location}')
+
+
+def _build_finding_occurrence_index(
+    findings: list[Finding],
+) -> _FindingOccurrenceIndex:
+    """一次遍历构建结构化意见索引。
+
+    Args:
+        findings: 本次审核产生的全部结构化审核结果。
+    """
+    exact: dict[tuple[str, str, str, int | None], Finding] = {}
+    material: dict[tuple[str, str], Finding] = {}
+    for finding in findings:
+        if finding.file_path:
+            exact_key = (
+                finding.message,
+                finding.file_path,
+                finding.sheet,
+                finding.row,
+            )
+            location = f'{finding.file_path}，工作表={finding.sheet}，行={finding.row}'
+            _store_occurrence(exact, exact_key, finding, location)
+        if finding.location_policy == 'material' or not finding.file_path:
+            material_key = (finding.message, finding.entity_code)
+            # 同一主体可能在多个业务产生完全相同的资料级提示；写回文本本身无法区分，
+            # 沿用首次稳定路由即可，精确位置冲突仍由 exact 索引严格拒绝。
+            material.setdefault(material_key, finding)
+    # 只读代理避免后续渲染阶段意外改变索引内容。
+    return _FindingOccurrenceIndex(
+        exact=MappingProxyType(exact),
+        material=MappingProxyType(material),
+    )
+
+
+def _find_occurrence(
+    index: _FindingOccurrenceIndex,
+    message: str,
+    state: dict[str, object],
+    file: FileRecord,
+) -> Finding | None:
+    """以常数时间查找意见对应的结构化审核结果。
+
+    Args:
+        index: 已构建的 Finding 位置索引。
         message: 当前拆分后的程序意见。
         state: 当前意见单元格归属记录。
         file: 当前意见所在的业务文件。
-        findings_by_message: 按完整意见文本索引的审核结果。
     """
-
-    candidates = findings_by_message.get(message, [])
     row_match = re.search(r'\d+', str(state.get('cell') or ''))
     row_number = int(row_match.group()) if row_match else None
-    exact = next((
-        finding for finding in candidates
-        if finding.file_path == str(file.relative_path)
-        and (not finding.sheet or finding.sheet == state.get('sheet', ''))
-        and (finding.row is None or finding.row == row_number)
-    ), None)
+    exact_key = (
+        message,
+        str(file.relative_path),
+        str(state.get('sheet') or ''),
+        row_number,
+    )
+    exact = index.exact.get(exact_key)
     if exact is not None:
         return exact
-    return next((
-        finding for finding in candidates
-        if (finding.location_policy == 'material' or not finding.file_path)
-        and (not finding.entity_code or finding.entity_code == file.entity_code)
-    ), None)
+    return index.material.get((message, file.entity_code or ''))
 
 
 def _format_finding_key_point(point: list[int]) -> str:
@@ -349,9 +450,7 @@ def _collect_statistics(
         # 晚表头或非标准文件名可能在扫描时仍是 unclassified，实际写回记录仍应纳入。
         for file in files if file.material_type != 'explanation'
     }
-    findings_by_message: dict[str, list[Finding]] = defaultdict(list)
-    for finding in findings or []:
-        findings_by_message[finding.message].append(finding)
+    finding_index = _build_finding_occurrence_index(findings or [])
     for file in files:
         if file.material_type == 'explanation' or not (file.business_id or file.business_code):
             continue
@@ -366,12 +465,7 @@ def _collect_statistics(
         _, business = registration
         for state in states:
             for message in _program_opinions(state.get('program_text', '')):
-                finding = _finding_for_occurrence(
-                    message,
-                    state,
-                    file,
-                    findings_by_message,
-                )
+                finding = _find_occurrence(finding_index, message, state, file)
                 routed_registration = (
                     _register_material_finding_business(
                         grouped,
@@ -468,43 +562,23 @@ def _business_records(items: dict) -> list[str]:
     return records or ['无']
 
 
-def _statistics_source_data(grouped: dict) -> dict[str, list[dict[str, object]]]:
-    """转换为两种报告共用的数据结构；grouped 为按主体和业务归集的数据。"""
-    units: list[dict[str, object]] = []
-    for unit in sorted(grouped.values(), key=lambda item: natural_key(item['name'])):
-        businesses = [
-            {
-                'name': business['name'],
-                'records': _business_records(business['items']),
-            }
-            for business in sorted(
-                unit['businesses'].values(),
-                key=lambda item: natural_key(item['name']),
-            )
-        ]
-        units.append({'path': unit['name'], 'businesses': businesses})
-    return {'units': units}
-
-
-def write_audit_statistics(
-    path: Path,
+def collect_audit_statistics(
     files: list[FileRecord],
     ownership: dict[str, list[dict]],
     package_name: str,
     business_failures: list[dict] | None = None,
     root_subject_name: str = '',
     findings: list[Finding] | None = None,
-) -> None:
-    """写入审核统计表。
+) -> AuditStatisticsData:
+    """归集并冻结两种报告共用的统计数据。
 
     Args:
-        path: 审核统计表输出路径。
         files: 本次审核扫描到的文件。
         ownership: 实际写回审核意见的单元格归属。
         package_name: 审核包名称。
         business_failures: 已跳过业务的结构化失败信息。
         root_subject_name: 输入根本身是业务目录时的外层主体目录名。
-        findings: 本次结构化审核结果，用于还原资料级意见的真实业务归属。
+        findings: 本次结构化审核结果。
     """
     grouped = _collect_statistics(
         files,
@@ -514,18 +588,68 @@ def write_audit_statistics(
         root_subject_name,
         findings,
     )
-    source_data = _statistics_source_data(grouped)
+    units = tuple(
+        AuditStatisticsUnit(
+            path=unit['name'],
+            businesses=tuple(
+                AuditStatisticsBusiness(
+                    name=business['name'],
+                    records=tuple(_business_records(business['items'])),
+                )
+                for business in sorted(
+                    unit['businesses'].values(),
+                    key=lambda item: natural_key(item['name']),
+                )
+            ),
+        )
+        for unit in sorted(grouped.values(), key=lambda item: natural_key(item['name']))
+    )
+    return AuditStatisticsData(units=units)
+
+
+def _statistics_source_data(
+    statistics: AuditStatisticsData,
+) -> dict[str, list[dict[str, object]]]:
+    """转换为 HTML 使用的稳定字典投影。
+
+    Args:
+        statistics: 已归集的不可变统计数据。
+    """
+    return {
+        'units': [
+            {
+                'path': unit.path,
+                'businesses': [
+                    {'name': business.name, 'records': list(business.records)}
+                    for business in unit.businesses
+                ],
+            }
+            for unit in statistics.units
+        ],
+    }
+
+
+def write_audit_statistics(
+    path: Path,
+    statistics: AuditStatisticsData,
+) -> None:
+    """写入审核统计表。
+
+    Args:
+        path: 审核统计表输出路径。
+        statistics: 已归集的不可变统计数据。
+    """
     book = Workbook()
     sheet = book.active
     sheet.title = '审核统计表'
     sheet.append(['单位', '备注'])
 
-    for unit in source_data['units']:
-        for business in unit['businesses']:
+    for unit in statistics.units:
+        for business in unit.businesses:
             # 每个业务独占一行，避免主体全部内容超过 Excel 单元格字符上限。
-            business_section = f'{business["name"]}：\n' + '\n'.join(business['records'])
+            business_section = f'{business.name}：\n' + '\n'.join(business.records)
             sheet.append([
-                _safe_excel_text(unit['path']),
+                _safe_excel_text(unit.path),
                 _safe_excel_text(business_section),
             ])
 
@@ -567,33 +691,15 @@ def write_audit_statistics(
 
 def write_audit_statistics_html(
     path: Path,
-    files: list[FileRecord],
-    ownership: dict[str, list[dict]],
-    package_name: str,
-    business_failures: list[dict] | None = None,
-    root_subject_name: str = '',
-    findings: list[Finding] | None = None,
+    statistics: AuditStatisticsData,
 ) -> None:
     """写入审核统计 HTML。
 
     Args:
         path: HTML 报告输出路径。
-        files: 本次审核扫描到的文件。
-        ownership: 实际写回审核意见的单元格归属。
-        package_name: 审核包名称。
-        business_failures: 已跳过业务的结构化失败信息。
-        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
-        findings: 本次结构化审核结果，用于还原资料级意见的真实业务归属。
+        statistics: 已归集的不可变统计数据。
     """
-    grouped = _collect_statistics(
-        files,
-        ownership,
-        package_name,
-        business_failures,
-        root_subject_name,
-        findings,
-    )
-    document = render_audit_statistics_html(_statistics_source_data(grouped))
+    document = render_audit_statistics_html(_statistics_source_data(statistics))
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix='.audit-statistics-', suffix='.html', dir=path.parent,

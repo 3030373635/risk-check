@@ -11,7 +11,7 @@ from risk_audit.models import FileRecord, Finding
 from risk_audit.readers.excel import parse_workbook
 from risk_audit.readers.ooxml import load_compatible_workbook
 from risk_audit.util import sha256_file
-from risk_audit.writer import write_outputs
+from risk_audit.writer import OutputState, write_outputs
 
 
 def test_writer_requires_explicit_metadata_directory(tmp_path):
@@ -19,6 +19,77 @@ def test_writer_requires_explicit_metadata_directory(tmp_path):
     with pytest.raises(TypeError):
         write_outputs([], [], tmp_path / 'output')
     assert not (tmp_path / 'output/_risk_audit').exists()
+
+
+def test_write_outputs_keeps_metadata_in_memory_when_directory_is_none(tmp_path, pack):
+    """无元数据目录时只更新累计状态，不创建任何元数据文件。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        pack: pytest 提供的规则包夹具。
+    """
+    source = tmp_path / "source.xlsx"
+    matrix(source)
+    parsed = FileRecord(
+        source,
+        Path("06/source.xlsx"),
+        sha256_file(source),
+        "xlsx",
+        "205H",
+        [],
+        False,
+        "06",
+        "default",
+        "matrix",
+    )
+    parsed.sheets = parse_workbook(parsed, source, pack["field_aliases"])
+    unparsed = FileRecord(
+        source,
+        Path("07/unparsed.xlsx"),
+        sha256_file(source),
+        "xlsx",
+        "205H",
+        [],
+        False,
+        "07",
+        "default",
+        "matrix",
+    )
+    finding = Finding(
+        "k",
+        "i",
+        "x",
+        "c",
+        "RX",
+        1,
+        "violation",
+        "205H",
+        "信通",
+        "06",
+        "default",
+        str(parsed.relative_path),
+        "设备管理",
+        3,
+        "测试意见",
+        {},
+        "row",
+    )
+    output_state = OutputState()
+
+    write_outputs(
+        [parsed, unparsed],
+        [finding],
+        tmp_path / "output",
+        metadata_dir=None,
+        output_state=output_state,
+    )
+
+    assert "06/source.xlsx" in output_state.ownership
+    assert output_state.unparsed[0]["file"] == "07/unparsed.xlsx"
+    assert not (tmp_path / "metadata").exists()
+    assert not list(tmp_path.rglob("ownership.json"))
+    assert not list(tmp_path.rglob("待回填资料级意见.json"))
+    assert not list(tmp_path.rglob("未审核文件.json"))
 
 
 def matrix(path):

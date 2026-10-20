@@ -5,6 +5,8 @@ from dataclasses import replace
 from pathlib import Path
 import re
 
+import pytest
+
 
 def authorized_post_headers(client) -> dict[str, str]:
     """返回修改型任务接口安全头；client 为测试客户端。"""
@@ -301,6 +303,54 @@ def test_read_unaudited_files_returns_customer_friendly_json_resource(
 
     assert response.status_code == 200
     assert response.json() == {"count": 1, "items": items}
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "summary_key", "filename"),
+    [
+        ("unaudited-files", "unaudited_files_report", "未审核文件.json"),
+        ("incomplete-items", "incomplete_items_report", "未完成项.json"),
+    ],
+)
+def test_empty_detail_reports_return_zero_items(
+    client,
+    web_services,
+    input_root: Path,
+    endpoint: str,
+    summary_key: str,
+    filename: str,
+) -> None:
+    """空明细报告必须返回 HTTP 200 和零条结果。
+
+    Args:
+        client: FastAPI 测试客户端。
+        web_services: 使用真实任务存储的应用服务。
+        input_root: 测试材料目录。
+        endpoint: 需要调用的明细接口路径片段。
+        summary_key: 结果摘要中的报告路径字段。
+        filename: 对应的 JSON 报告文件名。
+    """
+    created = client.post(
+        "/api/v1/tasks",
+        headers=authorized_post_headers(client),
+        json={"input_root": str(input_root)},
+    ).json()
+    task = web_services.get_task(created["task_id"])
+    report_path = Path(task.record.output_root) / ".task/report/_risk_audit" / filename
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("[]", encoding="utf-8")
+    web_services.repository.update_task_state(
+        task.record.task_id,
+        {"result_summary": {summary_key: str(report_path), "incomplete_items": 0}},
+    )
+
+    response = client.get(
+        f"/api/v1/tasks/{task.record.task_id}/{endpoint}",
+        headers={"X-Local-Token": "secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 0, "items": []}
 
 
 def test_read_unaudited_files_reports_invalid_utf8(

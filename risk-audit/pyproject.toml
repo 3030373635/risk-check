@@ -33,3 +33,6 @@ risk_audit_web = ["assets/*", "static/*", "static/**/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "performance: 需要单独运行的规模与性能验收",
+]

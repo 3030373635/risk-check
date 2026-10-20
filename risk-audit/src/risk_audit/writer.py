@@ -49,7 +49,7 @@ class WorkbookOutputCompatibilityError(ValueError):
 
 def record_business_failure(
     output_state: OutputState,
-    metadata_dir: Path,
+    metadata_dir: Path | None,
     files: list[FileRecord],
     failure: dict[str, Any],
 ) -> None:
@@ -57,7 +57,7 @@ def record_business_failure(
 
     Args:
         output_state: 本次审核的累计输出状态。
-        metadata_dir: 审核诊断文件输出目录。
+        metadata_dir: 可选审核诊断文件输出目录；为空时仅更新内存状态。
         files: 当前跳过业务包含的全部文件。
         failure: 当前业务的结构化失败信息。
     """
@@ -85,8 +85,30 @@ def record_business_failure(
             'log_reference': failure['log_reference'],
         })
         existing_files.add(relative_path)
-    # 异常业务不会进入常规写回流程，因此必须在捕获点立即持久化。
-    write_compact_json(metadata_dir / '未审核文件.json', output_state.unparsed)
+    # 异常业务不会进入常规写回流程；详细策略在捕获点立即持久化。
+    _write_metadata_json(metadata_dir, '未审核文件.json', output_state.unparsed)
+
+
+def _write_metadata_json(
+    metadata_dir: Path | None,
+    filename: str,
+    payload: Any,
+) -> Path | None:
+    """按策略写入元数据 JSON。
+
+    Args:
+        metadata_dir: 可选元数据目录；为空时禁止落盘。
+        filename: 元数据文件名。
+        payload: 可序列化的元数据内容。
+
+    Returns:
+        实际写出的文件路径；纯内存模式返回 ``None``。
+    """
+    if metadata_dir is None:
+        return None
+    path = metadata_dir / filename
+    write_compact_json(path, payload)
+    return path
 
 
 def _sheet_paths(zf: zipfile.ZipFile) -> dict[str, str]:
@@ -373,7 +395,7 @@ def validate_output_paths(files: list[FileRecord], *, anticipate_conversion: boo
 
 
 def write_outputs(files: list[FileRecord], findings: list[Finding], output_root: Path, *,
-                  metadata_dir: Path, entities: dict[str, Entity] | None = None,
+                  metadata_dir: Path | None, entities: dict[str, Entity] | None = None,
                   output_state: OutputState | None = None, baselines: dict | None = None,
                   include_existing_measure_column: bool = True) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """写审核副本。
@@ -382,7 +404,7 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
         files: 本次需要写出的材料记录。
         findings: 需要写回材料的审核意见。
         output_root: 审核副本输出目录。
-        metadata_dir: 审核辅助资料目录。
+        metadata_dir: 可选审核辅助资料目录；为空时只更新累计状态。
         entities: 可选主体名册。
         output_state: 同批材料的累计输出状态。
         baselines: 新版矩阵核对列使用的模板基准。
@@ -395,10 +417,14 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
         raise ValueError('内部未完成检查不得写入单位审核意见；请修正结果分流后重试。')
     validate_output_paths(files)
     output_state = output_state if output_state is not None else OutputState()
-    ownership_path = metadata_dir / "ownership.json"
+    ownership_path = metadata_dir / "ownership.json" if metadata_dir is not None else None
     if output_state.previous_ownership is None:
         # 首次写出前冻结旧归属，逐主体写出时据此检测旧副本中的人工改写。
-        output_state.previous_ownership = json.loads(ownership_path.read_text(encoding="utf-8")) if ownership_path.exists() else {}
+        output_state.previous_ownership = (
+            json.loads(ownership_path.read_text(encoding="utf-8"))
+            if ownership_path is not None and ownership_path.exists()
+            else {}
+        )
         # 尚未处理主体的旧归属暂存到本批状态，避免增量写出提前删除其变更检测依据。
         output_state.ownership = dict(output_state.previous_ownership)
     old_ownership = output_state.previous_ownership
@@ -460,11 +486,15 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
     for item in pending_material:
         pending_by_key[item['finding_key']] = item
     output_state.pending = pending_without_key + list(pending_by_key.values())
-    write_compact_json(metadata_dir / '待回填资料级意见.json', output_state.pending)
+    pending_report = _write_metadata_json(
+        metadata_dir,
+        '待回填资料级意见.json',
+        output_state.pending,
+    )
     if pending_material: warnings.append({
         "type": "no_writable_sheet",
         "message": "缺件主体及所属报送单位无可承载意见的正式业务表，仍有待回填事项，流程未完成",
-        "report": str(metadata_dir / '待回填资料级意见.json'),
+        **({"report": str(pending_report)} if pending_report is not None else {}),
         "finding_keys": [item['finding_key'] for item in pending_material],
     })
     for file in files:
@@ -598,9 +628,9 @@ def write_outputs(files: list[FileRecord], findings: list[Finding], output_root:
         if file.true_format != "xls" and sha256_file(file.source) != file.sha256: raise RuntimeError(f"input changed during run: {file.source}")
     # 同批各主体共享状态，后续主体不能覆盖已经输出的归属与诊断清单。
     output_state.unparsed.extend(item for item in warnings if item['type'] in {'unparsed_business_file', 'output_incompatible_file'})
-    write_compact_json(metadata_dir / '未审核文件.json', output_state.unparsed)
+    _write_metadata_json(metadata_dir, '未审核文件.json', output_state.unparsed)
     for file in files:
         output_state.ownership.pop(str(_output_path(file)), None)
     output_state.ownership.update(ownership)
-    write_compact_json(ownership_path, output_state.ownership)
+    _write_metadata_json(metadata_dir, 'ownership.json', output_state.ownership)
     return warnings, ownership

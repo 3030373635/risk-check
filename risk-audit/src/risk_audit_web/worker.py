@@ -12,9 +12,14 @@ import threading
 import traceback
 from typing import Any
 
+from risk_audit.artifact_policy import ArtifactPolicy
 from risk_audit.progress import AuditCancelled, AuditProgressEvent
 from risk_audit.readers.xls import configure_conversion_runtime
 from risk_audit_web.region_profiles import verify_rulepack_release
+from risk_audit_web.task_artifacts import (
+    compact_task_artifacts,
+    validate_retained_task_artifacts,
+)
 from risk_audit_web.task_contracts import SCHEMA_VERSION, TaskEvent, TaskRequest
 from risk_audit_web.task_repository import TaskRepository
 
@@ -66,9 +71,9 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     }
     statistics_report = result.get("audit_statistics_report")
     statistics_html_report = result.get("audit_statistics_html_report")
-    run_dir = result.get("run_dir")
     log_reference = result.get("log_reference")
     incomplete_items_report = result.get("incomplete_items_report")
+    unaudited_files_report = result.get("unaudited_files_report")
     if isinstance(statistics_report, str):
         summary["audit_statistics_report"] = statistics_report
     if isinstance(statistics_html_report, str):
@@ -78,12 +83,39 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
         summary["log_reference"] = log_reference
     if isinstance(incomplete_items_report, str) and Path(incomplete_items_report).is_file():
         summary["incomplete_items_report"] = incomplete_items_report
-    if isinstance(run_dir, str):
-        summary["run_dir"] = run_dir
-        unaudited_files_report = Path(run_dir) / "_risk_audit/未审核文件.json"
-        if unaudited_files_report.is_file():
-            summary["unaudited_files_report"] = str(unaudited_files_report)
+    if isinstance(unaudited_files_report, str) and Path(unaudited_files_report).is_file():
+        summary["unaudited_files_report"] = unaudited_files_report
     return summary
+
+
+def _compact_and_report_warnings(
+    repository: TaskRepository,
+    output_root: Path,
+    task_id: str,
+) -> None:
+    """执行白名单清理并把非致命问题写入事件表。
+
+    Args:
+        repository: 当前任务仓储。
+        output_root: 用户选择的任务输出目录。
+        task_id: 当前任务编号。
+    """
+    try:
+        warnings = compact_task_artifacts(output_root)
+    except Exception as error:
+        warnings = (str(error),)
+    for warning in warnings:
+        try:
+            repository.append_event(TaskEvent(
+                SCHEMA_VERSION,
+                task_id,
+                "cleanup_warning",
+                _now(),
+                {"message": warning},
+            ))
+        except Exception:
+            # 清理告警写入失败也不能覆盖审核已经确定的业务终态。
+            pass
 
 
 def task_runtime_directory(task_id: str) -> Path:
@@ -251,6 +283,7 @@ def run_worker(
             config_file=Path(request.config_file) if request.config_file else None,
             progress_callback=report_progress,
             cancel_check=lambda: repository.is_cancel_requested(task_id),
+            artifact_policy=ArtifactPolicy.MINIMAL,
         )
         terminal_status = "completed" if result.get("write_completed") else "partial"
         current = repository.read_state(task_id)
@@ -260,6 +293,34 @@ def run_worker(
             else len(result.get("business_results", []))
         )
         summary = _result_summary(result)
+        _compact_and_report_warnings(repository, output_root, task_id)
+        required_result_keys = (
+            "audit_statistics_report",
+            "audit_statistics_html_report",
+            "unaudited_files_report",
+            "incomplete_items_report",
+        )
+        required_paths: tuple[Path, ...] = ()
+        if isinstance(result.get("log_file"), str):
+            for key in required_result_keys:
+                if not isinstance(result.get(key), str):
+                    raise RuntimeError(f"审核结果缺少必需产物路径：{key}")
+            required_paths = tuple(Path(result[key]) for key in required_result_keys)
+            required_paths += (Path(result["log_file"]),)
+        else:
+            required_paths = tuple(
+                Path(summary[key])
+                for key in (
+                "audit_statistics_report",
+                "audit_statistics_html_report",
+                "unaudited_files_report",
+                "incomplete_items_report",
+            )
+                if key in summary
+            )
+        required_paths += (log_path,)
+        # 必需结果缺失时禁止发布 100% 完成状态。
+        validate_retained_task_artifacts(output_root, required_paths)
         incomplete_count = summary["incomplete_items"]
         terminal_message = (
             "审核已完成"
@@ -288,6 +349,7 @@ def run_worker(
         repository.append_event(TaskEvent(
             SCHEMA_VERSION, task_id, "cancelled", _now(), {"message": str(error)},
         ))
+        _compact_and_report_warnings(repository, output_root, task_id)
     except Exception as error:
         exit_code = 1
         error_code = "RULEPACK_CHANGED" if isinstance(error, RulepackChangedError) else "AUDIT_FAILED"
@@ -311,6 +373,7 @@ def run_worker(
                 _now(),
                 {"error_code": error_code, "message": str(error)},
             ))
+            _compact_and_report_warnings(repository, output_root, task_id)
         except Exception:
             # 数据库本身不可写时不能伪造成功；原始退出码仍明确失败。
             pass

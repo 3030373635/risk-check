@@ -2,13 +2,70 @@
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 from lxml import html
 from openpyxl import load_workbook
+import pytest
 
-from risk_audit.audit_statistics import write_audit_statistics, write_audit_statistics_html
+from risk_audit import audit_statistics
+from risk_audit.audit_statistics import (
+    collect_audit_statistics,
+    write_audit_statistics as _write_audit_statistics,
+    write_audit_statistics_html as _write_audit_statistics_html,
+)
 from risk_audit.models import FileRecord, Finding
+
+
+def write_audit_statistics(
+    path: Path,
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    **options,
+) -> None:
+    """为既有行为用例归集一次并写出 Excel。
+
+    Args:
+        path: Excel 输出路径。
+        files: 审核文件列表。
+        ownership: 写回意见归属。
+        package_name: 审核包名称。
+        options: 归集函数的可选参数。
+    """
+    statistics = collect_audit_statistics(
+        files,
+        ownership,
+        package_name,
+        **options,
+    )
+    _write_audit_statistics(path, statistics)
+
+
+def write_audit_statistics_html(
+    path: Path,
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    **options,
+) -> None:
+    """为既有行为用例归集一次并写出 HTML。
+
+    Args:
+        path: HTML 输出路径。
+        files: 审核文件列表。
+        ownership: 写回意见归属。
+        package_name: 审核包名称。
+        options: 归集函数的可选参数。
+    """
+    statistics = collect_audit_statistics(
+        files,
+        ownership,
+        package_name,
+        **options,
+    )
+    _write_audit_statistics_html(path, statistics)
 
 
 def _file(tmp_path: Path, relative_path: str, material_type: str, business_code: str | None) -> FileRecord:
@@ -24,6 +81,240 @@ def _file(tmp_path: Path, relative_path: str, material_type: str, business_code:
         business_code,
         'default',
         material_type,
+    )
+
+
+def _finding(
+    message: str,
+    file_path: str,
+    sheet: str,
+    row: int | None,
+    *,
+    entity_code: str = "205H",
+    business_id: str = "sales_electricity",
+    location_policy: str = "row",
+) -> Finding:
+    """构建统计索引测试使用的审核结果。
+
+    Args:
+        message: 审核意见原文。
+        file_path: 意见所属文件路径。
+        sheet: 意见所属工作表。
+        row: 意见所属行号。
+        entity_code: 会计主体代码。
+        business_id: 标准业务标识。
+        location_policy: 意见定位策略。
+    """
+    return Finding(
+        finding_key=f"{file_path}:{sheet}:{row}:{business_id}",
+        finding_id="finding-id",
+        rule_id="test.rule",
+        check_id="test_check",
+        display_code="R1",
+        revision=1,
+        severity="violation",
+        entity_code=entity_code,
+        entity_name="测试单位",
+        business_code="01",
+        variant_id="default",
+        file_path=file_path,
+        sheet=sheet,
+        row=row,
+        message=message,
+        evidence={},
+        location_policy=location_policy,
+        business_id=business_id,
+    )
+
+
+def test_occurrence_index_selects_exact_file_sheet_and_row(tmp_path: Path) -> None:
+    """相同文本必须按文件、工作表和行号精确命中。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+    file = _file(tmp_path, "单位/01业务/目标.xlsx", "matrix", "01")
+    message = "【第1条】请核实。"
+    wrong = _finding(message, str(file.relative_path), "风控矩阵", 8)
+    expected = _finding(message, str(file.relative_path), "风控矩阵", 9)
+
+    index = audit_statistics._build_finding_occurrence_index([wrong, expected])
+    actual = audit_statistics._find_occurrence(
+        index,
+        message,
+        {"sheet": "风控矩阵", "cell": "H9"},
+        file,
+    )
+
+    assert actual is expected
+
+
+def test_occurrence_index_does_not_scan_same_message_candidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """高频相同文本归集不得回退到旧候选列表扫描。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    file = _file(tmp_path, "单位/01业务/目标.xlsx", "matrix", "01")
+    file.business_id = "sales_electricity"
+    message = "【第1条】高频意见。"
+    findings = [
+        _finding(message, f"单位/01业务/文件-{index}.xlsx", "风控矩阵", index + 2)
+        for index in range(10_000)
+    ]
+    findings.append(_finding(message, str(file.relative_path), "风控矩阵", 5))
+    ownership = {
+        str(file.relative_path): [{
+            "sheet": "风控矩阵",
+            "cell": "H5",
+            "program_text": message,
+        }],
+    }
+
+    def fail_old_scan(*_args, **_kwargs):
+        """旧扫描入口一旦被调用即失败；参数为历史函数调用值。"""
+        raise AssertionError("不得扫描相同文本候选列表")
+
+    monkeypatch.setattr(
+        audit_statistics,
+        "_finding_for_occurrence",
+        fail_old_scan,
+        raising=False,
+    )
+    statistics = audit_statistics.collect_audit_statistics(
+        [file],
+        ownership,
+        "报送包",
+        findings=findings,
+    )
+
+    assert statistics.units[0].businesses[0].records == ("【第1条】高频意见。 1条。",)
+
+
+def test_occurrence_index_rejects_conflicting_routes_at_same_location() -> None:
+    """同一精确位置的不同业务路由必须显式报错；无参数。"""
+    message = "【第1条】请核实。"
+    first = _finding(message, "单位/01业务/目标.xlsx", "风控矩阵", 9)
+    second = _finding(
+        message,
+        "单位/01业务/目标.xlsx",
+        "风控矩阵",
+        9,
+        business_id="trade_purchase",
+    )
+
+    with pytest.raises(ValueError, match=r"目标\.xlsx.*风控矩阵.*9"):
+        audit_statistics._build_finding_occurrence_index([first, second])
+
+
+@pytest.mark.parametrize("finding_path", ["", "缺失业务/来源.xlsx"])
+def test_occurrence_index_routes_material_finding_by_entity_fallback(
+    tmp_path: Path,
+    finding_path: str,
+) -> None:
+    """资料级意见必须按主体回退到真实 Finding。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+        finding_path: 资料级 Finding 的可选来源路径。
+    """
+    file = _file(tmp_path, "单位/01业务/承载.xlsx", "matrix", "01")
+    message = "【第17条】缺少目标业务材料。"
+    expected = _finding(
+        message,
+        finding_path,
+        "缺失表" if finding_path else "",
+        None,
+        business_id="missing_business",
+        location_policy="material",
+    )
+
+    index = audit_statistics._build_finding_occurrence_index([expected])
+    actual = audit_statistics._find_occurrence(
+        index,
+        message,
+        {"sheet": "风控矩阵", "cell": "J4"},
+        file,
+    )
+
+    assert actual is expected
+
+
+def test_shared_statistics_data_drives_excel_and_html(tmp_path: Path) -> None:
+    """同一不可变统计对象必须同时驱动 Excel 和 HTML。
+
+    Args:
+        tmp_path: pytest 提供的隔离目录。
+    """
+    file = _file(tmp_path, "单位/01业务/目标.xlsx", "matrix", "01")
+    message = "【第1条】请核实。"
+    ownership = {
+        str(file.relative_path): [{
+            "sheet": "风控矩阵",
+            "cell": "H5",
+            "program_text": message,
+        }],
+    }
+    statistics = audit_statistics.collect_audit_statistics(
+        [file],
+        ownership,
+        "报送包",
+        findings=[_finding(message, str(file.relative_path), "风控矩阵", 5)],
+    )
+    excel_target = tmp_path / "审核统计表.xlsx"
+    html_target = tmp_path / "审核统计表.html"
+
+    audit_statistics.write_audit_statistics(excel_target, statistics)
+    audit_statistics.write_audit_statistics_html(html_target, statistics)
+
+    excel_rows = list(load_workbook(excel_target)["审核统计表"].values)
+    document = html.fromstring(html_target.read_text(encoding="utf-8"))
+    html_source = json.loads(document.get_element_by_id("audit-source-data").text)
+    assert excel_rows == [
+        ("单位", "备注"),
+        ("报送包/单位", "01业务：\n【第1条】请核实。 1条。"),
+    ]
+    assert html_source == {
+        "units": [{
+            "path": "报送包/单位",
+            "businesses": [{
+                "name": "01业务",
+                "records": ["【第1条】请核实。 1条。"],
+            }],
+        }],
+    }
+    with pytest.raises(FrozenInstanceError):
+        statistics.units = ()
+
+
+def test_finalization_benchmark_reports_stable_metrics() -> None:
+    """基准入口必须返回稳定字段和非负计时；无参数。"""
+    from tools.benchmark_task_finalization import run_benchmark
+
+    metrics = run_benchmark(findings_count=20, ownership_count=10)
+
+    assert metrics.keys() == {
+        "findings",
+        "ownership",
+        "collect_seconds",
+        "excel_seconds",
+        "html_seconds",
+        "total_seconds",
+    }
+    assert metrics["findings"] == 20
+    assert metrics["ownership"] == 10
+    assert all(
+        isinstance(metrics[key], float) and metrics[key] >= 0
+        for key in (
+            "collect_seconds",
+            "excel_seconds",
+            "html_seconds",
+            "total_seconds",
+        )
     )
 
 

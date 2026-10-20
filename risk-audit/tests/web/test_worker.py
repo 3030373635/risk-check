@@ -83,6 +83,34 @@ def test_worker_forwards_parent_directory_entity_mode(
     assert observed == {"entity_mode": "parent_directory", "entity_file": None}
 
 
+def test_worker_uses_minimal_artifact_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker 必须固定启用最小产物策略。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit.artifact_policy import ArtifactPolicy
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path)
+    monkeypatch.setattr(worker, "configure_conversion_runtime", lambda *args: None)
+    observed: dict[str, object] = {}
+
+    def audit_func(*_args, **kwargs):
+        """记录产物策略；_args 为位置参数，kwargs 为审核参数。"""
+        observed["artifact_policy"] = kwargs["artifact_policy"]
+        return {"write_completed": True, "business_results": []}
+
+    code = worker.run_worker(repository.database_path, request.task_id, audit_func=audit_func)
+
+    assert code == 0
+    assert observed["artifact_policy"] is ArtifactPolicy.MINIMAL
+
+
 def test_worker_rejects_changed_pinned_rulepack(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -172,12 +200,16 @@ def test_worker_maps_result_to_sqlite_terminal_state(
         report = kwargs["run_directory"] / "result.json"
         report.parent.mkdir(parents=True)
         report.write_text("{}", encoding="utf-8")
+        audit_log = kwargs["run_directory"] / "audit.log"
+        audit_log.write_text("audit", encoding="utf-8")
         incomplete_items_report = kwargs["run_directory"] / "_risk_audit/未完成项.json"
         incomplete_items_report.parent.mkdir(parents=True)
         incomplete_items_report.write_text(
             "[]" if write_completed else '[{"type":"file_parsing_failed"}]',
             encoding="utf-8",
         )
+        unaudited_files_report = kwargs["run_directory"] / "_risk_audit/未审核文件.json"
+        unaudited_files_report.write_text("[]", encoding="utf-8")
         excel_report = Path(request.output_root) / "审核统计表.xlsx"
         html_report = Path(request.output_root) / "审核统计表.html"
         excel_report.write_bytes(b"excel")
@@ -200,8 +232,9 @@ def test_worker_maps_result_to_sqlite_terminal_state(
             "limitations": 0,
             "incomplete_items": 0 if write_completed else 1,
             "incomplete_items_report": str(incomplete_items_report),
+            "unaudited_files_report": str(unaudited_files_report),
+            "log_file": str(audit_log),
             "business_results": [{}, {}],
-            "run_dir": str(kwargs["run_directory"]),
             "audit_statistics_report": str(excel_report),
             "audit_statistics_html_report": str(html_report),
         }
@@ -224,7 +257,10 @@ def test_worker_maps_result_to_sqlite_terminal_state(
     assert state.progress_percent == 100
     assert state.worker_pid is None
     task_dir = Path(request.output_root) / ".task"
-    assert (task_dir / "report/result.json").is_file()
+    assert not (task_dir / "report/result.json").exists()
+    assert (task_dir / "report/audit.log").is_file()
+    assert (task_dir / "report/_risk_audit/未审核文件.json").is_file()
+    assert (task_dir / "report/_risk_audit/未完成项.json").is_file()
     assert not (task_dir / "work").exists()
     for removed_name in ("request.json", "state.json", "events.jsonl", "cancel.requested"):
         assert not (task_dir / removed_name).exists()
@@ -252,6 +288,37 @@ def test_worker_failure_remains_visible_as_failed(
     assert state.error_code == "AUDIT_FAILED"
     assert "模拟审核崩溃" in state.message
     assert (Path(request.output_root) / ".task/worker.log").is_file()
+
+
+def test_cleanup_warning_does_not_change_terminal_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """清理异常只追加告警事件，不得覆盖任务原终态。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit_web import worker
+
+    repository, request = create_worker_task(tmp_path)
+    repository.update_task_state(request.task_id, {"status": "completed"})
+
+    def fail_cleanup(_output_root):
+        """模拟清理异常；_output_root 为任务输出目录。"""
+        raise OSError("模拟清理失败")
+
+    monkeypatch.setattr(worker, "compact_task_artifacts", fail_cleanup)
+
+    worker._compact_and_report_warnings(
+        repository,
+        Path(request.output_root),
+        request.task_id,
+    )
+
+    assert repository.read_state(request.task_id).status == "completed"
+    assert repository.list_events(request.task_id)[-1].event == "cleanup_warning"
 
 
 def test_worker_uses_system_temp_for_long_output_path(

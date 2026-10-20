@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from time import perf_counter
 
+from risk_audit.artifact_policy import ArtifactPolicy
 from risk_audit.baselines import load_baselines
 from risk_audit.checks.registry import build_registry
 from risk_audit.configuration.loader import load_pack
@@ -31,7 +32,11 @@ from risk_audit.models import CheckStatus, Entity, FileRecord, Finding
 from risk_audit.review_tasks import build_review_tasks, write_review_tasks
 from risk_audit.issue_routing import build_internal_diagnostics, write_internal_diagnostics
 from risk_audit.submission_scope import resolve_submission_scopes, write_submission_scope_report, submission_group
-from risk_audit.audit_statistics import write_audit_statistics, write_audit_statistics_html
+from risk_audit.audit_statistics import (
+    collect_audit_statistics,
+    write_audit_statistics,
+    write_audit_statistics_html,
+)
 from risk_audit.progress import (
     AuditCancelled,
     AuditProgressEvent,
@@ -151,6 +156,46 @@ def mark_unavailable_templates(
         }
 
 
+def _write_audit_statistics_reports(
+    output_root: Path,
+    files: list[FileRecord],
+    ownership: dict[str, list[dict]],
+    package_name: str,
+    *,
+    business_failures: list[dict],
+    root_subject_name: str,
+    findings: list[Finding],
+) -> tuple[Path, Path]:
+    """单次归集并写出 Excel 和 HTML 统计报告。
+
+    Args:
+        output_root: 两种统计报告的输出目录。
+        files: 本次审核扫描到的文件。
+        ownership: 实际写回审核意见的单元格归属。
+        package_name: 审核包名称。
+        business_failures: 已跳过业务的结构化失败信息。
+        root_subject_name: 输入根本身是业务目录时的外层主体目录名。
+        findings: 本次结构化审核结果。
+
+    Returns:
+        Excel 与 HTML 报告的最终路径。
+    """
+    statistics = collect_audit_statistics(
+        files,
+        ownership,
+        package_name,
+        business_failures=business_failures,
+        root_subject_name=root_subject_name,
+        findings=findings,
+    )
+    excel_report = output_root / '审核统计表.xlsx'
+    html_report = output_root / '审核统计表.html'
+    # 两种格式必须使用同一个冻结对象，禁止重复扫描 Finding 与 ownership。
+    write_audit_statistics(excel_report, statistics)
+    write_audit_statistics_html(html_report, statistics)
+    return excel_report, html_report
+
+
 def audit(
     input_root: str | Path,
     output_root: str | Path,
@@ -171,6 +216,7 @@ def audit(
     run_directory: str | Path | None = None,
     work_root: str | Path | None = None,
     entity_mode: str = "registry",
+    artifact_policy: ArtifactPolicy = ArtifactPolicy.DETAILED,
 ) -> dict[str, Any]:
     """执行审核或试跑。
 
@@ -180,7 +226,8 @@ def audit(
     config_file 为可选审核运行配置，enabled_rules 为仅本次运行启用的规则展示编号，
     progress_callback 为可选进度接收器，cancel_check 为安全取消检查器，model_root 为
     可选语义模型目录，run_directory 为可选持久报告目录，work_root 为可选临时
-    工作目录，entity_mode 指定名册或业务上层目录识别；默认
+    工作目录，entity_mode 指定名册或业务上层目录识别，artifact_policy 指定持久化
+    详细产物或最小产物；默认
     直接从实际上传的风控矩阵和三清单确定范围。
     """
     input_resolved = Path(input_root).resolve(); output_resolved = Path(output_root).resolve()
@@ -218,6 +265,7 @@ def audit(
                 work_root=resolved_work_root,
                 history_root=Path(runs_root).resolve(),
                 entity_mode=entity_mode,
+                artifact_policy=artifact_policy,
             )
             emit_progress(progress_callback, AuditProgressEvent(
                 stage='completed',
@@ -446,7 +494,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
            config_file: str | Path | None, enabled_rules: list[str] | None,
            progress_callback: ProgressCallback | None, cancel_check: CancelCheck | None,
            model_root: str | Path | None, work_root: Path, history_root: Path,
-           entity_mode: str) -> dict[str, Any]:
+           entity_mode: str, artifact_policy: ArtifactPolicy) -> dict[str, Any]:
     """按主体、业务及矩阵类型执行增量审核。
 
     input_root/output_root 为已校验目录，rulepack 为规则包，entity_file 为可选主体名册，
@@ -455,16 +503,29 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     enabled_rules 为仅本次运行启用的规则展示编号，progress_callback/cancel_check
     为桌面任务的进度和取消接口，model_root 为可选语义模型目录，work_root
     为与持久报告分离的临时工作目录，history_root 为历史运行根目录，
-    entity_mode 为主体识别方式。
+    entity_mode 为主体识别方式，artifact_policy 为产物持久化策略。
     """
     input_resolved, output_resolved = input_root, output_root
     logger = logging.getLogger(__name__)
+    detailed_artifacts = artifact_policy is ArtifactPolicy.DETAILED
     audit_directory = run_dir / '_risk_audit'
-    report_directory = audit_directory if write else run_dir
-    progress_details_path = run_dir / 'progress_details.jsonl'
+    persistent_metadata_directory = audit_directory if detailed_artifacts else None
+    internal_report_directory = (
+        audit_directory
+        if detailed_artifacts and write
+        else run_dir
+        if detailed_artifacts
+        else work_root / 'reports'
+    )
+    report_directory = internal_report_directory
+    progress_details_path = (
+        run_dir / 'progress_details.jsonl'
+        if detailed_artifacts
+        else work_root / 'progress_details.jsonl'
+    )
     # 同一运行标识重新开始时重建增量日志，避免混入上一次中断记录。
     progress_details_path.unlink(missing_ok=True)
-    if write:
+    if write and detailed_artifacts:
         # 在任何业务副本写出前固定输出目录映射，中断运行的 ownership 也可被下一次重跑恢复。
         write_compact_json(audit_directory / 'run_context.json', {
             'run_id': run_id,
@@ -614,7 +675,12 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     snapshot['submission_scopes'] = scopes
     snapshot['scope_source'] = scope_report
     snapshot.pop('snapshot_hash'); snapshot['snapshot_hash'] = sha256_json(snapshot)
-    save_snapshot(run_dir / 'snapshot.json', snapshot)
+    snapshot_path = (
+        run_dir / 'snapshot.json'
+        if detailed_artifacts
+        else work_root / 'snapshot.json'
+    )
+    save_snapshot(snapshot_path, snapshot)
     from risk_audit.applicability import attach_context
     attach_context(pack, files, entities)
     if pack.get('semantic_config'):
@@ -644,7 +710,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     warnings: list[dict[str, Any]] = []
     business_failures: list[dict[str, Any]] = []
     log_reference = build_log_reference(run_dir / 'audit.log', output_resolved, history_root)
-    previous_ownership = _load_previous_ownership(history_root, output_resolved, run_dir) if write else {}
+    previous_ownership = (
+        _load_previous_ownership(history_root, output_resolved, run_dir)
+        if write and detailed_artifacts
+        else {}
+    )
     output_state = OutputState(ownership=dict(previous_ownership), previous_ownership=previous_ownership)
     entity_results: list[dict[str, Any]] = []
     business_results: list[dict[str, Any]] = []
@@ -659,7 +729,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         group_files = [file for file in files if ((file.entity_code or '') if scope_file else submission_group(
             file, input_resolved, pack['baseline_registry'],
         )) == entity_key]
-        entity_dir = run_dir / 'entities' / f'{index:04d}'
+        entity_dir = (
+            run_dir / 'entities' / f'{index:04d}'
+            if detailed_artifacts
+            else work_root / 'details/entities' / f'{index:04d}'
+        )
         logger.info('主体审核开始 [%d/%d]：%s（%s），%d份文件',
                     index, len(entity_keys), entity_name, entity_key, len(group_files))
         unit_keys = _business_keys(scopes[entity_key], group_files)
@@ -744,7 +818,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 snapshot['submission_scopes'] = scopes
                 snapshot['scope_source'] = scope_report
                 snapshot.pop('snapshot_hash'); snapshot['snapshot_hash'] = sha256_json(snapshot)
-                save_snapshot(run_dir / 'snapshot.json', snapshot)
+                save_snapshot(snapshot_path, snapshot)
                 write_submission_scope_report(report_directory, scope_report, entities)
                 local = deepcopy(pack)
                 # 主体是否已报送材料由扫描名单确定；缺报某个业务不能被当作整个主体未报送。
@@ -807,7 +881,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                             baselines=(unit_baselines
                                        if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
                             include_existing_measure_column=include_existing_measure_column,
-                            metadata_dir=audit_directory,
+                            metadata_dir=persistent_metadata_directory,
                         )
                 except AuditCancelled:
                     raise
@@ -845,7 +919,12 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 unit_limitations = []
                 unit_warnings = [{'type': 'business_processing_failed', **unit_failure}]
                 if write:
-                    record_business_failure(output_state, audit_directory, unit_files, unit_failure)
+                    record_business_failure(
+                        output_state,
+                        persistent_metadata_directory,
+                        unit_files,
+                        unit_failure,
+                    )
                 logger.error(
                     '业务%s处理失败，已跳过：阶段=%s，文件=%s，原因=%s',
                     unit_label,
@@ -969,7 +1048,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                         baselines=(baselines
                                    if pack['manifest']['version'] in PREPROCESSING_RULE_VERSIONS else None),
                         include_existing_measure_column=include_existing_measure_column,
-                        metadata_dir=audit_directory,
+                        metadata_dir=persistent_metadata_directory,
                     )
                     pending_after = {
                         item.get('finding_key') for item in output_state.pending
@@ -1027,7 +1106,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 if write:
                     record_business_failure(
                         output_state,
-                        audit_directory,
+                        persistent_metadata_directory,
                         parsed_entity_files,
                         entity_failure,
                     )
@@ -1071,8 +1150,13 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 })
         if write and explanation_files:
             # 主体说明原样复制一次，不重复写入每个业务的输出及程序归属记录。
-            explanation_warnings, _ = write_outputs(explanation_files, [], output_resolved,
-                                                     output_state=output_state, metadata_dir=audit_directory)
+            explanation_warnings, _ = write_outputs(
+                explanation_files,
+                [],
+                output_resolved,
+                output_state=output_state,
+                metadata_dir=persistent_metadata_directory,
+            )
             group_warnings.extend(explanation_warnings); warnings.extend(explanation_warnings)
         attach_context(pack, files, entities)
         group_completed = write and not _has_failures(group_files, group_statuses, group_warnings)
@@ -1095,51 +1179,58 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         total_units=total_units,
         message='正在生成汇总结果',
     ))
-    scope_summary = write_submission_scope_report(report_directory, scope_report, entities)
     hidden_alerts = hidden_sheet_alerts(files)
-    hidden_summary = write_hidden_sheet_alerts(report_directory, hidden_alerts, include_hidden=include_hidden)
-    if pack.get('semantic_config'):
-        from risk_audit.semantic import get_assistant,close_assistant
-        from risk_audit.applicability import interpret_record
-        assistant=get_assistant(pack)
-        semantic_report=assistant.report()
-        from risk_audit.semantic_vocabulary import write_semantic_vocabulary
-        semantic_report['vocabulary']=write_semantic_vocabulary(run_dir,files,semantic_report,findings,limitations)
-        write_compact_json(run_dir/'semantic_diagnostics.json',semantic_report)
-        write_compact_json(run_dir/'applicability_interpretations.json',[
-            {'file':r.file_path,'sheet':r.sheet,'row':r.row,'entity_code':r.entity_code,
-             'business_id':r.business_id,'business_code':r.business_code,
-             'variant_id':r.variant_id,'text':r.value('applicability'),'interpretation':interpret_record(r,pack).to_dict()}
-            for f in files for s in f.sheets for r in s.records if r.record_type=='matrix'])
-        close_assistant(pack)
-    internal = build_internal_diagnostics(limitations, files, scopes)
-    internal_summary = write_internal_diagnostics(report_directory, internal)
+    scope_summary: dict[str, Any] = {}
+    hidden_summary: dict[str, Any] = {'report': ''}
+    internal_summary: dict[str, Any] = {}
     capability_summary = None
-    if pack.get('parser_policy', {}).get('version') == 3:
-        from risk_audit.capability_report import build_capability_report, write_capability_report
-        capability = build_capability_report(files, limitations, findings, scopes)
-        capability_summary = write_capability_report(report_directory, capability)
-    tasks=build_review_tasks(files,findings,scopes)
-    task_summary=write_review_tasks(report_directory,tasks)
-    from risk_audit.responsibility_patterns import build_patterns, write_patterns
-    responsibility_summary = write_patterns(report_directory, build_patterns(files,findings,limitations,scopes))
+    task_summary: dict[str, Any] = {}
+    responsibility_summary: dict[str, Any] = {}
+    if detailed_artifacts:
+        scope_summary = write_submission_scope_report(report_directory, scope_report, entities)
+        hidden_summary = write_hidden_sheet_alerts(
+            report_directory,
+            hidden_alerts,
+            include_hidden=include_hidden,
+        )
+        if pack.get('semantic_config'):
+            from risk_audit.semantic import get_assistant, close_assistant
+            from risk_audit.applicability import interpret_record
+            assistant = get_assistant(pack)
+            semantic_report = assistant.report()
+            from risk_audit.semantic_vocabulary import write_semantic_vocabulary
+            semantic_report['vocabulary'] = write_semantic_vocabulary(
+                run_dir, files, semantic_report, findings, limitations,
+            )
+            write_compact_json(run_dir / 'semantic_diagnostics.json', semantic_report)
+            write_compact_json(run_dir / 'applicability_interpretations.json', [
+                {'file': record.file_path, 'sheet': record.sheet, 'row': record.row,
+                 'entity_code': record.entity_code, 'business_id': record.business_id,
+                 'business_code': record.business_code, 'variant_id': record.variant_id,
+                 'text': record.value('applicability'),
+                 'interpretation': interpret_record(record, pack).to_dict()}
+                for file in files for sheet in file.sheets for record in sheet.records
+                if record.record_type == 'matrix'
+            ])
+            close_assistant(pack)
+        internal = build_internal_diagnostics(limitations, files, scopes)
+        internal_summary = write_internal_diagnostics(report_directory, internal)
+        if pack.get('parser_policy', {}).get('version') == 3:
+            from risk_audit.capability_report import build_capability_report, write_capability_report
+            capability = build_capability_report(files, limitations, findings, scopes)
+            capability_summary = write_capability_report(report_directory, capability)
+        tasks = build_review_tasks(files, findings, scopes)
+        task_summary = write_review_tasks(report_directory, tasks)
+        from risk_audit.responsibility_patterns import build_patterns, write_patterns
+        responsibility_summary = write_patterns(
+            report_directory,
+            build_patterns(files, findings, limitations, scopes),
+        )
     warnings.extend(scope_report['alerts'])
     if write:
-        audit_statistics_report = output_resolved / '审核统计表.xlsx'
-        audit_statistics_html_report = output_resolved / '审核统计表.html'
-        # 统计表是独立代码产物，不依赖已删除的意见反馈规则或报告。
-        write_audit_statistics(
-            audit_statistics_report,
-            files,
-            output_state.ownership,
-            input_resolved.name,
-            business_failures=business_failures,
-            root_subject_name=input_resolved.parent.name,
-            findings=findings,
-        )
-        # HTML 与 Excel 使用同一批审核结果独立生成，方便浏览器快速定位问题。
-        write_audit_statistics_html(
-            audit_statistics_html_report,
+        # 统计表是独立代码产物；两种格式共用一次归集结果。
+        audit_statistics_report, audit_statistics_html_report = _write_audit_statistics_reports(
+            output_resolved,
             files,
             output_state.ownership,
             input_resolved.name,
@@ -1162,27 +1253,33 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     for source in scope_report['sources']:
         if sha256_file(Path(source['path'])) != source['sha256']:
             raise RuntimeError(f"范围来源文件运行期间发生变化: {source['path']}")
-    write_compact_json(run_dir / "findings.json", [x.to_dict() for x in findings])
-    write_compact_json(run_dir / "statuses.json", [asdict(x) for x in statuses])
-    write_compact_json(run_dir / "limitations.json", limitations)
-    inventory = [{"path": str(f.relative_path), "sha256": f.sha256, "true_format": f.true_format, "entity_code": f.entity_code, "entity_evidence": f.entity_evidence, "entity_conflict": f.entity_conflict, "business_id": f.business_id, "business_code": f.business_code, "variant_id": f.variant_id, "material_type": f.material_type, "parse_errors": f.parse_errors, "sheets": [{"title": s.title, "type": s.sheet_type, "records": len(s.records), "columns": s.columns, "business_header_paths": s.business_header_paths, "audit_columns": s.audit_columns, "output_column": s.output_column} for s in f.sheets], "preservation": f.preservation} for f in files]
-    write_compact_json(run_dir / "inventory.json", inventory)
-    write_compact_json(run_dir / "warnings.json", warnings)
+    if detailed_artifacts:
+        write_compact_json(run_dir / "findings.json", [x.to_dict() for x in findings])
+        write_compact_json(run_dir / "statuses.json", [asdict(x) for x in statuses])
+        write_compact_json(run_dir / "limitations.json", limitations)
+        inventory = [{"path": str(f.relative_path), "sha256": f.sha256, "true_format": f.true_format, "entity_code": f.entity_code, "entity_evidence": f.entity_evidence, "entity_conflict": f.entity_conflict, "business_id": f.business_id, "business_code": f.business_code, "variant_id": f.variant_id, "material_type": f.material_type, "parse_errors": f.parse_errors, "sheets": [{"title": s.title, "type": s.sheet_type, "records": len(s.records), "columns": s.columns, "business_header_paths": s.business_header_paths, "audit_columns": s.audit_columns, "output_column": s.output_column} for s in f.sheets], "preservation": f.preservation} for f in files]
+        write_compact_json(run_dir / "inventory.json", inventory)
+        write_compact_json(run_dir / "warnings.json", warnings)
     # 完整根目录报告已安全写出，成功任务不再保留增量明细副本。
     progress_details_path.unlink(missing_ok=True)
     parsed_business_files = [f for f in files if f.material_type != "explanation"]
     # 即使同批其他文件已写入，无业务表的文件仍属于未审核，隐藏提示不能掩盖它。
     unparsed_file_paths = [str(file.relative_path) for file in parsed_business_files if not file.sheets]
     incomplete_items = collect_incomplete_items(files, statuses, warnings)
+    unaudited_files_report = audit_directory / '未审核文件.json'
     incomplete_items_report = audit_directory / '未完成项.json'
-    # 任务终态和页面明细共用同一份未完成项，避免状态与弹窗内容不一致。
+    # 页面明细由累计内存状态一次性发布，最小模式不保留过程元数据。
+    write_compact_json(unaudited_files_report, output_state.unparsed)
     write_compact_json(incomplete_items_report, incomplete_items)
     has_failures = bool(incomplete_items)
-    result = {"run_id": run_id, "run_dir": str(run_dir), "output_root": str(output_resolved), "input_files": len(parsed_business_files), "parsed_files": sum(bool(f.sheets) for f in parsed_business_files), "records": sum(len(s.records) for f in files for s in f.sheets), "findings": len(findings), "statuses": {k: sum(x.status == k for x in statuses) for k in {x.status for x in statuses}}, "missing_code_entities": len(missing_code), "write_completed": write and not has_failures, "warnings": len(warnings)}
+    result = {"run_id": run_id, "output_root": str(output_resolved), "input_files": len(parsed_business_files), "parsed_files": sum(bool(f.sheets) for f in parsed_business_files), "records": sum(len(s.records) for f in files for s in f.sheets), "findings": len(findings), "statuses": {k: sum(x.status == k for x in statuses) for k in {x.status for x in statuses}}, "missing_code_entities": len(missing_code), "write_completed": write and not has_failures, "warnings": len(warnings)}
+    if detailed_artifacts:
+        result['run_dir'] = str(run_dir)
     result['unparsed_files'] = len(unparsed_file_paths)
     result['unparsed_file_paths'] = unparsed_file_paths
     result['incomplete_items'] = len(incomplete_items)
     result['incomplete_items_report'] = str(incomplete_items_report)
+    result['unaudited_files_report'] = str(unaudited_files_report)
     result["limitations"] = len(limitations)
     result['skipped_businesses'] = len(business_failures)
     result['business_failures'] = business_failures
@@ -1209,6 +1306,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     if write:
         result['audit_statistics_report'] = str(audit_statistics_report)
         result['audit_statistics_html_report'] = str(audit_statistics_html_report)
-        result['audit_metadata_dir'] = str(audit_directory)
-    write_compact_json(run_dir / "summary.json", result)
+        if detailed_artifacts:
+            result['audit_metadata_dir'] = str(audit_directory)
+    if detailed_artifacts:
+        write_compact_json(run_dir / "summary.json", result)
     return result

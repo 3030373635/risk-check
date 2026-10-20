@@ -13,6 +13,196 @@ from risk_audit.models import Finding
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_audit_defaults_to_detailed_artifact_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未显式选择策略时审核入口必须使用详细产物。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit.artifact_policy import ArtifactPolicy
+
+    captured: dict[str, object] = {}
+
+    def fake_audit(*_args, **kwargs):
+        """记录核心审核参数并返回最小合法结果；参数为审核入口透传值。"""
+        captured["artifact_policy"] = kwargs["artifact_policy"]
+        return {
+            "business_results": [],
+            "entity_results": [],
+            "findings": 0,
+            "warnings": 0,
+            "write_completed": True,
+        }
+
+    monkeypatch.setattr(runner, "_audit", fake_audit)
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+
+    runner.audit(
+        input_root,
+        tmp_path / "output",
+        tmp_path / "rulepack",
+        None,
+        tmp_path,
+        tmp_path / "runs",
+    )
+
+    assert captured["artifact_policy"] is ArtifactPolicy.DETAILED
+
+
+def test_runner_collects_audit_statistics_once_for_two_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runner 必须只归集一次并把同一对象交给两种渲染器。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    statistics = object()
+    collected: list[tuple[object, ...]] = []
+    written: list[tuple[str, object]] = []
+
+    def collect(*args, **kwargs):
+        """记录归集调用；args/kwargs 为统计归集参数。"""
+        collected.append((*args, kwargs))
+        return statistics
+
+    def write_excel(path, value):
+        """记录 Excel 渲染参数；path 为目标路径，value 为统计对象。"""
+        written.append((Path(path).suffix, value))
+
+    def write_html(path, value):
+        """记录 HTML 渲染参数；path 为目标路径，value 为统计对象。"""
+        written.append((Path(path).suffix, value))
+
+    monkeypatch.setattr(runner, "collect_audit_statistics", collect)
+    monkeypatch.setattr(runner, "write_audit_statistics", write_excel)
+    monkeypatch.setattr(runner, "write_audit_statistics_html", write_html)
+
+    reports = runner._write_audit_statistics_reports(
+        tmp_path,
+        [],
+        {},
+        "报送包",
+        business_failures=[],
+        root_subject_name="测试主体",
+        findings=[],
+    )
+
+    assert len(collected) == 1
+    assert written == [(".xlsx", statistics), (".html", statistics)]
+    assert reports == (
+        tmp_path / "审核统计表.xlsx",
+        tmp_path / "审核统计表.html",
+    )
+
+
+def test_minimal_artifact_policy_persists_only_required_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """最小策略不得在持久报告目录留下详细产物。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit.artifact_policy import ArtifactPolicy
+    from tests.test_business_incremental import create_business_batch, use_business_baseline
+
+    input_root, entities_path, sources = create_business_batch(
+        tmp_path,
+        [("06", "default")],
+    )
+    use_business_baseline(input_root, sources, monkeypatch)
+    run_directory = tmp_path / "task/report"
+    result = runner.audit(
+        input_root,
+        tmp_path / "output",
+        ROOT / "risk-audit/rulepacks/releases/1.8.0",
+        entities_path,
+        ROOT,
+        tmp_path / "runs",
+        run_id="minimal",
+        run_directory=run_directory,
+        work_root=tmp_path / "work",
+        artifact_policy=ArtifactPolicy.MINIMAL,
+    )
+
+    assert (run_directory / "audit.log").is_file()
+    assert Path(result["audit_statistics_report"]).is_file()
+    assert Path(result["audit_statistics_html_report"]).is_file()
+    assert Path(result["unaudited_files_report"]).is_file()
+    assert Path(result["incomplete_items_report"]).is_file()
+    assert "run_dir" not in result
+    assert sum(
+        path.stat().st_size
+        for path in run_directory.rglob("*")
+        if path.is_file()
+    ) < 5 * 1024 * 1024
+    for relative_path in (
+        "findings.json",
+        "statuses.json",
+        "inventory.json",
+        "warnings.json",
+        "summary.json",
+        "entities",
+        "_risk_audit/ownership.json",
+        "_risk_audit/review_tasks.json",
+        "_risk_audit/复核事项.csv",
+    ):
+        assert not (run_directory / relative_path).exists()
+
+
+def test_minimal_artifact_policy_skips_detailed_review_builders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """最小策略不得调用复核任务和责任模式构建器。
+
+    Args:
+        tmp_path: 测试隔离根目录。
+        monkeypatch: pytest 提供的补丁工具。
+    """
+    from risk_audit.artifact_policy import ArtifactPolicy
+    from risk_audit import responsibility_patterns
+    from tests.test_business_incremental import create_business_batch, use_business_baseline
+
+    input_root, entities_path, sources = create_business_batch(
+        tmp_path,
+        [("06", "default")],
+    )
+    use_business_baseline(input_root, sources, monkeypatch)
+
+    def fail_builder(*_args, **_kwargs):
+        """详细构建器一旦被调用即失败；参数为生产调用值。"""
+        raise AssertionError("最小策略不应调用详细构建器")
+
+    monkeypatch.setattr(runner, "build_review_tasks", fail_builder)
+    monkeypatch.setattr(responsibility_patterns, "build_patterns", fail_builder)
+
+    result = runner.audit(
+        input_root,
+        tmp_path / "output",
+        ROOT / "risk-audit/rulepacks/releases/1.8.0",
+        entities_path,
+        ROOT,
+        tmp_path / "runs",
+        run_id="minimal-builders",
+        run_directory=tmp_path / "task/report",
+        work_root=tmp_path / "work",
+        artifact_policy=ArtifactPolicy.MINIMAL,
+    )
+
+    assert result["write_completed"] is True
+
+
 def create_batch(tmp_path):
     """创建两个主体的真实材料；tmp_path 为隔离测试目录，返回输入目录及主体名册。"""
     input_root = tmp_path / 'input'
