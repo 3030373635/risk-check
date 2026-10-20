@@ -551,7 +551,7 @@ def test_system_status_reports_auditor_and_fixed_region(web_services) -> None:
     assert status["app_version"] == "2.2.2"
     assert status["region_code"] == "chongqing"
     assert status["region_name"] == "重庆"
-    assert status["rulepack_version"] == "1.9.34"
+    assert status["rulepack_version"] == "1.9.35"
     assert "rule_version" not in status
 
 
@@ -581,7 +581,7 @@ def test_created_task_keeps_pinned_region_after_index_changes(
 
     assert request.region_code == "chongqing"
     assert request.region_name == "重庆"
-    assert request.rulepack_version == "1.9.34"
+    assert request.rulepack_version == "1.9.35"
     assert request.rulepack == str(web_services._region_catalog.require("chongqing").rulepack)
 
 

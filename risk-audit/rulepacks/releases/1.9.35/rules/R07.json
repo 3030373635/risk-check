@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "role_responsibility_mapping_1015",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_role_responsibility_mapping",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R07",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "chongqing.role_responsibility_mapping_1015",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "风控矩阵1020-重庆.docx 接受修订后的有效正文",
+  "title": "岗位清单中角色与责任类型对应"
+}

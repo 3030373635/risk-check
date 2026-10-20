@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "check_id": "responsibility_phrase_1016",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_responsibility_phrase",
+      "operator_version": 2,
+      "params": {
+        "split_opinions": true
+      }
+    }
+  ],
+  "display_code": "R09",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.responsibility_phrase_1016",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "position_duty"
+  },
+  "source_reference": "风控矩阵1020-重庆.docx 接受修订后的有效正文",
+  "title": "岗位清单中岗位职责基本责任表述"
+}

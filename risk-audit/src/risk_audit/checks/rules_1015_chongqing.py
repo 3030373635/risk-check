@@ -1,4 +1,4 @@
-"""《重庆公司 1015 审核确认稿》的专项审核能力。"""
+"""重庆公司审核确认稿的专项审核能力。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,13 @@ from risk_audit.models import Record
 from risk_audit.util import measure_id_key, norm_text
 
 
-SYSTEM_MODES = {norm_text("系统待建"), norm_text("系统已建")}
+SYSTEM_STATUS_GROUPS = {
+    norm_text("系统待建"): "pending",
+    norm_text("线上管控-待建"): "pending",
+    norm_text("系统已建"): "completed",
+    norm_text("线上管控-已建"): "completed",
+}
+SYSTEM_MODES = frozenset(SYSTEM_STATUS_GROUPS)
 VALID_ROLES = {"经办", "审核", "审批", "监督"}
 ROLE_RESPONSIBILITIES = {
     "经办": "主体责任",
@@ -491,15 +497,28 @@ def _system_names(value: str) -> set[str]:
     return {norm_text(item) for item in SYSTEM_NAME_SEPARATOR.split(value) if norm_text(item)}
 
 
+def _system_status_group(value: str) -> str | None:
+    """将系统建设状态归一为待建组或已建组。
+
+    Args:
+        value: 矩阵控制方式或系统清单建设状态。
+
+    Returns:
+        归一后的状态组；非系统控制状态返回 None。
+    """
+
+    return SYSTEM_STATUS_GROUPS.get(norm_text(value))
+
+
 def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> list[dict[str, Any]]:
-    """核对系统规则清单与矩阵的编号、状态、控制方式和系统名称。
+    """核对系统规则清单与矩阵的编号、建设状态和控制方式。
 
     Args:
         ctx: 包含矩阵和系统规则清单记录的审核上下文。
         params: 可控制系统名称、建设状态校验，并指定矩阵缺失时的意见。
 
     Returns:
-        确认稿第11条规定的五类一致性问题。
+        确认稿第14条规定的一致性问题。
     """
 
     compare_system_names = bool(params.get("compare_system_names", True))
@@ -534,13 +553,16 @@ def system_control_consistency(ctx: CheckContext, params: dict[str, Any]) -> lis
                 continue
             for matrix in matrix_rows:
                 matrix_mode = norm_text(matrix.value("control_mode"))
+                matrix_status_group = _system_status_group(matrix_mode)
+                build_status_group = _system_status_group(build_status)
                 if (
-                    matrix_mode in SYSTEM_MODES
-                    and build_status != matrix_mode
-                    and (validate_build_status or build_status in SYSTEM_MODES)
+                    matrix_status_group is not None
+                    # 系统与线上管控文字可不同，但待建和已建组别必须一致。
+                    and build_status_group != matrix_status_group
+                    and (validate_build_status or build_status_group is not None)
                 ):
                     issues.append(_issue(system, "build_status_mismatch", "需核实建设状态是否正确"))
-                elif matrix_mode not in SYSTEM_MODES:
+                elif matrix_status_group is None:
                     issues.append(_issue(
                         system,
                         "control_mode_mismatch",

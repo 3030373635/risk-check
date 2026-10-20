@@ -600,7 +600,7 @@ def test_1933_pipeline_remains_available_after_region_upgrade() -> None:
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profile = next(item for item in index["regions"] if item["region_code"] == "chongqing")
-    assert profile["rulepack_version"] == "1.9.34"
+    assert profile["rulepack_version"] == "1.9.35"
     assert "1.9.33" in CONFIRMED_RULE_VERSIONS
     assert "1.9.33" in PREPROCESSING_RULE_VERSIONS
     assert "1.9.33" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS

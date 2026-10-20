@@ -1,0 +1,57 @@
+{
+  "checks": [
+    {
+      "check_id": "matrix_schema_1016",
+      "location_policy": "material",
+      "message": {
+        "review": "{advice_v2}",
+        "violation": "{advice_v2}"
+      },
+      "on_unavailable": "review",
+      "operator": "schema_contains",
+      "operator_version": 3,
+      "params": {
+        "compare_baseline": true,
+        "field_labels": {
+          "carrier": "控制载体",
+          "control_measure": "控制措施",
+          "control_system": "控制系统",
+          "measure_id": "控制措施编号",
+          "responsibility": "责任主体"
+        },
+        "required_fields": [
+          "measure_id",
+          "control_measure",
+          "control_system",
+          "carrier",
+          "responsibility"
+        ],
+        "sheet_types": [
+          "matrix"
+        ]
+      }
+    }
+  ],
+  "display_code": "R02",
+  "enabled": true,
+  "revision": 13,
+  "rule_id": "schema.applicability",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1020-重庆.docx 接受修订后的有效正文",
+  "title": "基准字段及适用性填写情况"
+}

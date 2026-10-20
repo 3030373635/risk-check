@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "check_id": "handler_reviewer_supervisor_overlap_1016",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_duty_separation",
+      "operator_version": 2,
+      "params": {
+        "infer_role_from_duty": false,
+        "person_placeholders": [
+          "等",
+          "…",
+          "...",
+          "外包",
+          "附件",
+          "不详",
+          "待定"
+        ]
+      }
+    }
+  ],
+  "display_code": "R08",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.duty_separation_1016",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1020-重庆.docx 接受修订后的有效正文",
+  "title": "岗位清单中经办与审核人员分离"
+}

@@ -274,6 +274,96 @@ def test_system_control_reports_blank_build_status() -> None:
     assert [item["evidence"]["opinion"] for item in issues] == ["需核实建设状态是否正确"]
 
 
+def test_system_control_accepts_equivalent_online_control_statuses() -> None:
+    """系统与线上管控的同类待建或已建状态应视为一致。"""
+
+    status_pairs = [
+        ("系统待建", "线上管控-待建"),
+        ("线上管控-待建", "系统待建"),
+        ("系统已建", "线上管控-已建"),
+        ("线上管控-已建", "系统已建"),
+    ]
+
+    for row, (matrix_status, list_status) in enumerate(status_pairs, 2):
+        matrix = make_record(
+            "matrix",
+            row,
+            measure_id=f"财务管理-{row}-控制措施01",
+            control_mode=matrix_status,
+        )
+        system = make_record(
+            "system_rule",
+            row + 10,
+            measure_id=f"财务管理-{row}-控制措施01",
+            build_status=list_status,
+        )
+
+        issues = run_capability(
+            "chongqing_system_control_consistency",
+            [matrix, system],
+            {"compare_system_names": False, "validate_build_status": True},
+        )
+
+        assert issues == []
+
+
+def test_system_control_checks_online_statuses_in_both_directions() -> None:
+    """线上管控状态应参与矩阵与系统清单的双向缺失检查。"""
+
+    matrix = make_record(
+        "matrix",
+        2,
+        measure_id="财务管理-12-控制措施05",
+        control_mode="线上管控-待建",
+    )
+    system = make_record(
+        "system_rule",
+        3,
+        measure_id="财务管理-18-控制措施02",
+        build_status="线上管控-已建",
+    )
+
+    issues = run_capability(
+        "chongqing_system_control_consistency",
+        [matrix, system],
+        {
+            "compare_system_names": False,
+            "matrix_missing_opinion": "需核实矩阵中是否有该条措施或控制方式是否正确",
+            "validate_build_status": True,
+        },
+    )
+
+    assert {(item["record"].record_id, item["evidence"]["opinion"]) for item in issues} == {
+        (matrix.record_id, "需核实系统控制规则清单是否完整"),
+        (system.record_id, "需核实矩阵中是否有该条措施或控制方式是否正确"),
+    }
+
+
+def test_system_control_rejects_cross_group_online_statuses() -> None:
+    """待建组与已建组之间不得因为均为线上管控而视为一致。"""
+
+    matrix = make_record(
+        "matrix",
+        2,
+        measure_id="财务管理-12-控制措施05",
+        control_mode="线上管控-待建",
+    )
+    system = make_record(
+        "system_rule",
+        3,
+        measure_id="财务管理-12-控制措施05",
+        build_status="线上管控-已建",
+    )
+
+    issues = run_capability(
+        "chongqing_system_control_consistency",
+        [matrix, system],
+        {"compare_system_names": False, "validate_build_status": True},
+    )
+
+    assert [item["evidence"]["opinion"] for item in issues] == ["需核实建设状态是否正确"]
+
+
 def test_incompatible_alignment_checks_matrix_and_list_both_directions() -> None:
     """不相容岗位标记和清单编号必须双向对应。"""
 
@@ -643,15 +733,12 @@ def test_update_draft_is_idempotent(tmp_path: Path) -> None:
     assert tree_hashes(draft) == first_hashes
 
 
-def test_chongqing_region_activates_1934_pipeline() -> None:
-    """重庆地区索引和三类处理管线应同时切换到 1.9.34。"""
+def test_1934_pipeline_remains_available_after_region_upgrade() -> None:
+    """地区升级后，历史 1.9.34 三类处理管线仍应可用。"""
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profile = next(item for item in index["regions"] if item["region_code"] == "chongqing")
-    manifest = json.loads((RELEASE / "manifest.json").read_text(encoding="utf-8"))
-
-    assert profile["rulepack_version"] == "1.9.34"
-    assert profile["rulepack_content_hash"] == manifest["content_hash"]
+    assert profile["rulepack_version"] == "1.9.35"
     assert "1.9.34" in CONFIRMED_RULE_VERSIONS
     assert "1.9.34" in PREPROCESSING_RULE_VERSIONS
     assert "1.9.34" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS

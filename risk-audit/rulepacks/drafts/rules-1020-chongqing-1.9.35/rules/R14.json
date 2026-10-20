@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "check_id": "system_control_consistency_1020",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_system_control_consistency",
+      "operator_version": 2,
+      "params": {
+        "compare_system_names": false,
+        "matrix_missing_opinion": "需核实矩阵中是否有该条措施或控制方式是否正确",
+        "validate_build_status": true
+      }
+    }
+  ],
+  "display_code": "R14",
+  "enabled": true,
+  "revision": 2,
+  "rule_id": "chongqing.system_control_consistency_1020",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1020-重庆.docx 接受修订后的有效正文",
+  "title": "系统控制规则清单控制方式匹配性审核"
+}

@@ -1166,9 +1166,9 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
     profile = index["regions"][0]
     manifest = json.loads(
-        (ROOT / "rulepacks/releases/1.9.34/manifest.json").read_text(encoding="utf-8")
+        (ROOT / "rulepacks/releases/1.9.35/manifest.json").read_text(encoding="utf-8")
     )
-    assert profile["rulepack_version"] == "1.9.34"
+    assert profile["rulepack_version"] == "1.9.35"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
 
 
@@ -1189,18 +1189,18 @@ def test_current_release_keeps_business_mapping_and_removes_deleted_keypoint_rul
         item["rule_id"] != "chongqing.power_supply_branch_key_points"
         for item in pack["rules"]
     )
-    assert "1.9.34" in CONFIRMED_RULE_VERSIONS
-    assert "1.9.34" in PREPROCESSING_RULE_VERSIONS
-    assert "1.9.34" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
+    assert "1.9.35" in CONFIRMED_RULE_VERSIONS
+    assert "1.9.35" in PREPROCESSING_RULE_VERSIONS
+    assert "1.9.35" in SYSTEM_TYPE_PREPROCESSING_RULE_VERSIONS
 
 
 def test_current_release_is_deterministically_rebuildable() -> None:
-    """重庆 1.9.34 规则包应可由发布脚本确定性重建。"""
+    """重庆 1.9.35 规则包应可由发布脚本确定性重建。"""
 
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "tools/publish_rules_1016_chongqing_1934.py"),
+            str(ROOT / "tools/publish_rules_1020_chongqing_1935.py"),
             "--verify-only",
         ],
         cwd=ROOT,
