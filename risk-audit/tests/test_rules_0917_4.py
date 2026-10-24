@@ -58,7 +58,7 @@ def responsibility_file(records: list[Record]) -> list[FileRecord]:
 
 def test_historical_1911_rulepack_accepts_normativity_only_as_a_responsibility_attribute(registry) -> None:
     """历史1.9.11规则包识别规范性责任属性，但不误认普通业务名词。"""
-    assert __version__ == "2.2.2"
+    assert __version__ == "2.2.3"
     pack = load_pack(ROOT / "rulepacks/releases/1.9.11")
     selected = copy.deepcopy(pack)
     selected["rules"] = [

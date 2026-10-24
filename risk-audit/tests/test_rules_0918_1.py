@@ -8,7 +8,7 @@ from pathlib import Path
 from risk_audit import __version__
 from risk_audit.configuration.loader import load_pack
 from risk_audit.util import sha256_file
-from test_rules_0917_6 import active_pack_for, execute, make_file, make_record
+from test_rules_0917_6 import historical_pack_for, execute, make_file, make_record
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,7 @@ def test_active_rule_accepts_metering_work_responsible_position() -> None:
     """岗位名称包含“计量工作负责人”时，不得再按人员泛称提示岗位不具体。"""
     duty = make_record("position_duty", position="高压计量工作负责人")
 
-    findings = execute(active_pack_for("duties.completeness"), [make_file("position_duty", [duty])])
+    findings = execute(historical_pack_for("duties.completeness"), [make_file("position_duty", [duty])])
 
     assert all(finding.check_id != "position_specific" for finding in findings)
 

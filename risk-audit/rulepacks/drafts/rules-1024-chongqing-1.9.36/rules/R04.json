@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "incompatible_duty_alignment",
+      "location_policy": "row",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_incompatible_duty_alignment",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R04",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.incompatible_duty_alignment",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1024-重庆.docx 接受修订后的有效正文",
+  "title": "不相容岗位清单与岗位内控责任清单逻辑匹配性审核"
+}

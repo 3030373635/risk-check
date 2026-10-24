@@ -91,6 +91,9 @@ def run_engine(pack: dict[str, Any], registry: CapabilityRegistry, files: list[F
             '_entity_business_ids',
             '_entity_business_files',
             '_current_business_id',
+            'standard_library',
+            '_entity_names',
+            '_blocked_business_ids',
         )
         if key in pack
     })

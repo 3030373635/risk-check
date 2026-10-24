@@ -38,12 +38,13 @@ def parser() -> argparse.ArgumentParser:
     for name in ("audit", "trial"):
         a = sub.add_parser(name)
         a.add_argument("--input", required=True); a.add_argument("--output", required=name == "audit")
-        a.add_argument("--pack"); a.add_argument("--entities", default="reference-data/会计主体清单20260907.xlsx")
+        a.add_argument("--pack"); a.add_argument("--entities", help="名册识别模式使用的会计主体清单")
+        a.add_argument("--entity-mode", choices=["registry", "parent_directory"], help="主体识别方式；重庆默认使用业务上层目录及冻结公司匹配表")
         a.add_argument("--config", help="审核运行配置；未指定时自动读取当前目录的 audit-config.json")
         a.add_argument("--enable-rule", dest="enable_rules", action="append", default=[],
                        help="仅对本次运行启用指定规则展示编号，可重复使用")
         # 默认将运行记录保存到项目的 runs 目录，与 Git 忽略规则保持一致。
-        a.add_argument("--project-root", default="."); a.add_argument("--runs-root", default="runs"); a.add_argument("--run-id")
+        a.add_argument("--project-root", help="模板根目录；重庆默认使用地区模板目录"); a.add_argument("--runs-root", default="runs"); a.add_argument("--run-id")
         a.add_argument("--include-hidden", action="store_true", help="明确将隐藏工作表纳入读取范围；默认跳过并集中提示")
         a.add_argument("--scope-file", help="可选手动覆盖自动范围；默认按实际上传的风控矩阵和三清单确定范围")
     m = sub.add_parser("manual-extract"); m.add_argument("--input", required=True); m.add_argument("--output", required=True)
@@ -52,6 +53,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """执行命令行操作；argv 为可选参数数组，为空时读取系统命令行，返回退出码。"""
     args = parser().parse_args(argv)
     registry = build_registry(); store = RulePackStore(args.rulepacks_root, registry)
     try:
@@ -68,13 +70,22 @@ def main(argv: list[str] | None = None) -> int:
             _print(build_vocabulary(args.input, args.output, args.pack or store.active_path(), args.entities, args.holdout_key))
         elif args.command in {"audit", "trial"}:
             pack = Path(args.pack).resolve() if args.pack else store.active_path()
+            try:
+                chongqing = read_json(pack / 'manifest.json').get('region_code') == 'chongqing'
+            except (OSError, ValueError, AttributeError):
+                # 预读失败交由 audit 在日志上下文中正式报告，保留异常堆栈与 JSON 输出。
+                chongqing = False
+            # 重庆目录模式不再隐式读取湖南会计主体名册。
+            entity_mode = args.entity_mode or ('registry' if args.entities or not chongqing else 'parent_directory')
+            entity_file = args.entities or ('reference-data/会计主体清单20260907.xlsx' if entity_mode == 'registry' else None)
+            project_root = args.project_root or (pack.parents[2] / 'baselines/chongqing/templates' if chongqing else '.')
             output = args.output if args.command == "audit" else Path(args.runs_root) / "_trial_no_output"
             default_config = Path("audit-config.json")
             config_file = args.config or (default_config if default_config.is_file() else None)
-            _print(audit(args.input, output, pack, args.entities, args.project_root, args.runs_root,
+            _print(audit(args.input, output, pack, entity_file, project_root, args.runs_root,
                          write=args.command == "audit", run_id=args.run_id,
                          include_hidden=args.include_hidden, scope_file=args.scope_file,
-                         config_file=config_file, enabled_rules=args.enable_rules))
+                         config_file=config_file, enabled_rules=args.enable_rules, entity_mode=entity_mode))
         elif args.command == "manual-extract": _print(extract_manual_labels(args.input, args.output)["counts"])
         elif args.command == "manual-compare":
             report = compare_findings(read_json(Path(args.labels)), read_json(Path(args.findings))); write_json(Path(args.output), report); _print({k: v for k, v in report.items() if k != "items"})

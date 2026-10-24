@@ -12,6 +12,7 @@ RESOURCE_FILES = (
     "carrier_aliases.json", "overlays.json", "terminology.json", "input_overrides.json", "result_policy.json",
     "parser_policy.json", "semantic_config.json", "semantic_lexicon.json",
     "responsibility_applicability.json",
+    "standard_library.json",
 )
 
 

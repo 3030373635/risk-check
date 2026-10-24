@@ -56,14 +56,14 @@ def test_publish_script_rebuilds_1935_deterministically() -> None:
     assert json.loads(result.stdout)["verified"] is True
 
 
-def test_chongqing_region_activates_1935_pipeline() -> None:
-    """重庆地区索引和三类处理管线应同时切换到 1.9.35。"""
+def test_chongqing_region_activates_latest_pipeline() -> None:
+    """重庆地区索引应启用最新规则，历史 1.9.35 管线仍可复验。"""
 
     index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
     profile = next(item for item in index["regions"] if item["region_code"] == "chongqing")
-    manifest = json.loads((RELEASE / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ROOT / "rulepacks/releases/1.9.36/manifest.json").read_text(encoding="utf-8"))
 
-    assert profile["rulepack_version"] == "1.9.35"
+    assert profile["rulepack_version"] == "1.9.36"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
     assert "1.9.35" in CONFIRMED_RULE_VERSIONS
     assert "1.9.35" in PREPROCESSING_RULE_VERSIONS

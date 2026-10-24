@@ -841,4 +841,22 @@ def build_registry() -> CapabilityRegistry:
         ['row'],
         incompatible_position_alignment,
     )
+    from risk_audit.checks.rules_1024_chongqing import (
+        incompatible_alignment,
+        incompatible_duty_alignment,
+        required_documents as required_documents_1024,
+        standard_library_completeness,
+    )
+    reg(
+        'chongqing_required_documents_1024', ['package'], [],
+        ['material_types', 'naming_mode', 'naming_keywords', 'require_entity_name'], [],
+        ['missing_material', 'files', 'file_path', 'entity_code', 'business_code', 'variant_id', 'naming_issue'],
+        ['material'], required_documents_1024,
+    )
+    for name, runner, policy in (
+        ('chongqing_incompatible_alignment_1024', incompatible_alignment, ['row']),
+        ('chongqing_incompatible_duty_alignment', incompatible_duty_alignment, ['row']),
+        ('chongqing_standard_library_completeness', standard_library_completeness, ['material']),
+    ):
+        reg(name, ['package'], [], [], [], ['opinion', 'issue_type'], policy, runner)
     return r

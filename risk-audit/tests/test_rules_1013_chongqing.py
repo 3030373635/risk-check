@@ -97,16 +97,14 @@ def updated_person_name_check() -> tuple[dict, object]:
     return check, capability
 
 
-def current_person_name_check() -> tuple[dict, object]:
-    """读取当前重庆发布包的第20条及其审核能力。
+def historical_person_name_check() -> tuple[dict, object]:
+    """读取历史1.9.35重庆发布包的人员姓名检查及其审核能力。
 
     Returns:
-        当前启用的第20条检查配置和已注册的审核能力。
+        历史人员姓名检查配置和已注册的审核能力。
     """
 
-    index = json.loads((ROOT / "regions/index.json").read_text(encoding="utf-8"))
-    profile = next(item for item in index["regions"] if item["region_code"] == "chongqing")
-    pack = load_pack(ROOT / "rulepacks/releases" / profile["rulepack_version"])
+    pack = load_pack(ROOT / "rulepacks/releases/1.9.35")
     rules = {rule["rule_id"]: rule for rule in pack["rules"]}
     check = rules["chongqing.person_name_single"]["checks"][0]
     capability = build_registry().get(check["operator"], check["operator_version"])
@@ -114,10 +112,10 @@ def current_person_name_check() -> tuple[dict, object]:
     return check, capability
 
 
-def test_current_person_name_rule_rejects_spaces_and_line_breaks() -> None:
+def test_historical_person_name_rule_rejects_spaces_and_line_breaks() -> None:
     """第20条应将空格和换行识别为同一行填写多个人员。"""
 
-    check, capability = current_person_name_check()
+    check, capability = historical_person_name_check()
 
     for row, person_names in enumerate(("张三 李四", "张三\n李四"), start=8):
         record = make_record("position_duty", row, person_names=person_names)

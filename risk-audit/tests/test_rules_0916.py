@@ -373,10 +373,9 @@ def test_duplicate_advice_lists_all_counterpart_rows():
     )
 
 
-def test_active_duplicate_rule_renders_counterpart_rows_through_engine():
-    """激活规则包必须在最终审核意见中渲染重复位置，不能只在内部证据中保存。"""
-    active = json.loads((ROOT / 'rulepacks/active.json').read_text(encoding='utf-8'))
-    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases' / active['version']))
+def test_historical_1921_duplicate_rule_renders_counterpart_rows_through_engine():
+    """历史1.9.21规则包必须在最终审核意见中渲染重复位置，不能只在内部证据中保存。"""
+    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases/1.9.21'))
     pack['rules'] = [item for item in pack['rules'] if item['rule_id'] == 'duties.duplicate_rows']
     values = dict(measure_id='M1', duty='对资料准确性负审核责任', department='财务部',
                   position='核算专责', person_names='张三', role='审核')
@@ -481,10 +480,9 @@ def test_responsibility_department_alignment_uses_confirmed_keywords_and_synonym
     assert not run('responsibility_department_alignment_v1', [matrix], params, duties)
 
 
-def test_active_rulepack_restores_rule_16_but_keeps_rule_17_removed():
-    """激活规则包应恢复适用性联动，同时继续保持第17条删除结果。"""
-    active = json.loads((ROOT / 'rulepacks/active.json').read_text(encoding='utf-8'))
-    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases' / active['version']))
+def test_historical_1921_restores_rule_16_but_keeps_rule_17_removed():
+    """历史1.9.21规则包应恢复适用性联动，同时继续保持第17条删除结果。"""
+    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases/1.9.21'))
     pack['rules'] = [item for item in pack['rules'] if item['rule_id'] in {
         'matrices.measure_applicability', 'matrices.responsibility_department',
     }]
@@ -534,10 +532,9 @@ def test_noncontinuous_order_points_only_to_matching_identifier_rows():
     assert all([location['row'] for location in item['evidence']['problem_locations']] == [3, 5] for item in noncontinuous)
 
 
-def test_active_rulepack_does_not_output_order_findings():
-    """当前激活规则只对岗位清单实际排序，不得输出已删除的排序检查意见；无参数。"""
-    active = json.loads((ROOT / 'rulepacks/active.json').read_text(encoding='utf-8'))
-    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases' / active['version']))
+def test_historical_1921_does_not_output_order_findings():
+    """历史1.9.21规则只对岗位清单实际排序，不得输出已删除的排序检查意见；无参数。"""
+    pack = copy.deepcopy(load_pack(ROOT / 'rulepacks/releases/1.9.21'))
     order_rules = [item for item in pack['rules'] if item['rule_id'] in {
         'lists.order', 'lists.order_system', 'lists.order_incompatible'
     }]

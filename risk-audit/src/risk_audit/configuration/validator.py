@@ -59,6 +59,11 @@ def validate_pack(pack: dict[str, Any], registry: CapabilityRegistry) -> list[st
         if not expected: errors.append("released manifest missing content_hash")
         elif expected != actual: errors.append("released rule pack content hash mismatch (immutable release was changed)")
     baseline_registry = pack.get("baseline_registry", {})
+    if 'standard_library' in pack:
+        from risk_audit.configuration.standard_library import validate_standard_library
+        errors.extend(validate_standard_library(pack['standard_library'], baseline_registry))
+    elif any(check.get('operator') == 'chongqing_standard_library_completeness' for rule in pack.get('rules', []) for check in rule.get('checks', [])):
+        errors.append('missing resource: standard_library.json')
     # 新版模板目录使用全局业务 ID；历史发布包保持只读，以便旧运行快照仍可复核。
     if isinstance(baseline_registry, dict) and baseline_registry.get("schema_version") == "2.0":
         errors.extend(validate_business_registry(baseline_registry))

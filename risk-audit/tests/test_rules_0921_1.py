@@ -10,7 +10,7 @@ from pathlib import Path
 from risk_audit import __version__
 from risk_audit.configuration.loader import load_pack
 from risk_audit.util import sha256_file
-from test_rules_0917_6 import active_pack_for, execute, make_file, make_record
+from test_rules_0917_6 import historical_pack_for, execute, make_file, make_record
 
 
 OPINION = "【第16条】请结合业务实际再次核实适用性。"
@@ -24,7 +24,7 @@ def test_existing_duty_with_empty_applicability_leaves_opinion_empty() -> None:
     duty = make_record("position_duty", measure_id="其他名称-12.事项-控制措施05")
 
     findings = execute(
-        active_pack_for("matrices.measure_applicability"),
+        historical_pack_for("matrices.measure_applicability"),
         [make_file("matrix", [matrix]), make_file("position_duty", [duty])],
     )
 
@@ -41,7 +41,7 @@ def test_existing_duty_with_unknown_nonempty_applicability_reports_opinion() -> 
     duty = make_record("position_duty", measure_id="其他名称-12.事项-控制措施05")
 
     findings = execute(
-        active_pack_for("matrices.measure_applicability"),
+        historical_pack_for("matrices.measure_applicability"),
         [make_file("matrix", [matrix]), make_file("position_duty", [duty])],
     )
 
@@ -62,7 +62,7 @@ def test_other_entity_duty_does_not_satisfy_current_matrix() -> None:
     other_entity_duty.entity_code = "OTHER"
 
     findings = execute(
-        active_pack_for("matrices.measure_applicability"),
+        historical_pack_for("matrices.measure_applicability"),
         [
             make_file("matrix", [matrix]),
             make_file("position_duty", [other_entity_duty]),

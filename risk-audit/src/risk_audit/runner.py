@@ -53,7 +53,8 @@ from risk_audit.pipeline_versions import (
 
 
 ENTITY_COMPLETENESS_BUSINESS_ID = "__entity_completeness__"
-ENTITY_LEVEL_RULE_IDS = frozenset({"chongqing.person_multiple_positions_1015"})
+STANDARD_LIBRARY_RULE_ID = "chongqing.standard_library_completeness"
+ENTITY_LEVEL_RULE_IDS = frozenset({"chongqing.person_multiple_positions_1015", STANDARD_LIBRARY_RULE_ID})
 
 
 def material_naming_keywords(pack: dict[str, Any]) -> dict[str, list[str]] | None:
@@ -331,6 +332,7 @@ def _remove_legacy_opinion_outputs(output_root: Path) -> None:
     for statistics_report in (
         output_root / "审核统计表.xlsx",
         output_root / "审核统计表.html",
+        *output_root.glob("标准库比对结果-*.xlsx"),
     ):
         if statistics_report.is_symlink() or statistics_report.is_file():
             statistics_report.unlink()
@@ -596,6 +598,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         pack['baseline_registry'],
         entity_mode=entity_mode,
     )
+    if pack.get('standard_library') and entity_mode == 'parent_directory':
+        from risk_audit.standard_library import bind_company_groups
+        entity_groups = bind_company_groups(files, entity_groups, pack['standard_library'])
+    # 仅由附件唯一确认的公司合并目录；未确认的报送单位继续隔离。
+    pack['_entity_names'] = {key: identity['entity_name'] for key, identity in entity_groups.items()}
     entity_alerts = build_entity_alerts(files, entities, missing_code)
     for alert in entity_alerts:
         logger.warning('主体清单匹配提示，已继续审核：%s，%s，文件=%s',
@@ -718,6 +725,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     output_state = OutputState(ownership=dict(previous_ownership), previous_ownership=previous_ownership)
     entity_results: list[dict[str, Any]] = []
     business_results: list[dict[str, Any]] = []
+    standard_library_results: list[dict[str, Any]] = []
     completed_audit_units = 0
     # 主体顺序在扫描阶段固定，主体内部的每个业务独立完成解析、审核和输出。
     for index, entity_key in enumerate(entity_keys, 1):
@@ -745,6 +753,7 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
         group_warnings: list[dict[str, Any]] = []
         group_business_results: list[dict[str, Any]] = []
         entity_rule_files: list[FileRecord] = []
+        group_blocked_business_ids: set[str] = set()
         entity_result = {'entity_key': entity_key, 'entity_code': entity_key if entity_key in entities else '',
                          'entity_name': entity_name, 'input_files': len(group_files), 'run_dir': str(entity_dir),
                          'entity_registry_status': identity['entity_registry_status'],
@@ -939,6 +948,9 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             if unit_failure is None and not _has_failures(unit_files, unit_statuses, unit_warnings):
                 # 主体级规则不得重新纳入预处理、审核或写回失败的业务文件。
                 entity_rule_files.extend(unit_files)
+            else:
+                # 能力异常可能只返回 failed 状态；同样必须阻断依赖该业务的标准库结论。
+                group_blocked_business_ids.add(business_id)
             unit_completed = (
                 write
                 and unit_failure is None
@@ -1011,7 +1023,8 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
             file for file in entity_rule_files
             if file.material_type != 'explanation' and file.sheets and not file.parse_errors
         ]
-        if entity_level_rules and parsed_entity_files:
+        standard_library_enabled = any(rule['rule_id'] == STANDARD_LIBRARY_RULE_ID and rule['enabled'] for rule in entity_level_rules)
+        if entity_level_rules and (parsed_entity_files or (standard_library_enabled and group_files)):
             entity_failure_stage = '主体级规则审核'
             entity_findings: list[Finding] = []
             entity_statuses: list[CheckStatus] = []
@@ -1023,6 +1036,16 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                 entity_pack['submission_scope'] = deepcopy(scopes[entity_key])
                 entity_pack['submission_scope']['entity_codes'] = [entity_key]
                 entity_pack['_submitted_entity_codes'] = [entity_key]
+                # 失败业务在全量标准库中显示“无法完成比对”，不得被认定为缺项或正常。
+                blocked_business_ids = group_blocked_business_ids | {
+                    file.business_id or file.business_code or ''
+                    for file in group_files
+                    if file.material_type != 'explanation' and (file.parse_errors or not file.sheets)
+                } | {
+                    failure['business_id'] for failure in business_failures
+                    if failure['entity_key'] == entity_key
+                }
+                entity_pack['_blocked_business_ids'] = sorted(blocked_business_ids)
                 entity_findings, entity_statuses = run_engine(
                     entity_pack,
                     registry,
@@ -1078,6 +1101,29 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
                             _write_audit_result(Path(business_result['run_dir']), business_result)
                     group_warnings.extend(entity_warnings)
                     warnings.extend(entity_warnings)
+                if standard_library_enabled:
+                    from risk_audit.standard_library import compare_standard_library, write_standard_library_report
+                    comparison = compare_standard_library(
+                        pack['standard_library'], entity_name,
+                        [record for file in parsed_entity_files for sheet in file.sheets for record in sheet.records],
+                        entity_code=entity_key,
+                        blocked_business_ids=blocked_business_ids,
+                    )
+                    report_path = None
+                    if write:
+                        entity_failure_stage = '标准库结果表输出'
+                        # 同名但不同目录的主体仍隔离，报告文件用分组摘要消歧。
+                        duplicate_names = sum(identity['entity_name'] == entity_name for identity in entity_groups.values()) > 1
+                        suffix = '-' + sha256_json(entity_key)[:8] if duplicate_names else ''
+                        report_path = write_standard_library_report(output_resolved, comparison, suffix=suffix)
+                    standard_library_results.append({
+                        'entity_key': entity_key, 'entity_name': entity_name,
+                        'match_status': comparison['match_status'], 'unit_nature': comparison['unit_nature'],
+                        'present': sum(row['status'] == 'present' for row in comparison['rows']),
+                        'missing': sum(row['status'] == 'missing' for row in comparison['rows']),
+                        'unavailable': sum(row['status'] == 'unavailable' for row in comparison['rows']),
+                        'report': str(report_path) if report_path else '',
+                    })
             except AuditCancelled:
                 raise
             except Exception as error:
@@ -1299,6 +1345,11 @@ def _audit(input_root: Path, output_root: Path, rulepack: str | Path, entity_fil
     }
     result['entity_results'] = entity_results
     result['business_results'] = business_results
+    if any(rule['rule_id'] == STANDARD_LIBRARY_RULE_ID and rule['enabled'] for rule in pack['rules']):
+        result['standard_library'] = {
+            'companies': standard_library_results,
+            **{status: sum(company[status] for company in standard_library_results) for status in ('present', 'missing', 'unavailable')},
+        }
     log_file = run_dir / 'audit.log'
     result['log_file'] = str(log_file)
     # 展示路径不携带本机绝对目录，输出整体移动后仍可按目录结构定位。

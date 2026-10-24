@@ -348,10 +348,10 @@ def test_1012_source_and_release_are_rebuildable() -> None:
     pack = load_pack(RELEASE)
     active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
 
-    assert __version__ == "2.2.2"
+    assert __version__ == "2.2.3"
     assert active == {
-        "version": "1.9.21",
-        "content_hash": pack["manifest"]["content_hash"],
+        "version": "1.9.36",
+        "content_hash": load_pack(ROOT / "rulepacks/releases/1.9.36")["manifest"]["content_hash"],
     }
     assert pack["manifest"]["source_document_sha256"] == sha256_file(source)
 

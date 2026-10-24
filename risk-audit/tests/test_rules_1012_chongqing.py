@@ -1166,9 +1166,9 @@ def test_repository_region_index_only_pins_chongqing_release() -> None:
     assert [item["region_code"] for item in index["regions"]] == ["chongqing"]
     profile = index["regions"][0]
     manifest = json.loads(
-        (ROOT / "rulepacks/releases/1.9.35/manifest.json").read_text(encoding="utf-8")
+        (ROOT / "rulepacks/releases/1.9.36/manifest.json").read_text(encoding="utf-8")
     )
-    assert profile["rulepack_version"] == "1.9.35"
+    assert profile["rulepack_version"] == "1.9.36"
     assert profile["rulepack_content_hash"] == manifest["content_hash"]
 
 

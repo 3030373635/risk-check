@@ -65,10 +65,9 @@ def make_file(sheet_type: str, records: list[Record], name: str = "材料.xlsx")
     )
 
 
-def active_pack_for(*rule_ids: str) -> dict:
-    """读取并筛选激活规则包；rule_ids 为本次验证需执行的规则标识。"""
-    active = json.loads((ROOT / "rulepacks/active.json").read_text(encoding="utf-8"))
-    pack = copy.deepcopy(load_pack(ROOT / "rulepacks/releases" / active["version"]))
+def historical_pack_for(*rule_ids: str) -> dict:
+    """读取并筛选历史1.9.21规则包；rule_ids 为本次验证需执行的规则标识。"""
+    pack = copy.deepcopy(load_pack(ROOT / "rulepacks/releases/1.9.21"))
     pack["rules"] = [rule for rule in pack["rules"] if rule["rule_id"] in set(rule_ids)]
     # 测试材料只表示06业务，不引入其他应报业务的缺件意见。
     pack["submission_scope"]["businesses"] = [
@@ -138,7 +137,7 @@ def test_active_rules_do_not_check_incompatible_list_name_specificity() -> None:
         position_a="管理人员",
         position_b="审核人员",
     )
-    pack = active_pack_for("lists.incompatible_exists", "lists.incompatible_specificity")
+    pack = historical_pack_for("lists.incompatible_exists", "lists.incompatible_specificity")
 
     assert execute(pack, [make_file("incompatible_position", [row])]) == []
 
@@ -150,7 +149,7 @@ def test_active_rules_restore_duty_presence_and_applicability_comparison() -> No
         measure_id="设备业务-1.验收-控制措施01",
         applicability="适用",
     )
-    pack = active_pack_for("matrices.measure_applicability")
+    pack = historical_pack_for("matrices.measure_applicability")
 
     findings = execute(pack, [make_file("matrix", [matrix])])
 
@@ -160,7 +159,7 @@ def test_active_rules_restore_duty_presence_and_applicability_comparison() -> No
 def test_active_rule_rejects_normativity_as_responsibility_attribute() -> None:
     """第10条不再把“规范性”视为有效责任属性，且意见应列出新属性口径。"""
     duty = make_record("position_duty", duty="对制度文件的规范性负主体责任。")
-    pack = active_pack_for("duties.responsibility_phrase")
+    pack = historical_pack_for("duties.responsibility_phrase")
 
     findings = execute(pack, [make_file("position_duty", [duty])])
 
@@ -172,7 +171,7 @@ def test_active_rule_rejects_normativity_as_responsibility_attribute() -> None:
 def test_active_rule_accepts_attribute_and_responsibility_type_without_sentence_structure() -> None:
     """第10条只检查责任属性和责任类型，不再要求责任对象或承担谓语。"""
     duty = make_record("position_duty", duty="准确性，主体责任。")
-    pack = active_pack_for("duties.responsibility_phrase")
+    pack = historical_pack_for("duties.responsibility_phrase")
 
     assert execute(pack, [make_file("position_duty", [duty])]) == []
 

@@ -1,0 +1,38 @@
+{
+  "checks": [
+    {
+      "check_id": "standard_library_completeness",
+      "location_policy": "material",
+      "message": {
+        "review": "{opinion}",
+        "violation": "{opinion}"
+      },
+      "on_unavailable": "review",
+      "operator": "chongqing_standard_library_completeness",
+      "operator_version": 1,
+      "params": {}
+    }
+  ],
+  "display_code": "R06",
+  "enabled": true,
+  "revision": 1,
+  "rule_id": "chongqing.standard_library_completeness",
+  "schema_version": "1.0",
+  "scope": {
+    "business_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "entity_codes": {
+      "exclude": [],
+      "include": [
+        "*"
+      ]
+    },
+    "record_type": "package"
+  },
+  "source_reference": "风控矩阵1024-重庆.docx 接受修订后的有效正文",
+  "title": "标准库控制措施完整性审核"
+}

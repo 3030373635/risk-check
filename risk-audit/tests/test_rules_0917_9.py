@@ -12,7 +12,7 @@ import pytest
 from risk_audit import __version__
 from risk_audit.configuration.loader import load_pack
 from risk_audit.util import sha256_file
-from test_rules_0917_6 import active_pack_for, execute, make_file, make_record
+from test_rules_0917_6 import historical_pack_for, execute, make_file, make_record
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +31,7 @@ def test_active_rule_accepts_each_responsibility_attribute(attribute: str) -> No
     duty = make_record("position_duty", duty=f"{attribute}，主体责任。")
 
     assert execute(
-        active_pack_for("duties.responsibility_phrase"),
+        historical_pack_for("duties.responsibility_phrase"),
         [make_file("position_duty", [duty])],
     ) == []
 
@@ -42,7 +42,7 @@ def test_active_rule_accepts_each_responsibility_type(responsibility_type: str) 
     duty = make_record("position_duty", duty=f"真实性，{responsibility_type}。")
 
     assert execute(
-        active_pack_for("duties.responsibility_phrase"),
+        historical_pack_for("duties.responsibility_phrase"),
         [make_file("position_duty", [duty])],
     ) == []
 
@@ -64,7 +64,7 @@ def test_active_rule_requires_both_responsibility_conditions(
     duty = make_record("position_duty", duty=duty_text)
 
     findings = execute(
-        active_pack_for("duties.responsibility_phrase"),
+        historical_pack_for("duties.responsibility_phrase"),
         [make_file("position_duty", [duty])],
     )
 
@@ -77,7 +77,7 @@ def test_active_rule_uses_0917_9_standard_opinion() -> None:
     """第10条缺少责任属性时仅输出0917-9指定的统一提示。"""
     duty = make_record("position_duty", duty="承担主体责任。")
 
-    findings = execute(active_pack_for("duties.responsibility_phrase"), [make_file("position_duty", [duty])])
+    findings = execute(historical_pack_for("duties.responsibility_phrase"), [make_file("position_duty", [duty])])
 
     assert len(findings) == 1
     assert findings[0].message == f"【第10条】{STANDARD_OPINION}"

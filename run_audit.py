@@ -1,4 +1,4 @@
-"""交付启动入口：优先加载包内 v1.9.20 源码并定位转换环境。"""
+"""交付启动入口：优先加载包内重庆审核源码并定位转换环境。"""
 import argparse
 import json
 import os
@@ -40,8 +40,6 @@ def main(argv=None):
     args, rest = opts.parse_known_args(argv)
     try:
         import risk_audit
-        if risk_audit.__version__ != '1.9.20':
-            raise ValueError('当前启动入口要求 risk_audit 1.9.20，请使用本包源码或安装新版 wheel。')
         office = configure_soffice(args.soffice)
         os.chdir(ROOT)
         if args.doctor:
@@ -50,8 +48,10 @@ def main(argv=None):
             from risk_audit.util import sha256_file
             store = RulePackStore(ROOT / 'risk-audit/rulepacks', build_registry())
             pack = store.validate(store.active_path())
+            chongqing = pack['manifest'].get('region_code') == 'chongqing'
+            baseline_root = ROOT / 'risk-audit/baselines/chongqing/templates' if chongqing else ROOT
             baseline_registry = pack['baseline_registry']
-            # 1.9.20 沿用固定到业务及变体的模板目录；旧发布包仅保留诊断读取能力。
+            # 模板始终按已冻结的业务及变体加载，重庆使用地区专属模板根。
             baseline_entries = (
                 [variant['template']
                  for business in baseline_registry.get('businesses', [])
@@ -60,14 +60,16 @@ def main(argv=None):
                 else baseline_registry.get('entries', [])
             )
             missing = [x['path'] for x in baseline_entries
-                       if not (ROOT / x['path']).is_file() or sha256_file(ROOT / x['path']) != x['sha256']]
+                       if not (baseline_root / x['path']).is_file() or sha256_file(baseline_root / x['path']) != x['sha256']]
             result = {'version': risk_audit.__version__, 'rulepack': pack['manifest']['version'],
                       'baseline_errors': missing, 'soffice': str(office) if office else None,
                       'embedding_enabled': pack['semantic_config']['enabled'],
                       'entity_list_present': (ROOT / 'reference-data/会计主体清单20260907.xlsx').is_file(),
+                      'standard_library_present': bool(pack.get('standard_library')),
                       'note': 'Path discovery is not a conversion compatibility test.'}
             print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 0 if office and not missing and result['entity_list_present'] else 2
+            identity_ready = result['standard_library_present'] if chongqing else result['entity_list_present']
+            return 0 if office and not missing and identity_ready else 2
         from risk_audit.cli import main as cli_main
         return cli_main(rest)
     except (ImportError, ValueError, RuntimeError) as error:
